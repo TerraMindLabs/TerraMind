@@ -1,4 +1,4 @@
-Write-Host "🚀 Starting TF-AI-Gen One-Shot Installation..." -ForegroundColor Cyan
+Write-Host "🚀 Starting TerraMind (TF-AI-Gen) One-Shot Installation..." -ForegroundColor Cyan
 
 # 1. Prompt for Configuration
 $apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to skip)"
@@ -6,8 +6,12 @@ $apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to skip)"
 $tfWorkspace = Read-Host "Enter path for Terraform Workspace [Default: C:\TerraformProject]"
 if ([string]::IsNullOrWhiteSpace($tfWorkspace)) { $tfWorkspace = "C:\TerraformProject" }
 
-$lcPath = Read-Host "Enter path for LibreChat installation [Default: .\LibreChat]"
+$lcPath = Read-Host "Enter path for TerraMind (LibreChat) installation [Default: .\LibreChat]"
 if ([string]::IsNullOrWhiteSpace($lcPath)) { $lcPath = ".\LibreChat" }
+$lcPathFull = (Resolve-Path $lcPath -ErrorAction SilentlyContinue).Path
+if (!$lcPathFull) { 
+    $lcPathFull = (New-Item -ItemType Directory -Path $lcPath -Force).FullName 
+}
 
 Write-Host "Select local Ollama models to pull based on your system RAM:" -ForegroundColor Cyan
 Write-Host " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
@@ -28,25 +32,33 @@ switch ($modelChoice) {
             $models = $customModels -split ',' | ForEach-Object { $_.Trim() }
         }
     }
-    Default { 
-        # Default is 4 or empty (skip)
-    }
+    Default { }
 }
 
-# 2. Check for Node.js (npm)
-if (!(Get-Command "npm" -ErrorAction SilentlyContinue)) {
-    Write-Error "Node.js (npm) is not installed. Please install Node.js first!"
+# 2. Dependency Checks
+
+# Check Git
+if (!(Get-Command "git" -ErrorAction SilentlyContinue)) {
+    Write-Error "Git is not installed. Please install Git for Windows (https://git-scm.com/download/win) first!"
     exit
 }
 
-# 2.5 Check for Terraform
+# Check Node.js (npm)
+if (!(Get-Command "npm" -ErrorAction SilentlyContinue)) {
+    Write-Error "Node.js (npm) is not installed. Please install Node.js LTS (https://nodejs.org/) first!"
+    exit
+}
+
+# Warn about MongoDB
+Write-Host "⚠️ IMPORTANT: Ensure MongoDB Community Server is installed and running natively in the background." -ForegroundColor Yellow
+Write-Host "   (https://www.mongodb.com/try/download/community)" -ForegroundColor Yellow
+
+# Check Terraform
 if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
     Write-Host "⚙️ Terraform is not installed. Attempting automatic installation via winget..." -ForegroundColor Yellow
     if (Get-Command "winget" -ErrorAction SilentlyContinue) {
         winget install Hashicorp.Terraform --accept-package-agreements --accept-source-agreements
-        # Refresh Path variable for the current session
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        
         if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
             Write-Warning "Terraform was installed but may require a terminal restart to be fully recognized."
         }
@@ -79,35 +91,91 @@ if (!(Test-Path $tfWorkspace)) {
     New-Item -ItemType Directory -Force -Path $tfWorkspace | Out-Null
 }
 
-# 6. Download LibreChat
-Write-Host "📥 Cloning LibreChat Repository to $lcPath..." -ForegroundColor Yellow
-if (!(Test-Path $lcPath)) {
-    git clone https://github.com/danny-avila/LibreChat.git $lcPath
+# 6. Download Codebase (LibreChat/TerraMind)
+Write-Host "📥 Cloning Repository to $lcPathFull..." -ForegroundColor Yellow
+if (!(Test-Path "$lcPathFull\.git")) {
+    git clone https://github.com/danny-avila/LibreChat.git $lcPathFull
+} else {
+    Write-Host "Repository already exists at $lcPathFull, skipping clone." -ForegroundColor Yellow
 }
 
-# 7. Configure Environment Variables and Copy Files
+# 7. Download tfsec
+$tfsecPath = "$lcPathFull\tfsec.exe"
+if (!(Test-Path $tfsecPath)) {
+    Write-Host "🛡️ Downloading tfsec.exe..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri "https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-windows-amd64.exe" -OutFile $tfsecPath
+}
+
+# 8. Install NPM Dependencies
+Write-Host "📦 Installing Node dependencies (npm install)..." -ForegroundColor Yellow
+Set-Location -Path $lcPathFull
+npm install
+
+# 9. Configure Environment Variables and Copy Files
 Write-Host "⚙️ Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
 
-$yamlContent = Get-Content ".\librechat.yaml" -Raw
-$yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
-$yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPath\mcp-tf-runner.js".Replace("\", "\\"))
-Set-Content -Path "$lcPath\librechat.yaml" -Value $yamlContent -Encoding UTF8
-
-Copy-Item ".\mcp-tf-runner.js" -Destination "$lcPath\mcp-tf-runner.js" -Force
-
-$envContent = Get-Content ".\.env.example" -Raw
-if ($apiKey -ne "") {
-    $envContent = $envContent -replace "REPLACE_WITH_YOUR_KEY", $apiKey
+# Configure librechat.yaml if available in current directory
+$yamlSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "librechat.yaml"
+if (Test-Path $yamlSource) {
+    $yamlContent = Get-Content $yamlSource -Raw
+    $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
+    $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
+    Set-Content -Path "$lcPathFull\librechat.yaml" -Value $yamlContent -Encoding UTF8
 }
-Set-Content -Path "$lcPath\.env" -Value $envContent -Encoding UTF8
 
-# 8. Start Docker Containers
-Write-Host "🐳 Starting LibreChat and MongoDB via Docker..." -ForegroundColor Yellow
-Set-Location -Path $lcPath
-docker compose up -d
+# Copy mcp runner script if available
+$runnerSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "mcp-tf-runner.js"
+if (Test-Path $runnerSource) {
+    Copy-Item $runnerSource -Destination "$lcPathFull\mcp-tf-runner.js" -Force
+}
 
-# 9. Finish Up
-Write-Host "✅ Installation Complete! TF-AI-Gen is now running in Docker!" -ForegroundColor Green
-Write-Host "Access the application at: http://localhost:3080" -ForegroundColor White
-Pause
+# Configure .env
+$envSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) ".env.example"
+if (!(Test-Path $envSource) -and (Test-Path "$lcPathFull\.env.example")) {
+    $envSource = "$lcPathFull\.env.example"
+}
 
+if (Test-Path $envSource) {
+    $envContent = Get-Content $envSource -Raw
+    if ($apiKey -ne "") {
+        $envContent = $envContent -replace "REPLACE_WITH_YOUR_KEY", $apiKey
+    }
+    
+    # Set APP_TITLE
+    if ($envContent -match "APP_TITLE=") {
+        $envContent = $envContent -replace "APP_TITLE=.*", "APP_TITLE=TerraMind"
+    } else {
+        $envContent += "`nAPP_TITLE=TerraMind"
+    }
+
+    # Set MONGO_URI
+    if ($envContent -match "MONGO_URI=") {
+        $envContent = $envContent -replace "MONGO_URI=.*", "MONGO_URI=mongodb://127.0.0.1:27017/LibreChat"
+    } else {
+        $envContent += "`nMONGO_URI=mongodb://127.0.0.1:27017/LibreChat"
+    }
+
+    Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
+} else {
+    Write-Warning "Could not find .env.example to create .env file."
+}
+
+# Update index.html for TerraMind
+$htmlPath = "$lcPathFull\client\index.html"
+if (Test-Path $htmlPath) {
+    $htmlContent = Get-Content $htmlPath -Raw
+    $htmlContent = $htmlContent -replace "<title>LibreChat</title>", "<title>TerraMind</title>"
+    $htmlContent = $htmlContent -replace 'content="LibreChat"', 'content="TerraMind"'
+    Set-Content -Path $htmlPath -Value $htmlContent -Encoding UTF8
+    Write-Host "✅ Updated index.html with TerraMind title." -ForegroundColor Green
+}
+
+# 10. Build Frontend
+Write-Host "🏗️ Building Frontend (npm run frontend)..." -ForegroundColor Yellow
+npm run frontend
+
+# 11. Finish Up
+Write-Host "✅ Installation Complete! TerraMind is ready to run natively." -ForegroundColor Green
+Write-Host "▶️ To start the application, stay in the current directory and run: npm run backend" -ForegroundColor Cyan
+Write-Host "🌐 Access the application at: http://localhost:3080" -ForegroundColor White
+Write-Host "📝 NOTE: Make sure MongoDB Community Edition is running locally!" -ForegroundColor Yellow
