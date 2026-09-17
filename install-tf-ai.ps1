@@ -8,20 +8,23 @@ try {
     # Ignore if the terminal doesn't support programmatic resizing (e.g., Windows Terminal handles this differently)
 }
 
-Write-Host " _____                       __  __ _           _ " -ForegroundColor Cyan
-Write-Host "|_   _|__ _ __ _ __ __ _    |  \/  (_)_ __   __| |" -ForegroundColor Cyan
-Write-Host "  | |/ _ \ '__| '__/ _' |   | |\/| | | '_ \ / _' |" -ForegroundColor Cyan
-Write-Host "  | |  __/ |  | | | (_| |   | |  | | | | | | (_| |" -ForegroundColor Cyan
-Write-Host "  |_|\___|_|  |_|  \__,_|___|_|  |_|_|_| |_|\__,_|" -ForegroundColor Cyan
-Write-Host "                       |_____|                    " -ForegroundColor Cyan
+Write-Host "===========================================================" -ForegroundColor DarkGray
+Write-Host "  _____                    __  __ _           _            " -ForegroundColor Cyan
+Write-Host " |_   _|__ _ __ _ __ __ _ |  \/  (_)_ __   __| |           " -ForegroundColor Cyan
+Write-Host "   | |/ _ \ '__| '__/ _' || |\/| | | '_ \ / _' |           " -ForegroundColor Cyan
+Write-Host "   | |  __/ |  | | | (_| || |  | | | | | | (_| |           " -ForegroundColor Cyan
+Write-Host "   |_|\___|_|  |_|  \__,_||_|  |_|_|_| |_|\__,_|           " -ForegroundColor Cyan
+Write-Host "                                                           " -ForegroundColor Cyan
+Write-Host "             [ AI Cloud DevOps Architect ]                 " -ForegroundColor Yellow
+Write-Host "===========================================================" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "Welcome to TerraMind (TF-AI-Gen) Setup" -ForegroundColor White
+Write-Host " Welcome to TerraMind Setup" -ForegroundColor White
+Write-Host " --------------------------" -ForegroundColor DarkGray
 Write-Host ""
-
-Write-Host "What would you like to do?" -ForegroundColor Cyan
-Write-Host " 1) Install TerraMind"
-Write-Host " 2) Uninstall TerraMind"
-$action = Read-Host "Enter your choice (1 or 2)"
+Write-Host " [?] What would you like to do?" -ForegroundColor Cyan
+Write-Host "    [1] Install TerraMind" -ForegroundColor White
+Write-Host "    [2] Uninstall TerraMind" -ForegroundColor White
+$action = Read-Host "`n => Enter your choice (1 or 2)"
 
 if ($action -eq "2") {
     Write-Host "[WARN] WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!" -ForegroundColor Red
@@ -42,8 +45,8 @@ if ($action -eq "2") {
 
     $basePath = Join-Path "$drive`:\" $folder
     
-    $lcPathFull = Join-Path $basePath "LibreChat"
-    $tfWorkspace = Join-Path $basePath "TerraformProject"
+    $lcPathFull = Join-Path $basePath "Mind"
+    $tfWorkspace = Join-Path $basePath "Terraform"
 
     $removeNpm = Read-Host "Uninstall global MCP NPM packages? (y/N)"
     $removeModels = Read-Host "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N)"
@@ -105,18 +108,20 @@ $basePath = Join-Path "$drive`:\" $folder
 if (!(Test-Path $basePath)) {
     Write-Host "Creating base directory at $basePath..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $basePath -Force | Out-Null
+} elseif ($basePath -match '^[a-zA-Z]:?$') {
+    $basePath = "$basePath\"
 }
 
-$tfWorkspace = Join-Path $basePath "TerraformProject"
-$lcPathFull = Join-Path $basePath "LibreChat"
+$tfWorkspace = Join-Path $basePath "Terraform"
+$lcPathFull = Join-Path $basePath "Mind"
 
-Write-Host "Select local Ollama models to pull based on your system RAM:" -ForegroundColor Cyan
-Write-Host " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
-Write-Host " 2) Mid-range (16GB RAM): llama3.1, qwen2.5-coder:7b"
-Write-Host " 3) High-end (32GB+ RAM): mistral-nemo, qwen2.5-coder:14b"
-Write-Host " 4) Skip local models (Use only Gemini/Cloud)"
-Write-Host " 5) Custom (comma-separated list)"
-$modelChoice = Read-Host "Enter your choice (1-5) or press Enter to skip [Default: 4]"
+Write-Host "`n [?] Select local Ollama models to pull based on your system RAM:" -ForegroundColor Cyan
+Write-Host "    [1] Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b" -ForegroundColor White
+Write-Host "    [2] Mid-range (16GB RAM): llama3.1, qwen2.5-coder:7b" -ForegroundColor White
+Write-Host "    [3] High-end (32GB+ RAM): mistral-nemo, qwen2.5-coder:14b" -ForegroundColor White
+Write-Host "    [4] Skip local models (Use only Gemini/Cloud)" -ForegroundColor Yellow
+Write-Host "    [5] Custom (comma-separated list)" -ForegroundColor DarkGray
+$modelChoice = Read-Host "`n => Enter your choice (1-5) [Default: 4]"
 
 $models = @()
 switch ($modelChoice) {
@@ -194,7 +199,7 @@ $bundledChatPath = Join-Path $PSScriptRoot "chat"
 if (!(Test-Path $lcPathFull)) {
     if (Test-Path $bundledChatPath) {
         Copy-Item -Path $bundledChatPath -Destination $basePath -Recurse -Force
-        Rename-Item -Path (Join-Path $basePath "chat") -NewName "LibreChat"
+        Rename-Item -Path (Join-Path $basePath "chat") -NewName "Mind"
     } else {
         Write-Host "ERROR: Bundled 'chat' directory not found at $bundledChatPath. Please make sure you downloaded the complete installation package." -ForegroundColor Red
         Pause
@@ -212,9 +217,13 @@ if (!(Test-Path $tfsecPath)) {
 }
 
 # 8. Install NPM Dependencies
-Write-Host "[pkg] Installing Node dependencies (This has been optimized for speed)..." -ForegroundColor Yellow
-Set-Location -Path $lcPathFull
-npm install --no-audit --no-fund --prefer-offline
+if (Test-Path "$lcPathFull\node_modules") {
+    Write-Host "[pkg] Found pre-bundled node_modules. Skipping npm install for faster setup!" -ForegroundColor Green
+} else {
+    Write-Host "[pkg] Installing Node dependencies (This has been optimized for speed)..." -ForegroundColor Yellow
+    Set-Location -Path $lcPathFull
+    npm install --no-audit --no-fund --prefer-offline --loglevel verbose
+}
 
 # 9. Configure Environment Variables and Copy Files
 Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
@@ -245,9 +254,9 @@ if (Test-Path $envSource) {
     }
 
     if ($envContent -match "MONGO_URI=") {
-        $envContent = $envContent -replace "MONGO_URI=.*", "MONGO_URI=mongodb://127.0.0.1:27017/LibreChat"
+        $envContent = $envContent -replace "MONGO_URI=.*", "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind"
     } else {
-        $envContent += "`nMONGO_URI=mongodb://127.0.0.1:27017/LibreChat"
+        $envContent += "`nMONGO_URI=mongodb://127.0.0.1:27017/TerraMind"
     }
 
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
@@ -265,15 +274,24 @@ if (Test-Path $htmlPath) {
 }
 
 # 10. Build Frontend
-Write-Host " Building Frontend (npm run frontend)..." -ForegroundColor Yellow
-npm run frontend
+if (Test-Path "$lcPathFull\client\dist") {
+    Write-Host " [?] Found pre-built frontend (client/dist). Skipping build for faster setup!" -ForegroundColor Green
+} else {
+    Write-Host " Building Frontend (npm run frontend)..." -ForegroundColor Yellow
+    npm run frontend
+}
 
-# 11. Finish Up
+# 11. Seed Default Agents
+Write-Host " Seeding TerraMind AI Agents into MongoDB..." -ForegroundColor Yellow
+Set-Location -Path $lcPathFull
+if (!(Test-Path "$lcPathFull\node_modules\mongodb")) {
+    npm install mongodb --no-save --silent
+}
+node seed-agent.js
+
+# 12. Finish Up
 Write-Host "[OK] Installation Complete! TerraMind is ready to run natively." -ForegroundColor Green
 Write-Host "[>] To start the application, stay in the current directory and run: npm run backend" -ForegroundColor Cyan
 Write-Host "[Web] Access the application at: http://localhost:3080" -ForegroundColor White
 Write-Host "[Note] NOTE: Make sure MongoDB Community Edition is running locally!" -ForegroundColor Yellow
 Pause
-
-
-

@@ -43,8 +43,8 @@ if [ "$action" = "2" ]; then
     
     basePath="$baseDir/$folderName"
     
-    lcPathFull="$basePath/LibreChat"
-    tfWorkspace="$basePath/TerraformProject"
+    lcPathFull="$basePath/Mind"
+    tfWorkspace="$basePath/Terraform"
 
     read -p "Uninstall global MCP NPM packages? (y/N): " removeNpm
     read -p "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N): " removeModels
@@ -107,8 +107,8 @@ if [ ! -d "$basePath" ]; then
     mkdir -p "$basePath"
 fi
 
-tfWorkspace="$basePath/TerraformProject"
-lcPathFull="$basePath/LibreChat"
+tfWorkspace="$basePath/Terraform"
+lcPathFull="$basePath/Mind"
 
 echo -e "${CYAN}Select local Ollama models to pull based on your system RAM:${NC}"
 echo " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
@@ -185,8 +185,8 @@ BUNDLED_CHAT_PATH="$SCRIPT_DIR/chat"
 
 if [ ! -d "$lcPathFull" ]; then
     if [ -d "$BUNDLED_CHAT_PATH" ]; then
-        cp -r "$BUNDLED_CHAT_PATH" "$basePath/"
-        mv "$basePath/chat" "$lcPathFull"
+        cp -r "$BUNDLED_CHAT_PATH" "$basePath"
+        mv "$basePath/chat" "$basePath/Mind"
     else
         echo -e "${RED}ERROR: Bundled 'chat' directory not found at $BUNDLED_CHAT_PATH. Please make sure you downloaded the complete installation package.${NC}"
         read -p "Press Enter to exit..."
@@ -205,9 +205,13 @@ if [ ! -f "$tfsecPath" ]; then
 fi
 
 # 8. Install NPM Dependencies
-echo -e "${YELLOW}📦 Installing Node dependencies (This has been optimized for speed)...${NC}"
-cd "$lcPathFull" || exit
-npm install --no-audit --no-fund --prefer-offline
+if [ -d "$lcPathFull/node_modules" ]; then
+    echo -e "${GREEN}📦 Found pre-bundled node_modules. Skipping npm install for faster setup!${NC}"
+else
+    echo -e "${YELLOW}📦 Installing Node dependencies (This has been optimized for speed)...${NC}"
+    cd "$lcPathFull" || exit
+    npm install --no-audit --no-fund --prefer-offline --loglevel verbose
+fi
 
 # 9. Configure Environment Variables and Copy Files
 echo -e "${YELLOW}⚙️ Configuring Environment Variables and Copying Files...${NC}"
@@ -235,9 +239,9 @@ if [ -f "$envSource" ]; then
     fi
 
     if grep -q "MONGO_URI=" "$lcPathFull/.env"; then
-        sed -i "s|^MONGO_URI=.*|MONGO_URI=mongodb://127.0.0.1:27017/LibreChat|g" "$lcPathFull/.env"
+        sed -i "s|^MONGO_URI=.*|MONGO_URI=mongodb://127.0.0.1:27017/TerraMind|g" "$lcPathFull/.env"
     else
-        echo "MONGO_URI=mongodb://127.0.0.1:27017/LibreChat" >> "$lcPathFull/.env"
+        echo "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind" >> "$lcPathFull/.env"
     fi
 else
     echo -e "${YELLOW}⚠️ Could not find .env.example to create .env file.${NC}"
@@ -251,10 +255,22 @@ if [ -f "$htmlPath" ]; then
 fi
 
 # 10. Build Frontend
-echo -e "${YELLOW}🏗️ Building Frontend (npm run frontend)...${NC}"
-npm run frontend
+if [ -d "$lcPathFull/client/dist" ]; then
+    echo -e "${GREEN}⚡ Found pre-built frontend (client/dist). Skipping build for faster setup!${NC}"
+else
+    echo -e "${YELLOW}🏗️ Building Frontend (npm run frontend)...${NC}"
+    npm run frontend
+fi
 
-# 11. Finish Up
+# 11. Seed Default Agents
+echo -e "${YELLOW}🌱 Seeding TerraMind AI Agents into MongoDB...${NC}"
+cd "$lcPathFull"
+if [ ! -d "$lcPathFull/node_modules/mongodb" ]; then
+    npm install mongodb --no-save --silent
+fi
+node seed-agent.js
+
+# 12. Finish Up
 echo -e "${GREEN}✅ Installation Complete! TerraMind is ready to run natively on Linux.${NC}"
 echo -e "${CYAN}▶️ To start the application, stay in the current directory and run: npm run backend${NC}"
 echo -e "${WHITE}🌐 Access the application at: http://localhost:3080${NC}"
