@@ -234,6 +234,35 @@ scriptDir=$(pwd)
 zipTarget=""
 if [ -f "$lcPathFull/node_modules.zip" ]; then zipTarget="$lcPathFull/node_modules.zip"
 elif [ -f "$scriptDir/node_modules.zip" ]; then zipTarget="$scriptDir/node_modules.zip"
+elif [ -f "$scriptDir/chat/node_modules.zip" ]; then zipTarget="$scriptDir/chat/node_modules.zip"
+fi
+
+# If pre-bundled node_modules doesn't exist and no local zip was found, download it from Google Drive
+if [ ! -d "$lcPathFull/node_modules" ] && [ -z "$zipTarget" ]; then
+    gdriveFileId="1DXB_zWhrbBIjuq_hd12KsB25T8cEzSlS"
+    downloadDest="$lcPathFull/node_modules.zip"
+    echo -e "${YELLOW}Pre-bundled node_modules not found locally.${NC}"
+    echo -e "${CYAN}📦 Downloading pre-bundled dependencies (~400MB) from Google Drive to accelerate setup...${NC}"
+    cookieFile=$(mktemp)
+    initUrl="https://drive.google.com/uc?export=download&id=$gdriveFileId"
+    page=$(curl -s -c "$cookieFile" -L "$initUrl")
+    action=$(echo "$page" | grep -o 'action="[^"]*"' | head -n1 | cut -d'"' -f2)
+    [ -z "$action" ] && action="https://drive.usercontent.google.com/download"
+    uuid=$(echo "$page" | grep -o 'name="uuid"[^>]*value="[^"]*"' | head -n1 | sed -n 's/.*value="\([^"]*\)".*/\1/p')
+    downloadUrl="${action}?id=${gdriveFileId}&export=download&confirm=t"
+    [ -n "$uuid" ] && downloadUrl="${downloadUrl}&uuid=${uuid}"
+
+    echo -e "${YELLOW}Downloading node_modules.zip (curl progress below)...${NC}"
+    curl -# -b "$cookieFile" -L "$downloadUrl" -o "$downloadDest"
+    rm -f "$cookieFile"
+
+    if [ -f "$downloadDest" ] && [ $(wc -c < "$downloadDest") -gt 10000000 ]; then
+        echo -e "${GREEN}📦 Download completed successfully!${NC}"
+        zipTarget="$downloadDest"
+    else
+        echo -e "${YELLOW}⚠️ Download failed or incomplete. Falling back to standard npm install.${NC}"
+        rm -f "$downloadDest"
+    fi
 fi
 
 if [ ! -d "$lcPathFull/node_modules" ] && [ ! -z "$zipTarget" ]; then

@@ -254,6 +254,61 @@ if (!(Test-Path $tfsecPath)) {
     $zipTarget = ""
     if (Test-Path "$lcPathFull\node_modules.zip") { $zipTarget = "$lcPathFull\node_modules.zip" }
     elseif (Test-Path "$scriptPath\node_modules.zip") { $zipTarget = "$scriptPath\node_modules.zip" }
+    elseif (Test-Path "$scriptPath\chat\node_modules.zip") { $zipTarget = "$scriptPath\chat\node_modules.zip" }
+
+    # If pre-bundled node_modules doesn't exist and no local zip was found, download it from Google Drive
+    if (!(Test-Path "$lcPathFull\node_modules") -and ($zipTarget -eq "")) {
+        $gdriveFileId = "1DXB_zWhrbBIjuq_hd12KsB25T8cEzSlS"
+        $downloadDest = "$lcPathFull\node_modules.zip"
+        Write-Host "[pkg] Pre-bundled node_modules not found locally." -ForegroundColor Yellow
+        Write-Host "[pkg] Downloading pre-bundled dependencies (~400MB) from Google Drive to accelerate setup..." -ForegroundColor Cyan
+        
+        try {
+            $initUrl = "https://drive.google.com/uc?export=download&id=$gdriveFileId"
+            $cookieFile = [System.IO.Path]::GetTempFileName()
+            
+            if (Get-Command "curl.exe" -ErrorAction SilentlyContinue) {
+                $resp = curl.exe -s -c "$cookieFile" -L "$initUrl"
+                $html = $resp -join "`n"
+                $action = "https://drive.usercontent.google.com/download"
+                if ($html -match 'action="([^"]+)"') { $action = $Matches[1] }
+                $uuid = ""
+                if ($html -match 'name="uuid"\s+value="([^"]+)"') { $uuid = $Matches[1] }
+                
+                $downloadUrl = "$action`?id=$gdriveFileId&export=download&confirm=t"
+                if ($uuid) { $downloadUrl += "&uuid=$uuid" }
+                
+                Write-Host "[pkg] Downloading node_modules.zip (curl progress below)..." -ForegroundColor Yellow
+                curl.exe -# -b "$cookieFile" -L "$downloadUrl" -o "$downloadDest"
+            } else {
+                $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+                $page = Invoke-WebRequest -Uri $initUrl -WebSession $session -UseBasicParsing
+                $action = "https://drive.usercontent.google.com/download"
+                if ($page.Content -match 'action="([^"]+)"') { $action = $matches[1] }
+                $uuid = ""
+                if ($page.Content -match 'name="uuid"\s+value="([^"]+)"') { $uuid = $matches[1] }
+                
+                $downloadUrl = "$action`?id=$gdriveFileId&export=download&confirm=t"
+                if ($uuid) { $downloadUrl += "&uuid=$uuid" }
+                
+                Write-Host "[pkg] Downloading node_modules.zip via Invoke-WebRequest..." -ForegroundColor Yellow
+                Invoke-WebRequest -Uri $downloadUrl -WebSession $session -OutFile $downloadDest -UseBasicParsing
+            }
+            
+            Remove-Item $cookieFile -Force -ErrorAction SilentlyContinue
+            
+            if ((Test-Path $downloadDest) -and ((Get-Item $downloadDest).Length -gt 10000000)) {
+                Write-Host "[pkg] Download completed successfully!" -ForegroundColor Green
+                $zipTarget = $downloadDest
+            } else {
+                Write-Warning "Downloaded file is missing or invalid. Falling back to standard npm install."
+                Remove-Item $downloadDest -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            Write-Warning "Could not download pre-bundled dependencies: $_"
+            Write-Host "Falling back to standard npm install..." -ForegroundColor Yellow
+        }
+    }
 
     if (!(Test-Path "$lcPathFull\node_modules") -and ($zipTarget -ne "")) {
         Write-Host "[pkg] Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)..." -ForegroundColor Yellow
