@@ -26,13 +26,13 @@ echo " 1) Install TerraMind"
 echo " 2) Uninstall TerraMind"
 read -p "Enter your choice (1 or 2): " action
 
-if [ "$action" = "2" ]; then
-    echo -e "${RED}⚠️ WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!${NC}"
-    read -p "Are you sure you want to proceed? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
-        echo "Uninstallation cancelled."
-        exit 0
-    fi
+if [ "$action" == "2" ]; then
+    echo ""
+    echo -e "${RED}[!] CRITICAL: Before proceeding, ensure the TerraMind server is STOPPED!${NC}"
+    echo -e "${YELLOW}    Make sure you have completely closed out of the terminal window running your TerraMind server,${NC}"
+    echo -e "${YELLOW}    or force-kill all Node processes (e.g. 'pkill node' or 'killall node').${NC}"
+    echo -e "${YELLOW}    If the server is still running, the uninstaller will get stuck trying to delete locked files!${NC}"
+    echo ""
 
     currentDir=$(pwd)
     read -p "Enter the base directory where TerraMind is installed (e.g., /opt, /g) [Default: $currentDir]: " baseDir
@@ -46,8 +46,27 @@ if [ "$action" = "2" ]; then
     lcPathFull="$basePath/Mind"
     tfWorkspace="$basePath/Terraform"
 
-    read -p "Uninstall global MCP NPM packages? (y/N): " removeNpm
+    echo -e "\n${YELLOW}The following directories will be permanently deleted:${NC}"
+    echo -e "${RED}- $lcPathFull${NC}"
+    echo -e "${RED}- $tfWorkspace${NC}"
+
+    echo -e "\n${RED}⚠️ WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!${NC}"
+    read -p "Are you sure you want to proceed? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+        echo "Uninstallation cancelled."
+        exit 0
+    fi
+
+    read -p $'\nUninstall global MCP NPM packages? (y/N): ' removeNpm
     read -p "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N): " removeModels
+    read -p "Force-kill all running Node.js servers to prevent file-lock errors? (Recommended) (y/N): " killNode
+
+    if [[ "$killNode" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}🗑️ Forcefully stopping all Node.js processes...${NC}"
+        pkill -f node || true
+        killall node 2>/dev/null || true
+        sleep 2
+    fi
 
     if [ -d "$lcPathFull" ]; then
         echo -e "${YELLOW}🗑️ Deleting TerraMind installation at $lcPathFull...${NC}"
@@ -157,15 +176,21 @@ fi
 
 # 3. Check for Ollama & Download Local AI Models
 if [ ${#models[@]} -eq 0 ]; then
-    echo -e "${YELLOW}⏩ Skipping local AI model download as requested.${NC}"
-elif ! command -v ollama &> /dev/null; then
-    echo -e "${YELLOW}Ollama is not installed. Local AI model pull will be skipped.${NC}"
+    echo -e "${YELLOW}⏭️ Skipping local AI model download as requested.${NC}"
+    export AGENT_PROVIDER="google"
+    export AGENT_MODEL="gemini-3.5-flash-lite"
 else
-    echo -e "${YELLOW}🦙 Pulling Local AI Models via Ollama...${NC}"
-    for model in "${models[@]}"; do
-        echo -e "${CYAN}Pulling $model...${NC}"
-        ollama pull "$model"
-    done
+    export AGENT_PROVIDER="custom"
+    export AGENT_MODEL="${models[0]}"
+    if ! command -v ollama &> /dev/null; then
+        echo -e "${YELLOW}⚠️ Ollama is not installed. Local AI model pull will be skipped.${NC}"
+    else
+        echo -e "${YELLOW}📥 Pulling Local AI Models via Ollama...${NC}"
+        for model in "${models[@]}"; do
+            echo -e "${CYAN}Pulling $model...${NC}"
+            ollama pull "$model"
+        done
+    fi
 fi
 
 # 4. Install MCP Servers globally
@@ -205,8 +230,21 @@ if [ ! -f "$tfsecPath" ]; then
 fi
 
 # 8. Install NPM Dependencies
+scriptDir=$(pwd)
+zipTarget=""
+if [ -f "$lcPathFull/node_modules.zip" ]; then zipTarget="$lcPathFull/node_modules.zip"
+elif [ -f "$scriptDir/node_modules.zip" ]; then zipTarget="$scriptDir/node_modules.zip"
+fi
+
+if [ ! -d "$lcPathFull/node_modules" ] && [ ! -z "$zipTarget" ]; then
+    echo -e "${YELLOW}📦 Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)...${NC}"
+    unzip -q -o "$zipTarget" -d "$lcPathFull"
+fi
+
 if [ -d "$lcPathFull/node_modules" ]; then
     echo -e "${GREEN}📦 Found pre-bundled node_modules. Skipping npm install for faster setup!${NC}"
+    cd "$lcPathFull" || exit
+    npm install cross-env --no-save --silent
 else
     echo -e "${YELLOW}📦 Installing Node dependencies (This has been optimized for speed)...${NC}"
     cd "$lcPathFull" || exit
@@ -218,9 +256,11 @@ echo -e "${YELLOW}⚙️ Configuring Environment Variables and Copying Files...$
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-if [ -f "$lcPathFull/librechat.yaml" ]; then
-    sed -i "s|REPLACE_WITH_TF_WORKSPACE|$tfWorkspace|g" "$lcPathFull/librechat.yaml"
-    sed -i "s|REPLACE_WITH_MCP_RUNNER_PATH|$lcPathFull/mcp-tf-runner.js|g" "$lcPathFull/librechat.yaml"
+if [ -f "$lcPathFull/terramind.yaml" ]; then
+    sed -i "s|REPLACE_WITH_TF_WORKSPACE|$tfWorkspace|g" "$lcPathFull/terramind.yaml"
+    sed -i "s|REPLACE_WITH_MCP_RUNNER_PATH|$lcPathFull/mcp-tf-runner.js|g" "$lcPathFull/terramind.yaml"
+    # Inject agents endpoint override for custom models
+    sed -i -z 's/endpoints:\n  google:/endpoints:\n  agents:\n    models: ["gemini-3.5-flash-lite", "gemini-1.5-flash-latest", "llama3.2", "llama3.1", "qwen2.5-coder:3b", "qwen2.5-coder:7b", "mistral-nemo", "qwen2.5-coder:14b"]\n  google:/' "$lcPathFull/terramind.yaml"
 fi
 
 envSource="$lcPathFull/.env.example"
@@ -233,15 +273,39 @@ if [ -f "$envSource" ]; then
     fi
     
     if grep -q "APP_TITLE=" "$lcPathFull/.env"; then
-        sed -i "s/^APP_TITLE=.*/APP_TITLE=TerraMind/g" "$lcPathFull/.env"
+        sed -i "s/REPLACE_WITH_YOUR_KEY/$apiKey/g" "$envDest"
+    fi
+    
+    if grep -q "APP_TITLE=" "$envDest"; then
+        sed -i "s/^APP_TITLE=.*/APP_TITLE=TerraMind/g" "$envDest"
     else
-        echo "APP_TITLE=TerraMind" >> "$lcPathFull/.env"
+        echo "APP_TITLE=TerraMind" >> "$envDest"
     fi
 
-    if grep -q "MONGO_URI=" "$lcPathFull/.env"; then
-        sed -i "s|^MONGO_URI=.*|MONGO_URI=mongodb://127.0.0.1:27017/TerraMind|g" "$lcPathFull/.env"
+    if grep -q "CONFIG_PATH=" "$envDest"; then
+        sed -i 's/.*CONFIG_PATH=.*/CONFIG_PATH="terramind.yaml"/' "$envDest"
     else
-        echo "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind" >> "$lcPathFull/.env"
+        echo 'CONFIG_PATH="terramind.yaml"' >> "$envDest"
+    fi
+
+    if [ ! -z "$apiKey" ]; then
+        if grep -q "GEMINI_API_KEY=" "$envDest"; then
+            sed -i "s|.*GEMINI_API_KEY=.*|GEMINI_API_KEY=\"$apiKey\"|" "$envDest"
+        else
+            echo "GEMINI_API_KEY=\"$apiKey\"" >> "$envDest"
+        fi
+    fi
+
+    if grep -q "MONGO_URI=" "$envDest"; then
+        sed -i "s|^MONGO_URI=.*|MONGO_URI=mongodb://127.0.0.1:27017/TerraMind|g" "$envDest"
+    else
+        echo "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind" >> "$envDest"
+    fi
+
+    if grep -q "HELP_AND_FAQ_URL=" "$envDest"; then
+        sed -i "s|^HELP_AND_FAQ_URL=.*|HELP_AND_FAQ_URL=https://www.google.com|g" "$envDest"
+    else
+        echo "HELP_AND_FAQ_URL=https://www.google.com" >> "$envDest"
     fi
 else
     echo -e "${YELLOW}⚠️ Could not find .env.example to create .env file.${NC}"
@@ -264,14 +328,45 @@ fi
 
 # 11. Seed Default Agents
 echo -e "${YELLOW}🌱 Seeding TerraMind AI Agents into MongoDB...${NC}"
-cd "$lcPathFull"
+cd "$lcPathFull" || exit
 if [ ! -d "$lcPathFull/node_modules/mongodb" ]; then
     npm install mongodb --no-save --silent
 fi
-node seed-agent.js
 
-# 12. Finish Up
-echo -e "${GREEN}✅ Installation Complete! TerraMind is ready to run natively on Linux.${NC}"
-echo -e "${CYAN}▶️ To start the application, stay in the current directory and run: npm run backend${NC}"
-echo -e "${WHITE}🌐 Access the application at: http://localhost:3080${NC}"
-echo -e "${YELLOW}📝 NOTE: Make sure MongoDB Community Edition is running locally!${NC}"
+if [ ! -f "$lcPathFull/seed-agent.js" ] && [ -f "$BUNDLED_CHAT_PATH/seed-agent.js" ]; then
+    cp "$BUNDLED_CHAT_PATH/seed-agent.js" "$lcPathFull/"
+fi
+
+if [ -f "$lcPathFull/seed-agent.js" ]; then
+    node seed-agent.js
+else
+    echo -e "${YELLOW}⚠️ Could not find seed-agent.js. Skipping Agent database seeding.${NC}"
+fi
+
+# 12. Create Launch Scripts
+echo -e "${YELLOW}📜 Creating Launch Shortcut...${NC}"
+launchScript="$basePath/start-terramind.sh"
+echo '#!/bin/bash' > "$launchScript"
+echo 'cd "$(dirname "$0")/Mind" || exit' >> "$launchScript"
+echo 'echo "Starting TerraMind AI Server..."' >> "$launchScript"
+echo 'npm run backend' >> "$launchScript"
+chmod +x "$launchScript"
+echo -e "${GREEN}✅ Created launch script: $launchScript${NC}"
+
+# 13. Finish Up
+echo -e "${NC}==========================================================="
+echo -e "${GREEN}✅ Installation Complete! TerraMind is ready to run.${NC}"
+echo -e "${WHITE}🌐 Application URL: http://localhost:3080${NC}"
+echo -e "${YELLOW}⚠️ NOTE: Make sure MongoDB Community Edition is running locally!${NC}"
+echo -e "${NC}===========================================================\n"
+
+read -t 10 -p " 🚀 Auto-starting TerraMind server in 10 seconds... Start now? (Y/n): " startApp
+startApp=${startApp:-y}
+
+if [[ ! "$startApp" =~ ^[nN]$ ]]; then
+    echo -e "\n${CYAN} Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)${NC}"
+    npm run backend
+else
+    echo -e "\n${CYAN}▶️ To start it later, simply run ./start-terramind.sh in your installation folder!${NC}"
+    read -p "Press Enter to exit..."
+fi

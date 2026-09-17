@@ -27,13 +27,12 @@ Write-Host "    [2] Uninstall TerraMind" -ForegroundColor White
 $action = Read-Host "`n => Enter your choice (1 or 2)"
 
 if ($action -eq "2") {
-    Write-Host "[WARN] WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!" -ForegroundColor Red
-    $confirm = Read-Host "Are you sure you want to proceed? (y/N)"
-    if ($confirm -notmatch "^[yY]$") {
-        Write-Host "Uninstallation cancelled."
-        Pause
-        return
-    }
+    Write-Host ""
+    Write-Host "[!] CRITICAL: Before proceeding, ensure the TerraMind server is STOPPED!" -ForegroundColor Red
+    Write-Host "    Make sure you have completely closed out of the terminal window running your TerraMind server," -ForegroundColor Yellow
+    Write-Host "    or run 'taskkill /f /im node.exe' in a separate PowerShell window to force-kill all Node processes." -ForegroundColor Yellow
+    Write-Host "    If the server is still running, Windows will lock the files and this uninstaller will get stuck!" -ForegroundColor Yellow
+    Write-Host ""
 
     $currentDrive = (Get-Location).Drive.Name
     $drive = Read-Host "Enter the drive where TerraMind is installed (e.g., C, D, G) [Default: $currentDrive]"
@@ -48,19 +47,41 @@ if ($action -eq "2") {
     $lcPathFull = Join-Path $basePath "Mind"
     $tfWorkspace = Join-Path $basePath "Terraform"
 
+    Write-Host "`nThe following directories will be permanently deleted:" -ForegroundColor Yellow
+    Write-Host "- $lcPathFull" -ForegroundColor Red
+    Write-Host "- $tfWorkspace" -ForegroundColor Red
+
+    Write-Host "`n[WARN] WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!" -ForegroundColor Red
+    $confirm = Read-Host "Are you sure you want to proceed? (y/N)"
+    if ($confirm -notmatch "^[yY]$") {
+        Write-Host "Uninstallation cancelled."
+        Pause
+        return
+    }
+
     $removeNpm = Read-Host "Uninstall global MCP NPM packages? (y/N)"
     $removeModels = Read-Host "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N)"
+    $killNode = Read-Host "Force-kill all running Node.js servers to prevent file-lock errors? (Recommended) (y/N)"
+
+    if ($killNode -match "^[yY]$") {
+        Write-Host "[rm] Forcefully stopping all Node.js processes..." -ForegroundColor Yellow
+        taskkill /f /im node.exe 2>$null
+        Start-Sleep -Seconds 2
+    }
 
     if (Test-Path $lcPathFull) {
-        Write-Host "[rm] Deleting TerraMind installation at $lcPathFull..." -ForegroundColor Yellow
-        Remove-Item -Recurse -Force $lcPathFull -ErrorAction Continue
+        Write-Host "[rm] Deleting TerraMind installation at $lcPathFull (this is optimized for speed)..." -ForegroundColor Yellow
+        # cmd.exe rmdir is significantly faster than PowerShell's Remove-Item for deep node_modules folders
+        cmd.exe /c "rmdir /s /q `"$lcPathFull`"" 2>$null
+        if (Test-Path $lcPathFull) { Remove-Item -Recurse -Force $lcPathFull -ErrorAction SilentlyContinue }
     } else {
         Write-Host "[Skip] TerraMind installation not found at $lcPathFull, skipping..." -ForegroundColor Cyan
     }
 
     if (Test-Path $tfWorkspace) {
         Write-Host "[rm] Deleting Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
-        Remove-Item -Recurse -Force $tfWorkspace -ErrorAction Continue
+        cmd.exe /c "rmdir /s /q `"$tfWorkspace`"" 2>$null
+        if (Test-Path $tfWorkspace) { Remove-Item -Recurse -Force $tfWorkspace -ErrorAction SilentlyContinue }
     } else {
         Write-Host "[Skip] Terraform Workspace not found at $tfWorkspace, skipping..." -ForegroundColor Cyan
     }
@@ -124,17 +145,22 @@ Write-Host "    [5] Custom (comma-separated list)" -ForegroundColor DarkGray
 $modelChoice = Read-Host "`n => Enter your choice (1-5) [Default: 4]"
 
 $models = @()
-switch ($modelChoice) {
-    "1" { $models = @("llama3.2", "qwen2.5-coder:3b") }
-    "2" { $models = @("llama3.1", "qwen2.5-coder:7b") }
-    "3" { $models = @("mistral-nemo", "qwen2.5-coder:14b") }
-    "5" { 
-        $customModels = Read-Host "Enter custom models (comma-separated)"
-        if (-not [string]::IsNullOrWhiteSpace($customModels)) {
-            $models = $customModels -split "," | ForEach-Object { $_.Trim() }
-        }
+$customModels = ""
+if ($modelChoice -eq "1") {
+    $customModels = "llama3.2, qwen2.5-coder:3b"
+} elseif ($modelChoice -eq "2") {
+    $customModels = "llama3.1, qwen2.5-coder:7b"
+} elseif ($modelChoice -eq "3") {
+    $customModels = "mistral-nemo, qwen2.5-coder:14b"
+} elseif ($modelChoice -eq "5") {
+    $customModels = Read-Host " Enter models to pull (comma-separated) [Default: llama3.2]"
+    if ([string]::IsNullOrWhiteSpace($customModels)) {
+        $customModels = "llama3.2"
     }
-    Default { }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($customModels)) {
+    $models = $customModels -split "," | ForEach-Object { $_.Trim() }
 }
 
 # 2. Dependency Checks
@@ -172,13 +198,20 @@ if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
 # 3. Check for Ollama & Download Local AI Models
 if ($models.Count -eq 0) {
     Write-Host "[Skip] Skipping local AI model download as requested." -ForegroundColor Yellow
-} elseif (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
-    Write-Warning "Ollama is not installed. Local AI model pull will be skipped."
+    $env:AGENT_PROVIDER = "google"
+    $env:AGENT_MODEL = "gemini-3.5-flash-lite"
 } else {
-    Write-Host " Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
-    foreach ($model in $models) {
-        Write-Host "Pulling $model..." -ForegroundColor Cyan
-        ollama pull $model
+    $env:AGENT_PROVIDER = "custom"
+    $env:AGENT_MODEL = $customModels.Split(',')[0].Trim()
+
+    if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
+        Write-Warning "Ollama is not installed. Local AI model pull will be skipped."
+    } else {
+        Write-Host " Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
+        foreach ($model in $models) {
+            Write-Host "Pulling $model..." -ForegroundColor Cyan
+            ollama pull $model
+        }
     }
 }
 
@@ -217,8 +250,25 @@ if (!(Test-Path $tfsecPath)) {
 }
 
 # 8. Install NPM Dependencies
+    $scriptPath = $PSScriptRoot
+    $zipTarget = ""
+    if (Test-Path "$lcPathFull\node_modules.zip") { $zipTarget = "$lcPathFull\node_modules.zip" }
+    elseif (Test-Path "$scriptPath\node_modules.zip") { $zipTarget = "$scriptPath\node_modules.zip" }
+
+    if (!(Test-Path "$lcPathFull\node_modules") -and ($zipTarget -ne "")) {
+        Write-Host "[pkg] Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)..." -ForegroundColor Yellow
+        # Use tar if available (much faster than Expand-Archive for many small files)
+        if (Get-Command "tar" -ErrorAction SilentlyContinue) {
+            cmd.exe /c "tar -xf `"$zipTarget`" -C `"$lcPathFull`""
+        } else {
+            Expand-Archive -Path $zipTarget -DestinationPath "$lcPathFull" -Force
+        }
+    }
+
 if (Test-Path "$lcPathFull\node_modules") {
     Write-Host "[pkg] Found pre-bundled node_modules. Skipping npm install for faster setup!" -ForegroundColor Green
+    Set-Location -Path $lcPathFull
+    npm install cross-env --no-save --silent
 } else {
     Write-Host "[pkg] Installing Node dependencies (This has been optimized for speed)..." -ForegroundColor Yellow
     Set-Location -Path $lcPathFull
@@ -228,12 +278,19 @@ if (Test-Path "$lcPathFull\node_modules") {
 # 9. Configure Environment Variables and Copy Files
 Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
 
-    $yamlSource = Join-Path $lcPathFull "librechat.yaml"
-    if (Test-Path $yamlSource) {
-        $yamlContent = Get-Content $yamlSource -Raw
+    $lcConfig = "$lcPathFull\terramind.yaml"
+    if (Test-Path $lcConfig) {
+        Write-Host "[cfg] Configuring terramind.yaml..." -ForegroundColor Yellow
+        $yamlContent = Get-Content $lcConfig -Raw
         $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
         $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
-        Set-Content -Path $yamlSource -Value $yamlContent -Encoding UTF8
+        
+        # Inject agents if not already present
+        if ($yamlContent -notmatch "agents:") {
+            $yamlContent = $yamlContent -replace "endpoints:`r?`n  google:", "endpoints:`r`n  agents:`r`n    models: [`"gemini-3.5-flash-lite`", `"gemini-1.5-flash-latest`", `"llama3.2`", `"llama3.1`", `"qwen2.5-coder:3b`", `"qwen2.5-coder:7b`", `"mistral-nemo`", `"qwen2.5-coder:14b`"]`r`n  google:"
+        }
+        
+        Set-Content -Path $lcConfig -Value $yamlContent -Encoding UTF8
     }
 
     $envSource = Join-Path $lcPathFull ".env.example"
@@ -253,10 +310,30 @@ if (Test-Path $envSource) {
         $envContent += "`nAPP_TITLE=TerraMind"
     }
 
+    if ($envContent -match "CONFIG_PATH=") {
+        $envContent = $envContent -replace ".*CONFIG_PATH=.*", "CONFIG_PATH=`"terramind.yaml`""
+    } else {
+        $envContent += "`nCONFIG_PATH=`"terramind.yaml`""
+    }
+
+    if (![string]::IsNullOrWhiteSpace($apiKey)) {
+        if ($envContent -match "GEMINI_API_KEY=") {
+            $envContent = $envContent -replace ".*GEMINI_API_KEY=.*", "GEMINI_API_KEY=`"$apiKey`""
+        } else {
+            $envContent += "`nGEMINI_API_KEY=`"$apiKey`""
+        }
+    }
+
     if ($envContent -match "MONGO_URI=") {
         $envContent = $envContent -replace "MONGO_URI=.*", "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind"
     } else {
         $envContent += "`nMONGO_URI=mongodb://127.0.0.1:27017/TerraMind"
+    }
+
+    if ($envContent -match "HELP_AND_FAQ_URL=") {
+        $envContent = $envContent -replace "HELP_AND_FAQ_URL=.*", "HELP_AND_FAQ_URL=https://www.google.com"
+    } else {
+        $envContent += "`nHELP_AND_FAQ_URL=https://www.google.com"
     }
 
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
@@ -287,11 +364,38 @@ Set-Location -Path $lcPathFull
 if (!(Test-Path "$lcPathFull\node_modules\mongodb")) {
     npm install mongodb --no-save --silent
 }
-node seed-agent.js
 
-# 12. Finish Up
-Write-Host "[OK] Installation Complete! TerraMind is ready to run natively." -ForegroundColor Green
-Write-Host "[>] To start the application, stay in the current directory and run: npm run backend" -ForegroundColor Cyan
-Write-Host "[Web] Access the application at: http://localhost:3080" -ForegroundColor White
+if (!(Test-Path "$lcPathFull\seed-agent.js") -and (Test-Path "$bundledChatPath\seed-agent.js")) {
+    Copy-Item -Path "$bundledChatPath\seed-agent.js" -Destination "$lcPathFull\seed-agent.js" -Force
+}
+
+if (Test-Path "$lcPathFull\seed-agent.js") {
+    node seed-agent.js
+} else {
+    Write-Warning "Could not find seed-agent.js. Skipping Agent database seeding."
+}
+
+# 12. Create Launch Scripts
+Write-Host "`n Creating Launch Shortcut..." -ForegroundColor Yellow
+$batPath = Join-Path $basePath "Start-TerraMind.bat"
+$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnpm run backend`r`npause"
+Set-Content -Path $batPath -Value $batContent -Encoding UTF8
+Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
+
+# 13. Finish Up
+Write-Host "`n===========================================================" -ForegroundColor DarkGray
+Write-Host "[OK] Installation Complete! TerraMind is ready to run." -ForegroundColor Green
+Write-Host "[Web] Application URL: http://localhost:3080" -ForegroundColor White
 Write-Host "[Note] NOTE: Make sure MongoDB Community Edition is running locally!" -ForegroundColor Yellow
-Pause
+Write-Host "===========================================================`n" -ForegroundColor DarkGray
+
+Write-Host ""
+choice.exe /C YN /T 10 /D Y /M " [?] Auto-starting TerraMind server in 10 seconds... Start now?"
+
+if ($LASTEXITCODE -eq 1) {
+    Write-Host "`n Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)" -ForegroundColor Cyan
+    npm run backend
+} else {
+    Write-Host "`n[>] To start it later, simply double-click Start-TerraMind.bat in your installation folder!" -ForegroundColor Cyan
+    Pause
+}
