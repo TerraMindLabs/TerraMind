@@ -8,6 +8,9 @@ RED='\033[0;31m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
+# Attempt to resize the console window for a better installer experience (Works on many xterm emulators)
+printf '\e[8;40;120t'
+
 echo -e "${CYAN}████████╗███████╗██████╗ ██████╗  █████╗ ███╗   ███╗██║███╗   ██╗██████╗ "
 echo -e "╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██║████╗  ██║██╔══██╗"
 echo -e "   ██║   █████╗  ██████╔╝██████╔╝███████║██╔████╔██║██║██╔██╗ ██║██║  ██║"
@@ -31,13 +34,17 @@ if [ "$action" = "2" ]; then
         exit 0
     fi
 
-    read -p "Enter path of your TerraMind installation to delete [Default: ./LibreChat]: " lcPath
-    lcPath=${lcPath:-./LibreChat}
-    lcPathFull=$(realpath -m "$lcPath")
-
-    read -p "Enter path of your Terraform Workspace to delete [Default: ~/TerraformProject]: " tfWorkspace
-    tfWorkspace=${tfWorkspace:-~/TerraformProject}
-    tfWorkspace="${tfWorkspace/#\~/$HOME}"
+    currentDir=$(pwd)
+    read -p "Enter the base directory where TerraMind is installed (e.g., /opt, /g) [Default: $currentDir]: " baseDir
+    baseDir=${baseDir:-$currentDir}
+    
+    read -p "Enter the folder name [Default: TerraMind]: " folderName
+    folderName=${folderName:-TerraMind}
+    
+    basePath="$baseDir/$folderName"
+    
+    lcPathFull="$basePath/LibreChat"
+    tfWorkspace="$basePath/TerraformProject"
 
     read -p "Uninstall global MCP NPM packages? (y/N): " removeNpm
     read -p "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N): " removeModels
@@ -84,15 +91,24 @@ fi
 echo -e "${CYAN}🚀 Starting TerraMind (TF-AI-Gen) One-Shot Installation...${NC}"
 
 # 1. Prompt for Configuration
+currentDir=$(pwd)
 read -p "Enter your Google Gemini API Key (or press enter to skip): " apiKey
 
-read -p "Enter path for Terraform Workspace [Default: ~/TerraformProject]: " tfWorkspace
-tfWorkspace=${tfWorkspace:-~/TerraformProject}
-tfWorkspace="${tfWorkspace/#\~/$HOME}"
+read -p "Enter the base directory to install TerraMind into (e.g., /opt, /g) [Default: $currentDir]: " baseDir
+baseDir=${baseDir:-$currentDir}
 
-read -p "Enter path for TerraMind (LibreChat) installation [Default: ./LibreChat]: " lcPath
-lcPath=${lcPath:-./LibreChat}
-lcPathFull=$(realpath -m "$lcPath")
+read -p "Enter the folder name [Default: TerraMind]: " folderName
+folderName=${folderName:-TerraMind}
+
+basePath="$baseDir/$folderName"
+
+if [ ! -d "$basePath" ]; then
+    echo -e "${YELLOW}Creating base directory at $basePath...${NC}"
+    mkdir -p "$basePath"
+fi
+
+tfWorkspace="$basePath/TerraformProject"
+lcPathFull="$basePath/LibreChat"
 
 echo -e "${CYAN}Select local Ollama models to pull based on your system RAM:${NC}"
 echo " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
@@ -162,12 +178,22 @@ if [ ! -d "$tfWorkspace" ]; then
     mkdir -p "$tfWorkspace"
 fi
 
-# 6. Download Codebase
-echo -e "${YELLOW}📥 Cloning Repository to $lcPathFull...${NC}"
-if [ ! -d "$lcPathFull/.git" ]; then
-    git clone https://github.com/danny-avila/LibreChat.git "$lcPathFull"
+# 6. Copy Local Bundled Codebase
+echo -e "${YELLOW}📥 Copying bundled TerraMind codebase to $lcPathFull...${NC}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+BUNDLED_CHAT_PATH="$SCRIPT_DIR/chat"
+
+if [ ! -d "$lcPathFull" ]; then
+    if [ -d "$BUNDLED_CHAT_PATH" ]; then
+        cp -r "$BUNDLED_CHAT_PATH" "$basePath/"
+        mv "$basePath/chat" "$lcPathFull"
+    else
+        echo -e "${RED}ERROR: Bundled 'chat' directory not found at $BUNDLED_CHAT_PATH. Please make sure you downloaded the complete installation package.${NC}"
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
 else
-    echo -e "${YELLOW}Repository already exists at $lcPathFull, skipping clone.${NC}"
+    echo -e "${YELLOW}Directory already exists at $lcPathFull, skipping copy.${NC}"
 fi
 
 # 7. Download tfsec
@@ -179,29 +205,21 @@ if [ ! -f "$tfsecPath" ]; then
 fi
 
 # 8. Install NPM Dependencies
-echo -e "${YELLOW}📦 Installing Node dependencies (npm install)...${NC}"
+echo -e "${YELLOW}📦 Installing Node dependencies (This has been optimized for speed)...${NC}"
 cd "$lcPathFull" || exit
-npm install
+npm install --no-audit --no-fund --prefer-offline
 
 # 9. Configure Environment Variables and Copy Files
 echo -e "${YELLOW}⚙️ Configuring Environment Variables and Copying Files...${NC}"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-if [ -f "$SCRIPT_DIR/librechat.yaml" ]; then
-    cp "$SCRIPT_DIR/librechat.yaml" "$lcPathFull/librechat.yaml"
+if [ -f "$lcPathFull/librechat.yaml" ]; then
     sed -i "s|REPLACE_WITH_TF_WORKSPACE|$tfWorkspace|g" "$lcPathFull/librechat.yaml"
     sed -i "s|REPLACE_WITH_MCP_RUNNER_PATH|$lcPathFull/mcp-tf-runner.js|g" "$lcPathFull/librechat.yaml"
 fi
 
-if [ -f "$SCRIPT_DIR/mcp-tf-runner.js" ]; then
-    cp "$SCRIPT_DIR/mcp-tf-runner.js" "$lcPathFull/mcp-tf-runner.js"
-fi
-
-envSource="$SCRIPT_DIR/.env.example"
-if [ ! -f "$envSource" ] && [ -f "$lcPathFull/.env.example" ]; then
-    envSource="$lcPathFull/.env.example"
-fi
+envSource="$lcPathFull/.env.example"
 
 if [ -f "$envSource" ]; then
     cp "$envSource" "$lcPathFull/.env"

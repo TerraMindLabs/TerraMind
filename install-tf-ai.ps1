@@ -1,9 +1,19 @@
-Write-Host "████████╗███████╗██████╗ ██████╗  █████╗ ███╗   ███╗██║███╗   ██╗██████╗ " -ForegroundColor Cyan
-Write-Host "╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔══██╗████╗ ████║██║████╗  ██║██╔══██╗" -ForegroundColor Cyan
-Write-Host "   ██║   █████╗  ██████╔╝██████╔╝███████║██╔████╔██║██║██╔██╗ ██║██║  ██║" -ForegroundColor Cyan
-Write-Host "   ██║   ██╔══╝  ██╔══██╗██╔══██╗██╔══██║██║╚██╔╝██║██║██║╚██╗██║██║  ██║" -ForegroundColor Cyan
-Write-Host "   ██║   ███████╗██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║██║██║ ╚████║██████╔╝" -ForegroundColor Cyan
-Write-Host "   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ " -ForegroundColor Cyan
+# Attempt to resize the console window for a better installer experience
+try {
+    $size = $Host.UI.RawUI.WindowSize
+    $size.Width = 150
+    $size.Height = 70
+    $Host.UI.RawUI.WindowSize = $size
+} catch {
+    # Ignore if the terminal doesn't support programmatic resizing (e.g., Windows Terminal handles this differently)
+}
+
+Write-Host " _____                       __  __ _           _ " -ForegroundColor Cyan
+Write-Host "|_   _|__ _ __ _ __ __ _    |  \/  (_)_ __   __| |" -ForegroundColor Cyan
+Write-Host "  | |/ _ \ '__| '__/ _' |   | |\/| | | '_ \ / _' |" -ForegroundColor Cyan
+Write-Host "  | |  __/ |  | | | (_| |   | |  | | | | | | (_| |" -ForegroundColor Cyan
+Write-Host "  |_|\___|_|  |_|  \__,_|___|_|  |_|_|_| |_|\__,_|" -ForegroundColor Cyan
+Write-Host "                       |_____|                    " -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Welcome to TerraMind (TF-AI-Gen) Setup" -ForegroundColor White
 Write-Host ""
@@ -14,45 +24,51 @@ Write-Host " 2) Uninstall TerraMind"
 $action = Read-Host "Enter your choice (1 or 2)"
 
 if ($action -eq "2") {
-    Write-Host "⚠️ WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!" -ForegroundColor Red
+    Write-Host "[WARN] WARNING: This will completely uninstall TerraMind (TF-AI-Gen) and delete its data!" -ForegroundColor Red
     $confirm = Read-Host "Are you sure you want to proceed? (y/N)"
     if ($confirm -notmatch "^[yY]$") {
         Write-Host "Uninstallation cancelled."
-        exit
+        Pause
+        return
     }
 
-    $lcPath = Read-Host "Enter path of your TerraMind installation to delete [Default: .\LibreChat]"
-    if ([string]::IsNullOrWhiteSpace($lcPath)) { $lcPath = ".\LibreChat" }
-    $lcPathFull = (Resolve-Path $lcPath -ErrorAction SilentlyContinue).Path
-    if (!$lcPathFull) { $lcPathFull = $lcPath }
+    $currentDrive = (Get-Location).Drive.Name
+    $drive = Read-Host "Enter the drive where TerraMind is installed (e.g., C, D, G) [Default: $currentDrive]"
+    if ([string]::IsNullOrWhiteSpace($drive)) { $drive = $currentDrive }
+    $drive = $drive.Replace(":", "").Substring(0,1)
 
-    $tfWorkspace = Read-Host "Enter path of your Terraform Workspace to delete [Default: C:\TerraformProject]"
-    if ([string]::IsNullOrWhiteSpace($tfWorkspace)) { $tfWorkspace = "C:\TerraformProject" }
+    $folder = Read-Host "Enter the folder name [Default: TerraMind]"
+    if ([string]::IsNullOrWhiteSpace($folder)) { $folder = "TerraMind" }
+
+    $basePath = Join-Path "$drive`:\" $folder
+    
+    $lcPathFull = Join-Path $basePath "LibreChat"
+    $tfWorkspace = Join-Path $basePath "TerraformProject"
 
     $removeNpm = Read-Host "Uninstall global MCP NPM packages? (y/N)"
     $removeModels = Read-Host "Remove locally downloaded Ollama models (llama3.2, qwen2.5-coder, etc.)? (y/N)"
 
     if (Test-Path $lcPathFull) {
-        Write-Host "🗑️ Deleting TerraMind installation at $lcPathFull..." -ForegroundColor Yellow
+        Write-Host "[rm] Deleting TerraMind installation at $lcPathFull..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force $lcPathFull -ErrorAction Continue
     } else {
-        Write-Host "⏩ TerraMind installation not found at $lcPathFull, skipping..." -ForegroundColor Cyan
+        Write-Host "[Skip] TerraMind installation not found at $lcPathFull, skipping..." -ForegroundColor Cyan
     }
 
     if (Test-Path $tfWorkspace) {
-        Write-Host "🗑️ Deleting Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
+        Write-Host "[rm] Deleting Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force $tfWorkspace -ErrorAction Continue
     } else {
-        Write-Host "⏩ Terraform Workspace not found at $tfWorkspace, skipping..." -ForegroundColor Cyan
+        Write-Host "[Skip] Terraform Workspace not found at $tfWorkspace, skipping..." -ForegroundColor Cyan
     }
 
     if ($removeNpm -match "^[yY]$" -and (Get-Command "npm" -ErrorAction SilentlyContinue)) {
-        Write-Host "🗑️ Uninstalling global MCP packages..." -ForegroundColor Yellow
+        Write-Host "[rm] Uninstalling global MCP packages..." -ForegroundColor Yellow
         npm uninstall -g @modelcontextprotocol/server-filesystem terraform-mcp-server
     }
 
     if ($removeModels -match "^[yY]$" -and (Get-Command "ollama" -ErrorAction SilentlyContinue)) {
-        Write-Host "🗑️ Removing standard Ollama models..." -ForegroundColor Yellow
+        Write-Host "[rm] Removing standard Ollama models..." -ForegroundColor Yellow
         $models = @("llama3.2", "qwen2.5-coder:3b", "llama3.1", "qwen2.5-coder:7b", "mistral-nemo", "qwen2.5-coder:14b")
         foreach ($model in $models) {
             Write-Host "Removing $model..." -ForegroundColor Cyan
@@ -60,29 +76,39 @@ if ($action -eq "2") {
         }
     }
 
-    Write-Host "✅ Uninstallation Complete!" -ForegroundColor Green
-    exit
+    Write-Host "[OK] Uninstallation Complete!" -ForegroundColor Green
+    Pause
+    return
 } elseif ($action -ne "1") {
     Write-Host "Invalid choice. Exiting."
-    exit
+    Pause
+    return
 }
 
 # --- Installation Logic ---
 
-Write-Host "🚀 Starting TerraMind (TF-AI-Gen) One-Shot Installation..." -ForegroundColor Cyan
+Write-Host "[START] Starting TerraMind (TF-AI-Gen) One-Shot Installation..." -ForegroundColor Cyan
 
 # 1. Prompt for Configuration
+$currentDrive = (Get-Location).Drive.Name
 $apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to skip)"
 
-$tfWorkspace = Read-Host "Enter path for Terraform Workspace [Default: C:\TerraformProject]"
-if ([string]::IsNullOrWhiteSpace($tfWorkspace)) { $tfWorkspace = "C:\TerraformProject" }
+$drive = Read-Host "Enter the drive to install TerraMind into (e.g., C, D, G) [Default: $currentDrive]"
+if ([string]::IsNullOrWhiteSpace($drive)) { $drive = $currentDrive }
+$drive = $drive.Replace(":", "").Substring(0,1)
 
-$lcPath = Read-Host "Enter path for TerraMind (LibreChat) installation [Default: .\LibreChat]"
-if ([string]::IsNullOrWhiteSpace($lcPath)) { $lcPath = ".\LibreChat" }
-$lcPathFull = (Resolve-Path $lcPath -ErrorAction SilentlyContinue).Path
-if (!$lcPathFull) { 
-    $lcPathFull = (New-Item -ItemType Directory -Path $lcPath -Force).FullName 
+$folder = Read-Host "Enter the folder name [Default: TerraMind]"
+if ([string]::IsNullOrWhiteSpace($folder)) { $folder = "TerraMind" }
+
+$basePath = Join-Path "$drive`:\" $folder
+
+if (!(Test-Path $basePath)) {
+    Write-Host "Creating base directory at $basePath..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $basePath -Force | Out-Null
 }
+
+$tfWorkspace = Join-Path $basePath "TerraformProject"
+$lcPathFull = Join-Path $basePath "LibreChat"
 
 Write-Host "Select local Ollama models to pull based on your system RAM:" -ForegroundColor Cyan
 Write-Host " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
@@ -100,7 +126,7 @@ switch ($modelChoice) {
     "5" { 
         $customModels = Read-Host "Enter custom models (comma-separated)"
         if (-not [string]::IsNullOrWhiteSpace($customModels)) {
-            $models = $customModels -split ',' | ForEach-Object { $_.Trim() }
+            $models = $customModels -split "," | ForEach-Object { $_.Trim() }
         }
     }
     Default { }
@@ -110,19 +136,21 @@ switch ($modelChoice) {
 
 if (!(Get-Command "git" -ErrorAction SilentlyContinue)) {
     Write-Error "Git is not installed. Please install Git for Windows (https://git-scm.com/download/win) first!"
-    exit
+    Pause
+    return
 }
 
 if (!(Get-Command "npm" -ErrorAction SilentlyContinue)) {
     Write-Error "Node.js (npm) is not installed. Please install Node.js LTS (https://nodejs.org/) first!"
-    exit
+    Pause
+    return
 }
 
-Write-Host "⚠️ IMPORTANT: Ensure MongoDB Community Server is installed and running natively in the background." -ForegroundColor Yellow
+Write-Host "[WARN] IMPORTANT: Ensure MongoDB Community Server is installed and running natively in the background." -ForegroundColor Yellow
 Write-Host "   (https://www.mongodb.com/try/download/community)" -ForegroundColor Yellow
 
 if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
-    Write-Host "⚙️ Terraform is not installed. Attempting automatic installation via winget..." -ForegroundColor Yellow
+    Write-Host "[cfg] Terraform is not installed. Attempting automatic installation via winget..." -ForegroundColor Yellow
     if (Get-Command "winget" -ErrorAction SilentlyContinue) {
         winget install Hashicorp.Terraform --accept-package-agreements --accept-source-agreements
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -131,17 +159,18 @@ if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
         }
     } else {
         Write-Error "Terraform is not installed and winget is unavailable. Please install Terraform CLI (https://developer.hashicorp.com/terraform/downloads) first!"
-        exit
+        Pause
+        return
     }
 }
 
 # 3. Check for Ollama & Download Local AI Models
 if ($models.Count -eq 0) {
-    Write-Host "⏩ Skipping local AI model download as requested." -ForegroundColor Yellow
+    Write-Host "[Skip] Skipping local AI model download as requested." -ForegroundColor Yellow
 } elseif (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
     Write-Warning "Ollama is not installed. Local AI model pull will be skipped."
 } else {
-    Write-Host "🦙 Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
+    Write-Host " Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
     foreach ($model in $models) {
         Write-Host "Pulling $model..." -ForegroundColor Cyan
         ollama pull $model
@@ -149,52 +178,56 @@ if ($models.Count -eq 0) {
 }
 
 # 4. Install MCP Servers globally
-Write-Host "🔌 Installing MCP Servers (Terraform & Filesystem)..." -ForegroundColor Yellow
+Write-Host " Installing MCP Servers (Terraform & Filesystem)..." -ForegroundColor Yellow
 npm install -g @modelcontextprotocol/server-filesystem terraform-mcp-server
 
 # 5. Create the Terraform Workspace
 if (!(Test-Path $tfWorkspace)) {
-    Write-Host "📁 Creating Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
+    Write-Host " Creating Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $tfWorkspace | Out-Null
 }
 
-# 6. Download Codebase
-Write-Host "📥 Cloning Repository to $lcPathFull..." -ForegroundColor Yellow
-if (!(Test-Path "$lcPathFull\.git")) {
-    git clone https://github.com/danny-avila/LibreChat.git $lcPathFull
+# 6. Copy Local Bundled Codebase
+Write-Host " Copying bundled TerraMind codebase to $lcPathFull..." -ForegroundColor Yellow
+$bundledChatPath = Join-Path $PSScriptRoot "chat"
+
+if (!(Test-Path $lcPathFull)) {
+    if (Test-Path $bundledChatPath) {
+        Copy-Item -Path $bundledChatPath -Destination $basePath -Recurse -Force
+        Rename-Item -Path (Join-Path $basePath "chat") -NewName "LibreChat"
+    } else {
+        Write-Host "ERROR: Bundled 'chat' directory not found at $bundledChatPath. Please make sure you downloaded the complete installation package." -ForegroundColor Red
+        Pause
+        exit
+    }
 } else {
-    Write-Host "Repository already exists at $lcPathFull, skipping clone." -ForegroundColor Yellow
+    Write-Host "Directory already exists at $lcPathFull, skipping copy." -ForegroundColor Yellow
 }
 
 # 7. Download tfsec
 $tfsecPath = "$lcPathFull\tfsec.exe"
 if (!(Test-Path $tfsecPath)) {
-    Write-Host "🛡️ Downloading tfsec.exe..." -ForegroundColor Yellow
+    Write-Host " Downloading tfsec.exe..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri "https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-windows-amd64.exe" -OutFile $tfsecPath
 }
 
 # 8. Install NPM Dependencies
-Write-Host "📦 Installing Node dependencies (npm install)..." -ForegroundColor Yellow
+Write-Host "[pkg] Installing Node dependencies (This has been optimized for speed)..." -ForegroundColor Yellow
 Set-Location -Path $lcPathFull
-npm install
+npm install --no-audit --no-fund --prefer-offline
 
 # 9. Configure Environment Variables and Copy Files
-Write-Host "⚙️ Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
+Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
 
-$yamlSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "librechat.yaml"
-if (Test-Path $yamlSource) {
-    $yamlContent = Get-Content $yamlSource -Raw
-    $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
-    $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
-    Set-Content -Path "$lcPathFull\librechat.yaml" -Value $yamlContent -Encoding UTF8
-}
+    $yamlSource = Join-Path $lcPathFull "librechat.yaml"
+    if (Test-Path $yamlSource) {
+        $yamlContent = Get-Content $yamlSource -Raw
+        $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
+        $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
+        Set-Content -Path $yamlSource -Value $yamlContent -Encoding UTF8
+    }
 
-$runnerSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "mcp-tf-runner.js"
-if (Test-Path $runnerSource) {
-    Copy-Item $runnerSource -Destination "$lcPathFull\mcp-tf-runner.js" -Force
-}
-
-$envSource = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) ".env.example"
+    $envSource = Join-Path $lcPathFull ".env.example"
 if (!(Test-Path $envSource) -and (Test-Path "$lcPathFull\.env.example")) {
     $envSource = "$lcPathFull\.env.example"
 }
@@ -226,17 +259,21 @@ $htmlPath = "$lcPathFull\client\index.html"
 if (Test-Path $htmlPath) {
     $htmlContent = Get-Content $htmlPath -Raw
     $htmlContent = $htmlContent -replace "<title>LibreChat</title>", "<title>TerraMind</title>"
-    $htmlContent = $htmlContent -replace 'content="LibreChat"', 'content="TerraMind"'
+    $htmlContent = $htmlContent -replace "content=`"LibreChat`"", "content=`"TerraMind`""
     Set-Content -Path $htmlPath -Value $htmlContent -Encoding UTF8
-    Write-Host "✅ Updated index.html with TerraMind title." -ForegroundColor Green
+    Write-Host "[OK] Updated index.html with TerraMind title." -ForegroundColor Green
 }
 
 # 10. Build Frontend
-Write-Host "🏗️ Building Frontend (npm run frontend)..." -ForegroundColor Yellow
+Write-Host " Building Frontend (npm run frontend)..." -ForegroundColor Yellow
 npm run frontend
 
 # 11. Finish Up
-Write-Host "✅ Installation Complete! TerraMind is ready to run natively." -ForegroundColor Green
-Write-Host "▶️ To start the application, stay in the current directory and run: npm run backend" -ForegroundColor Cyan
-Write-Host "🌐 Access the application at: http://localhost:3080" -ForegroundColor White
-Write-Host "📝 NOTE: Make sure MongoDB Community Edition is running locally!" -ForegroundColor Yellow
+Write-Host "[OK] Installation Complete! TerraMind is ready to run natively." -ForegroundColor Green
+Write-Host "[>] To start the application, stay in the current directory and run: npm run backend" -ForegroundColor Cyan
+Write-Host "[Web] Access the application at: http://localhost:3080" -ForegroundColor White
+Write-Host "[Note] NOTE: Make sure MongoDB Community Edition is running locally!" -ForegroundColor Yellow
+Pause
+
+
+
