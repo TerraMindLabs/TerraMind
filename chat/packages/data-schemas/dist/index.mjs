@@ -29939,7 +29939,7 @@ function createKeyMethods(mongoose) {
 			userId,
 			name
 		}).lean();
-		if (!keyValue) throw new Error(JSON.stringify({ type: ErrorTypes.NO_USER_KEY }));
+		if (!keyValue) throw new Error(JSON.stringify({ type: ErrorTypes.NO_USER_KEY, endpoint: name }));
 		return await decrypt(keyValue.value);
 	}
 	/**

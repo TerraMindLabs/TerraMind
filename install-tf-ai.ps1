@@ -693,6 +693,8 @@ if (Test-Path $envSource) {
         $envContent += "`nHELP_AND_FAQ_URL=https://www.google.com"
     }
 
+    $envContent = $envContent -replace "(?m)^OPENAI_API_KEY=user_provided", "# OPENAI_API_KEY=user_provided"
+
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
 } else {
     Write-Warning "Could not find .env.example to create .env file."

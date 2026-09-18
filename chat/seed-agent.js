@@ -18,10 +18,10 @@ async function run() {
     const users = await usersCollection.find({}).toArray();
     const primaryUser = users.length > 0 ? users[0]._id : new ObjectId("000000000000000000000000");
 
-    const agentId = "agent_tf-expert-" + crypto.randomUUID();
+    const FIXED_AGENT_ID = "agent_tf-devops-expert";
 
     const terraformAgent = {
-      id: agentId,
+      id: FIXED_AGENT_ID,
       name: "Terraform DevOps Expert",
       description: "Automates Terraform infrastructure creation, validation, and deployment.",
       instructions: "You are a DevOps automation expert specializing in Terraform. You have access to three custom tools:\n\n1. `terraform-registry`: Use this to look up providers, read their documentation, and find correct resource syntaxes.\n2. `local-fs`: Use this to read, write, and modify the user's local .tf files inside their workspace.\n3. `tf-runner`: Use this to actually execute `terraform init`, `terraform plan`, `terraform apply`, etc. on their machine.\n\nYour goal is to guide the user from infrastructure request to fully deployed code. Always read the local files first to understand the existing state before making changes.",
@@ -42,19 +42,16 @@ async function run() {
     // Check if it already exists
     const existing = await agentsCollection.findOne({ name: "Terraform DevOps Expert" });
     let finalObjectId;
-    let finalId;
+    let finalId = FIXED_AGENT_ID;
 
     if (existing) {
       console.log("[MongoDB] Agent 'Terraform DevOps Expert' already exists. Synchronizing properties.");
       finalObjectId = existing._id;
-      finalId = existing.id && existing.id.startsWith('agent_')
-        ? existing.id
-        : `agent_${existing.id || crypto.randomUUID()}`;
       await agentsCollection.updateOne(
         { _id: finalObjectId },
         {
           $set: {
-            id: finalId,
+            id: FIXED_AGENT_ID,
             provider: terraformAgent.provider,
             model: terraformAgent.model,
             avatar: terraformAgent.avatar,
@@ -71,14 +68,13 @@ async function run() {
       const result = await agentsCollection.insertOne(terraformAgent);
       console.log(`[MongoDB] Successfully seeded 'Terraform DevOps Expert' agent with _id: ${result.insertedId}`);
       finalObjectId = result.insertedId;
-      finalId = terraformAgent.id;
     }
 
     // Update any existing conversations pointing to the old agent ID
     const convosCollection = database.collection("conversations");
     await convosCollection.updateMany(
-      { $or: [{ agent_id: { $regex: /^tf-expert-/ } }, { agent_id: finalId }] },
-      { $set: { agent_id: finalId, model: terraformAgent.model, endpoint: 'agents' } }
+      { $or: [{ agent_id: { $regex: /^tf-expert-/ } }, { agent_id: { $regex: /^agent_tf-/ } }, { agent_id: FIXED_AGENT_ID }] },
+      { $set: { agent_id: FIXED_AGENT_ID, model: terraformAgent.model, endpoint: 'agents' } }
     );
 
     // Update both aclentries (Mongoose default) and acl_entries

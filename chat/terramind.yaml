@@ -4,6 +4,18 @@ endpoints:
   agents:
     models: ["gemini-3.5-flash-lite", "gemini-1.5-flash-latest"]
   google: {}
+modelSpecs:
+  enforce: false
+  prioritize: true
+  list:
+    - name: "terraform-devops-expert"
+      label: "Terraform DevOps Expert"
+      description: "Automates Terraform infrastructure creation, validation, and deployment."
+      iconURL: "/assets/terraform-logo.svg"
+      default: true
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_tf-devops-expert"
 mcpServers:
   terraform-registry:
     type: stdio

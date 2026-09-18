@@ -539,6 +539,8 @@ if [ -f "$envSource" ]; then
     else
         echo "HELP_AND_FAQ_URL=https://www.google.com" >> "$envDest"
     fi
+
+    sed -i "s|^OPENAI_API_KEY=user_provided|# OPENAI_API_KEY=user_provided|g" "$envDest"
 else
     echo -e "${YELLOW}⚠️ Could not find .env.example to create .env file.${NC}"
 fi

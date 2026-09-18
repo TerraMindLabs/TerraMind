@@ -40,6 +40,7 @@ export function createKeyMethods(mongoose: typeof import('mongoose')): {
       throw new Error(
         JSON.stringify({
           type: ErrorTypes.NO_USER_KEY,
+          endpoint: name,
         }),
       );
     }

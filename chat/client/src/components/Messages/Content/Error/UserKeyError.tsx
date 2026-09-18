@@ -35,11 +35,15 @@ export default function UserKeyError({ json, message }: ErrorRendererProps) {
   const code = (readString(json, 'code') ?? readString(json, 'type')) as
     | UserKeyErrorCode
     | undefined;
-  /** An expired key's payload names the endpoint whose key expired, which outranks the row's. */
+  /** An expired or missing key's payload names the endpoint whose key is required. */
   const payloadEndpoint =
-    code === ErrorTypes.EXPIRED_USER_KEY ? readString(json, 'endpoint') : undefined;
-  const { endpoint, endpointType, provider, userProvidesCredentials, endpointsConfig } =
+    code === ErrorTypes.EXPIRED_USER_KEY || code === ErrorTypes.NO_USER_KEY
+      ? (readString(json, 'endpoint') ?? 'google')
+      : undefined;
+  const { endpoint: resolvedEndpoint, endpointType, provider: resolvedProvider, userProvidesCredentials, endpointsConfig } =
     useErrorEndpoint(message, payloadEndpoint);
+  const endpoint = resolvedEndpoint ?? payloadEndpoint ?? 'google';
+  const provider = resolvedProvider ?? (endpoint ? getProviderName(endpoint) : 'Google');
   const expiredAt = readString(json, 'expiredAt');
 
   /**
@@ -53,7 +57,7 @@ export default function UserKeyError({ json, message }: ErrorRendererProps) {
     admin: TranslationKeys,
   ): string => {
     if (provider == null || userProvidesCredentials == null) {
-      return localize(generic);
+      return localize(userProvided, { 0: provider ?? 'Google' });
     }
     return localize(userProvidesCredentials ? userProvided : admin, { 0: provider });
   };
@@ -74,7 +78,7 @@ export default function UserKeyError({ json, message }: ErrorRendererProps) {
       errorMessage = byOwnership(
         'com_error_no_user_key_generic',
         'com_error_no_user_key',
-        'com_error_no_user_key_admin',
+        'com_error_no_user_key',
       );
       break;
     case ErrorTypes.EXPIRED_USER_KEY:
@@ -118,7 +122,9 @@ export default function UserKeyError({ json, message }: ErrorRendererProps) {
       errorMessage = localize('com_error_invalid_user_key');
   }
 
-  const canEditKey = userProvidesCredentials === true && endpoint != null;
+  const canEditKey =
+    code === ErrorTypes.NO_USER_KEY ||
+    (userProvidesCredentials === true && endpoint != null);
   const updateLabel =
     (code != null ? actionLabels[code] : undefined) ?? 'com_error_user_key_update';
 
