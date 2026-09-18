@@ -8,6 +8,11 @@ RED='\033[0;31m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
+# Ensure stdin is attached to terminal when run via `curl ... | bash`
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+    exec < /dev/tty
+fi
+
 # Attempt to resize the console window for a better installer experience (Works on many xterm emulators)
 printf '\e[8;40;120t'
 
@@ -77,9 +82,10 @@ echo -e "${WHITE}Welcome to TerraMind (TF-AI-Gen) Setup${NC}"
 echo ""
 
 echo -e "${CYAN}What would you like to do?${NC}"
-echo " 1) Install TerraMind"
+echo " 1) Install TerraMind [Default]"
 echo " 2) Uninstall TerraMind"
-read -p "Enter your choice (1 or 2): " action
+read -p "Enter your choice (1 or 2) [Default: 1]: " action
+action=${action:-1}
 
 if [ "$action" == "2" ]; then
     echo ""
