@@ -718,8 +718,15 @@ if (Test-Path $logoSrc) {
     Copy-Item $logoSrc "$lcPathFull\client\public\assets\terramind-logo.png" -Force
     Copy-Item $logoSrc "$lcPathFull\client\dist\assets\white_trans.png" -Force
     Copy-Item $logoSrc "$lcPathFull\client\dist\assets\terramind-logo.png" -Force
-    Write-Host "[OK] Deployed TerraMind branding logos to client assets." -ForegroundColor Green
 }
+$onlyLogoSrc = "$lcPathFull\etc\logo\only_logo.png"
+if (Test-Path $onlyLogoSrc) {
+    New-Item -ItemType Directory -Force -Path "$lcPathFull\client\public\assets" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$lcPathFull\client\dist\assets" | Out-Null
+    Copy-Item $onlyLogoSrc "$lcPathFull\client\public\assets\only_logo.png" -Force
+    Copy-Item $onlyLogoSrc "$lcPathFull\client\dist\assets\only_logo.png" -Force
+}
+Write-Host "[OK] Deployed TerraMind branding logos to client assets." -ForegroundColor Green
 
 # 10. Build Frontend
 if ((Test-Path "$lcPathFull\client\dist") -and (Test-Path "$lcPathFull\client\dist\index.html")) {

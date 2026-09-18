@@ -560,8 +560,14 @@ if [ -f "$logoSrc" ]; then
     cp "$logoSrc" "$lcPathFull/client/public/assets/terramind-logo.png"
     cp "$logoSrc" "$lcPathFull/client/dist/assets/white_trans.png"
     cp "$logoSrc" "$lcPathFull/client/dist/assets/terramind-logo.png"
-    echo -e "${GREEN}✅ Deployed TerraMind branding logos to client assets.${NC}"
 fi
+onlyLogoSrc="$lcPathFull/etc/logo/only_logo.png"
+if [ -f "$onlyLogoSrc" ]; then
+    mkdir -p "$lcPathFull/client/public/assets" "$lcPathFull/client/dist/assets"
+    cp "$onlyLogoSrc" "$lcPathFull/client/public/assets/only_logo.png"
+    cp "$onlyLogoSrc" "$lcPathFull/client/dist/assets/only_logo.png"
+fi
+echo -e "${GREEN}✅ Deployed TerraMind branding logos to client assets.${NC}"
 
 # 10. Build Frontend
 if [ -d "$lcPathFull/client/dist" ] && [ -f "$lcPathFull/client/dist/index.html" ]; then

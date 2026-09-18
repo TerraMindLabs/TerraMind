@@ -31,7 +31,7 @@ async function run() {
       mcpServerNames: ["terraform-registry", "local-fs", "tf-runner"],
       tools: ["terraform-registry", "local-fs", "tf-runner"],
       is_promoted: true,
-      avatar: { filepath: "/assets/terraform-logo.svg" },
+      avatar: { filepath: "/assets/only_logo.png" },
       support_contact: { name: "TerraMind" },
       projectIds: ["default", "global"],
       author: primaryUser,

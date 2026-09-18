@@ -11,7 +11,7 @@ modelSpecs:
     - name: "terraform-devops-expert"
       label: "Terraform DevOps Expert"
       description: "Automates Terraform infrastructure creation, validation, and deployment."
-      iconURL: "/assets/terraform-logo.svg"
+      iconURL: "/assets/only_logo.png"
       default: true
       preset:
         endpoint: "agents"
