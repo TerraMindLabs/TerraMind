@@ -253,19 +253,34 @@ if [ ! -d "$tfWorkspace" ]; then
     mkdir -p "$tfWorkspace"
 fi
 
-# 6. Copy Local Bundled Codebase
-echo -e "${YELLOW}📥 Copying bundled TerraMind codebase to $lcPathFull...${NC}"
+# 6. Deploy TerraMind Codebase
+echo -e "${YELLOW}📥 Deploying TerraMind codebase to $lcPathFull...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-BUNDLED_CHAT_PATH="$SCRIPT_DIR/chat"
+BUNDLED_CHAT_PATH=""
+if [ -d "$SCRIPT_DIR/chat" ]; then
+    BUNDLED_CHAT_PATH="$SCRIPT_DIR/chat"
+elif [ -d "$(pwd)/chat" ]; then
+    BUNDLED_CHAT_PATH="$(pwd)/chat"
+fi
 
 if [ ! -d "$lcPathFull" ]; then
-    if [ -d "$BUNDLED_CHAT_PATH" ]; then
+    if [ -n "$BUNDLED_CHAT_PATH" ] && [ -d "$BUNDLED_CHAT_PATH" ]; then
+        echo -e "${CYAN}Using local codebase from $BUNDLED_CHAT_PATH...${NC}"
         cp -r "$BUNDLED_CHAT_PATH" "$basePath"
         mv "$basePath/chat" "$basePath/Mind"
     else
-        echo -e "${RED}ERROR: Bundled 'chat' directory not found at $BUNDLED_CHAT_PATH. Please make sure you downloaded the complete installation package.${NC}"
-        read -p "Press Enter to exit..."
-        exit 1
+        echo -e "${CYAN}📦 Downloading TerraMind application codebase from GitHub...${NC}"
+        tempClone=$(mktemp -d)
+        git clone --depth 1 https://github.com/mdshareq/TerraMind.git "$tempClone"
+        if [ -d "$tempClone/chat" ]; then
+            mv "$tempClone/chat" "$lcPathFull"
+            rm -rf "$tempClone"
+            echo -e "${GREEN}✅ TerraMind application codebase deployed successfully to $lcPathFull!${NC}"
+        else
+            echo -e "${RED}ERROR: Failed to download TerraMind codebase from GitHub.${NC}"
+            read -p "Press Enter to exit..."
+            exit 1
+        fi
     fi
 else
     echo -e "${YELLOW}Directory already exists at $lcPathFull, skipping copy.${NC}"
@@ -449,8 +464,8 @@ else
     echo -e "${YELLOW}⚠️ Could not find seed-agent.js. Skipping Agent database seeding.${NC}"
 fi
 
-# 12. Create Launch Scripts
-echo -e "${YELLOW}📜 Creating Launch Shortcut...${NC}"
+# 12. Create Launch & Uninstall Scripts
+echo -e "${YELLOW}📜 Creating Launch & Uninstall Shortcuts...${NC}"
 launchScript="$basePath/start-terramind.sh"
 echo '#!/bin/bash' > "$launchScript"
 echo 'cd "$(dirname "$0")/Mind" || exit' >> "$launchScript"
@@ -458,6 +473,70 @@ echo 'echo "Starting TerraMind AI Server..."' >> "$launchScript"
 echo 'npm run backend' >> "$launchScript"
 chmod +x "$launchScript"
 echo -e "${GREEN}✅ Created launch script: $launchScript${NC}"
+
+uninstallScript="$basePath/uninstall-terramind.sh"
+cat << 'EOF' > "$uninstallScript"
+#!/bin/bash
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+echo -e "\n${RED}⚠️ WARNING: This will completely uninstall TerraMind and delete its data!${NC}"
+read -p "Are you sure you want to proceed? (y/N): " confirm
+if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+    echo "Uninstallation cancelled."
+    exit 0
+fi
+
+read -p "Uninstall global MCP NPM packages? (y/N): " removeNpm
+read -p "Remove locally downloaded Ollama models? (y/N): " removeModels
+
+echo -e "${YELLOW}🗑️ Forcefully stopping running Node.js servers...${NC}"
+pkill -f node || true
+killall node 2>/dev/null || true
+sleep 2
+
+if [ -d "$BASE_DIR/Mind" ]; then
+    echo -e "${YELLOW}🗑️ Deleting TerraMind installation at $BASE_DIR/Mind...${NC}"
+    rm -rf "$BASE_DIR/Mind"
+fi
+
+if [ -d "$BASE_DIR/Terraform" ]; then
+    echo -e "${YELLOW}🗑️ Deleting Terraform Workspace at $BASE_DIR/Terraform...${NC}"
+    rm -rf "$BASE_DIR/Terraform"
+fi
+
+if [[ "$removeNpm" =~ ^[yY]$ ]] && command -v npm &> /dev/null; then
+    echo -e "${YELLOW}🗑️ Uninstalling global MCP packages...${NC}"
+    npm uninstall -g @modelcontextprotocol/server-filesystem terraform-mcp-server
+fi
+
+if [[ "$removeModels" =~ ^[yY]$ ]] && command -v ollama &> /dev/null; then
+    echo -e "${YELLOW}🗑️ Removing standard Ollama models...${NC}"
+    models=("llama3.2" "qwen2.5-coder:3b" "llama3.1" "qwen2.5-coder:7b" "mistral-nemo" "qwen2.5-coder:14b")
+    for model in "${models[@]}"; do
+        ollama rm "$model" 2>/dev/null || true
+    done
+fi
+
+rm -f "$BASE_DIR/start-terramind.sh"
+echo -e "${GREEN}✅ TerraMind uninstallation complete!${NC}"
+EOF
+chmod +x "$uninstallScript"
+echo -e "${GREEN}✅ Created uninstaller script: $uninstallScript${NC}"
+
+# Optional: Clean up temporary cloned repository if user cloned locally and installed elsewhere
+if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR/.git" ] && [ "$(cd "$SCRIPT_DIR" && pwd)" != "$(cd "$basePath" && pwd)" ]; then
+    echo -e "\n${CYAN}Notice: You cloned the installer to $SCRIPT_DIR, but installed TerraMind to $basePath.${NC}"
+    read -p "Would you like to delete the temporary cloned folder to free up disk space? (y/N): " delClone
+    if [[ "$delClone" =~ ^[yY]$ ]]; then
+        echo -e "${YELLOW}Cleaning up temporary clone at $SCRIPT_DIR...${NC}"
+        rm -rf "$SCRIPT_DIR"
+    fi
+fi
 
 # 13. Finish Up
 echo -e "${NC}==========================================================="
@@ -474,5 +553,6 @@ if [[ ! "$startApp" =~ ^[nN]$ ]]; then
     npm run backend
 else
     echo -e "\n${CYAN}▶️ To start it later, simply run ./start-terramind.sh in your installation folder!${NC}"
+    echo -e "${YELLOW}▶️ To uninstall it later, simply run ./uninstall-terramind.sh in your installation folder!${NC}"
     read -p "Press Enter to exit..."
 fi

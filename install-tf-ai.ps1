@@ -297,18 +297,33 @@ if (!(Test-Path $tfWorkspace)) {
     New-Item -ItemType Directory -Force -Path $tfWorkspace | Out-Null
 }
 
-# 6. Copy Local Bundled Codebase
-Write-Host " Copying bundled TerraMind codebase to $lcPathFull..." -ForegroundColor Yellow
-$bundledChatPath = Join-Path $PSScriptRoot "chat"
+# 6. Deploy TerraMind Codebase
+Write-Host " Deploying TerraMind codebase to $lcPathFull..." -ForegroundColor Yellow
+$bundledChatPath = $null
+if (![string]::IsNullOrWhiteSpace($PSScriptRoot) -and (Test-Path (Join-Path $PSScriptRoot "chat"))) {
+    $bundledChatPath = Join-Path $PSScriptRoot "chat"
+} elseif (Test-Path (Join-Path (Get-Location) "chat")) {
+    $bundledChatPath = Join-Path (Get-Location) "chat"
+}
 
 if (!(Test-Path $lcPathFull)) {
-    if (Test-Path $bundledChatPath) {
+    if ($bundledChatPath -and (Test-Path $bundledChatPath)) {
+        Write-Host "Using local codebase from $bundledChatPath..." -ForegroundColor Cyan
         Copy-Item -Path $bundledChatPath -Destination $basePath -Recurse -Force
         Rename-Item -Path (Join-Path $basePath "chat") -NewName "Mind"
     } else {
-        Write-Host "ERROR: Bundled 'chat' directory not found at $bundledChatPath. Please make sure you downloaded the complete installation package." -ForegroundColor Red
-        Pause
-        exit
+        Write-Host "[git] Downloading TerraMind application codebase from GitHub..." -ForegroundColor Cyan
+        $tempClone = Join-Path $env:TEMP ("terramind_src_" + [System.Guid]::NewGuid().ToString().Substring(0,8))
+        git clone --depth 1 https://github.com/mdshareq/TerraMind.git $tempClone
+        if (Test-Path "$tempClone\chat") {
+            Move-Item -Path "$tempClone\chat" -Destination $lcPathFull -Force
+            Remove-Item -Recurse -Force $tempClone -ErrorAction SilentlyContinue
+            Write-Host "[OK] TerraMind application codebase deployed successfully to $lcPathFull" -ForegroundColor Green
+        } else {
+            Write-Error "Failed to download TerraMind codebase from GitHub."
+            Pause
+            exit
+        }
     }
 } else {
     Write-Host "Directory already exists at $lcPathFull, skipping copy." -ForegroundColor Yellow
@@ -541,12 +556,91 @@ if (Test-Path "$lcPathFull\seed-agent.js") {
     Write-Warning "Could not find seed-agent.js. Skipping Agent database seeding."
 }
 
-# 12. Create Launch Scripts
-Write-Host "`n Creating Launch Shortcut..." -ForegroundColor Yellow
+# 12. Create Launch & Uninstall Scripts
+Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
 $batPath = Join-Path $basePath "Start-TerraMind.bat"
 $batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnpm run backend`r`npause"
 Set-Content -Path $batPath -Value $batContent -Encoding UTF8
 Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
+
+$uninstallerPath = Join-Path $basePath "Uninstall-TerraMind.bat"
+$uninstallerContent = @"
+@echo off
+title TerraMind Uninstaller
+cd /d "%~dp0"
+cls
+echo ===========================================================
+echo            TerraMind (TF-AI-Gen) Uninstaller
+echo ===========================================================
+echo.
+echo [!] WARNING: This will completely remove TerraMind and its workspaces.
+set /p confirm="Are you sure you want to uninstall TerraMind? (y/N): "
+if /i not "%confirm%"=="y" (
+    echo Uninstallation cancelled.
+    pause
+    exit /b
+)
+
+set /p removeNpm="Uninstall global MCP packages (@modelcontextprotocol/server-filesystem, terraform-mcp-server)? (y/N): "
+set /p removeModels="Remove local Ollama models? (y/N): "
+
+echo.
+echo [*] Force-stopping running Node.js servers...
+taskkill /f /im node.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+
+if exist "%~dp0Mind" (
+    echo [*] Removing TerraMind server files (Mind)...
+    rmdir /s /q "%~dp0Mind" >nul 2>&1
+)
+
+if exist "%~dp0Terraform" (
+    echo [*] Removing Terraform workspace...
+    rmdir /s /q "%~dp0Terraform" >nul 2>&1
+)
+
+if /i "%removeNpm%"=="y" (
+    where npm >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [*] Uninstalling global MCP packages...
+        call npm uninstall -g @modelcontextprotocol/server-filesystem terraform-mcp-server
+    )
+)
+
+if /i "%removeModels%"=="y" (
+    where ollama >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [*] Removing local Ollama models...
+        call ollama rm llama3.2 >nul 2>&1
+        call ollama rm qwen2.5-coder:3b >nul 2>&1
+        call ollama rm llama3.1 >nul 2>&1
+        call ollama rm qwen2.5-coder:7b >nul 2>&1
+        call ollama rm mistral-nemo >nul 2>&1
+        call ollama rm qwen2.5-coder:14b >nul 2>&1
+    )
+)
+
+if exist "%~dp0Start-TerraMind.bat" del /f /q "%~dp0Start-TerraMind.bat" >nul 2>&1
+
+echo.
+echo ===========================================================
+echo [OK] TerraMind has been successfully uninstalled!
+echo ===========================================================
+echo You may now delete this folder if desired.
+pause
+"@
+Set-Content -Path $uninstallerPath -Value $uninstallerContent -Encoding UTF8
+Write-Host "[OK] Created uninstaller script: $uninstallerPath" -ForegroundColor Green
+
+# Optional: Clean up temporary cloned repository if user cloned locally and installed elsewhere
+if (![string]::IsNullOrWhiteSpace($PSScriptRoot) -and (Test-Path (Join-Path $PSScriptRoot ".git")) -and ((Resolve-Path $PSScriptRoot).Path -ne (Resolve-Path $basePath).Path)) {
+    Write-Host "`n [?] Notice: You cloned the installer to $PSScriptRoot, but installed TerraMind to $basePath." -ForegroundColor Cyan
+    $delClone = Read-Host "     Would you like to delete the temporary cloned folder to free up disk space? (y/N)"
+    if ($delClone -match "^[yY]$") {
+        Write-Host " [rm] Scheduling cleanup of $PSScriptRoot..." -ForegroundColor Yellow
+        cmd.exe /c "start /b cmd /c (timeout 3 >nul & rmdir /s /q `"$PSScriptRoot`")"
+    }
+}
 
 # 13. Finish Up
 Write-Host "`n===========================================================" -ForegroundColor DarkGray
@@ -563,5 +657,6 @@ if ($LASTEXITCODE -eq 1) {
     npm run backend
 } else {
     Write-Host "`n[>] To start it later, simply double-click Start-TerraMind.bat in your installation folder!" -ForegroundColor Cyan
+    Write-Host "[>] To uninstall it later, simply run Uninstall-TerraMind.bat in your installation folder!" -ForegroundColor Yellow
     Pause
 }

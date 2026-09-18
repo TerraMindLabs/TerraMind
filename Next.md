@@ -9,7 +9,16 @@
   - Removed hardcoded Ollama endpoints from base `chat/terramind.yaml`.
   - Zero Ollama overhead by default when Cloud/Gemini is chosen.
   - Dynamically injects chosen models and Ollama endpoints into `terramind.yaml` only when local models are explicitly requested.
-  - Fixed `$envDest` variable scoping in `install-tf-ai.sh`.
+- [x] **One-Liner Web Installer (Zero Dead Weight)**:
+  - Enabled remote installation without cloning the Git repository:
+    - Windows: `irm https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.ps1 | iex`
+    - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.sh | bash`
+  - Eliminates duplicate cloned folders and unused files.
+- [x] **Standalone Uninstaller Shortcuts**:
+  - Automatically generates `Uninstall-TerraMind.bat` (Windows) and `uninstall-terramind.sh` (Linux/macOS) in the user's installation directory for one-click clean removal.
+- [x] **Updated Documentation**:
+  - Updated `README.md` with one-liner installation commands and operational guidance.
+  - Comprehensive overhaul of `SETUP_GUIDE.md` covering prerequisites, setup options, zero-click agent activation, test prompts, and troubleshooting.
 
 ## 🚀 Future Targets
 - [ ] End-to-end installer dry-run testing on fresh machines.
