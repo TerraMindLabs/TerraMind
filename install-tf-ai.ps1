@@ -720,7 +720,7 @@ if (Test-Path $logoSrc) {
 }
 
 # 10. Build Frontend
-if (Test-Path "$lcPathFull\client\dist") {
+if ((Test-Path "$lcPathFull\client\dist") -and (Test-Path "$lcPathFull\client\dist\index.html")) {
     Write-Host " [?] Found pre-built frontend (client/dist). Skipping build for faster setup!" -ForegroundColor Green
 } else {
     Write-Host "`n [bld] Compiling frontend assets (Vite / React)..." -ForegroundColor Yellow
