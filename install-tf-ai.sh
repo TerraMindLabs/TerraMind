@@ -8,9 +8,16 @@ RED='\033[0;31m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-# Ensure stdin is attached to terminal when run via `curl ... | bash`
-if [ ! -t 0 ] && [ -e /dev/tty ]; then
-    exec < /dev/tty
+# Verify terminal / stdin connectivity for interactive installer
+if [ ! -t 0 ]; then
+    if [ -z "$BASH_EXECUTION_STRING" ]; then
+        echo -e "${RED}Error: TerraMind interactive installer cannot be run via piped stdin ('curl ... | bash').${NC}"
+        echo -e "Please run instead:"
+        echo -e "  ${CYAN}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh)\"${NC}\n"
+        exit 1
+    elif [ -e /dev/tty ]; then
+        exec < /dev/tty
+    fi
 fi
 
 # Attempt to resize the console window for a better installer experience (Works on many xterm emulators)

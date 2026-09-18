@@ -26,7 +26,7 @@ irm https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai
 
 **On Linux / macOS (Terminal):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh)"
 ```
 
 *(Alternatively, if you have already cloned this repository locally, you can directly run `.\install-tf-ai.ps1` or `./install-tf-ai.sh`)*.
