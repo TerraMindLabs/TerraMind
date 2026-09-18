@@ -3325,7 +3325,12 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
         );
       });
   } catch (error) {
-    logger.error(`[ResumableAgentController] Initialization error: ${getSafeErrorText(error)}`);
+    const errorText = getSafeErrorText(error);
+    if (errorText.includes('no_user_key')) {
+      logger.warn(`[ResumableAgentController] API key required for agent initialization (${errorText}). Awaiting user key from UI or .env.`);
+    } else {
+      logger.error(`[ResumableAgentController] Initialization error: ${errorText}`);
+    }
     const initializationFailure = getInitializationFailure(error);
     const streamStarted = res.headersSent;
     try {

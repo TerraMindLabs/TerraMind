@@ -249,7 +249,8 @@ Write-Host "[START] Starting TerraMind (TF-AI-Gen) One-Shot Installation..." -Fo
 
 # 1. Prompt for Configuration
 $currentDrive = (Get-Location).Drive.Name
-$apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to skip)"
+Write-Host "Google Gemini API Key is free at: https://aistudio.google.com/apikey" -ForegroundColor Cyan
+$apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to set later in web app)"
 
 $drive = Read-Host "Enter the drive to install TerraMind into (e.g., C, D, G) [Default: $currentDrive]"
 if ([string]::IsNullOrWhiteSpace($drive)) { $drive = $currentDrive }
@@ -362,6 +363,12 @@ if ($aiChoice -eq "1") {
     Write-Host "`n[Skip] Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually." -ForegroundColor Yellow
 } else {
     Write-Host "`n[Skip] Cloud AI mode selected (Google Gemini). Zero Ollama overhead." -ForegroundColor Green
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        Write-Host " [i] Notice: No Gemini API Key was entered." -ForegroundColor Yellow
+        Write-Host "     Terraform DevOps Expert runs on Google Gemini and needs an API key to chat." -ForegroundColor Yellow
+        Write-Host "     Get a free Gemini key in seconds at: https://aistudio.google.com/apikey" -ForegroundColor Cyan
+        Write-Host "     You can enter it in the chat UI via 'Set API Key' or Settings > Provider Keys." -ForegroundColor Cyan
+    }
 }
 
 # 2. Dependency Checks

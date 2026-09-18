@@ -262,7 +262,8 @@ echo -e "${CYAN}🚀 Starting TerraMind (TF-AI-Gen) One-Shot Installation...${NC
 
 # 1. Prompt for Configuration
 currentDir=$(pwd)
-read -p "Enter your Google Gemini API Key (or press enter to skip): " apiKey
+echo -e "${CYAN}Google Gemini API Key is free at: https://aistudio.google.com/apikey${NC}"
+read -p "Enter your Google Gemini API Key (or press enter to set later in web app): " apiKey
 
 read -p "Enter the base directory to install TerraMind into (e.g., /opt, /g) [Default: $currentDir]: " baseDir
 baseDir=${baseDir:-$currentDir}
@@ -347,6 +348,12 @@ elif [ "$aiChoice" == "3" ]; then
     echo -e "${YELLOW}⏭️ Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually.${NC}"
 else
     echo -e "${GREEN}⏭️ Cloud AI mode selected (Google Gemini). Zero Ollama overhead.${NC}"
+    if [ -z "$apiKey" ]; then
+        echo -e "${YELLOW}ℹ️  Notice: No Gemini API Key was entered.${NC}"
+        echo -e "${YELLOW}   Terraform DevOps Expert runs on Google Gemini and needs an API key to chat.${NC}"
+        echo -e "${CYAN}   👉 Get a free Gemini key in seconds at: https://aistudio.google.com/apikey${NC}"
+        echo -e "${CYAN}   👉 You can enter it in the chat UI via 'Set API Key' or Settings > Provider Keys.${NC}"
+    fi
 fi
 
 # 2. Dependency Checks
