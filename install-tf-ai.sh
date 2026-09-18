@@ -129,29 +129,74 @@ fi
 tfWorkspace="$basePath/Terraform"
 lcPathFull="$basePath/Mind"
 
-echo -e "${CYAN}Select local Ollama models to pull based on your system RAM:${NC}"
-echo " 1) Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b"
-echo " 2) Mid-range (16GB RAM): llama3.1, qwen2.5-coder:7b"
-echo " 3) High-end (32GB+ RAM): mistral-nemo, qwen2.5-coder:14b"
-echo " 4) Skip local models (Use only Gemini/Cloud)"
-echo " 5) Custom (comma-separated list)"
-read -p "Enter your choice (1-5) or press Enter to skip [Default: 4]: " modelChoice
-modelChoice=${modelChoice:-4}
+echo -e "\n${CYAN}Select your AI Engine & Local Model Configuration:${NC}"
+echo " 1) Configure Local AI via Ollama (100% Offline / Private)"
+echo " 2) Use Cloud AI Only (Google Gemini) [Default]"
+echo " 3) Skip for now (I will download Ollama and configure manually later)"
+read -p "Enter your choice (1-3) [Default: 2]: " aiChoice
+aiChoice=${aiChoice:-2}
 
 declare -a models=()
-case $modelChoice in
-    1) models=("llama3.2" "qwen2.5-coder:3b") ;;
-    2) models=("llama3.1" "qwen2.5-coder:7b") ;;
-    3) models=("mistral-nemo" "qwen2.5-coder:14b") ;;
-    5) 
-        read -p "Enter custom models (comma-separated): " customModels
-        if [ ! -z "$customModels" ]; then
-            IFS=',' read -ra models <<< "$customModels"
-            for i in "${!models[@]}"; do models[$i]=$(echo "${models[$i]}" | xargs); done
+
+if [ "$aiChoice" == "1" ]; then
+    if ! command -v ollama &> /dev/null; then
+        echo -e "${YELLOW}⚙️ Ollama is not installed. Attempting automatic installation via official script...${NC}"
+        curl -fsSL https://ollama.com/install.sh | sh
+        if command -v ollama &> /dev/null; then
+            echo -e "${GREEN}✅ Ollama installed successfully!${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Ollama installation may require restarting your terminal or manual setup from https://ollama.com.${NC}"
         fi
-        ;;
-    *) ;;
-esac
+    else
+        echo -e "${GREEN}✅ Found existing Ollama installation.${NC}"
+    fi
+
+    echo -e "\n${CYAN}Select local Ollama models based on your hardware / RAM:${NC}"
+    echo -e "${WHITE} -- Bundles based on System RAM --${NC}"
+    echo "  1) Low-End (8GB RAM):          qwen2.5-coder:3b, llama3.2"
+    echo "  2) Mid-Range (16GB RAM):       qwen2.5-coder:7b, llama3.1"
+    echo "  3) High-End (32GB+ RAM):       qwen2.5-coder:14b, mistral-nemo"
+    echo -e "${WHITE} -- Individual Models (8+ Options) --${NC}"
+    echo "  4) qwen2.5-coder:1.5b          (Ultra-lightweight, runs on any machine ~1GB)"
+    echo "  5) qwen2.5-coder:3b            (Fast & lightweight ~2GB)"
+    echo "  6) llama3.2:3b                 (Meta versatile 3B model ~2.2GB)"
+    echo "  7) qwen2.5-coder:7b            (Recommended for Terraform/DevOps ~4.5GB)"
+    echo "  8) llama3.1:8b                 (Meta flagship open model ~4.7GB)"
+    echo "  9) mistral-nemo:12b            (Mistral high precision ~7GB)"
+    echo " 10) qwen2.5-coder:14b           (Advanced enterprise code generation ~9GB)"
+    echo " 11) codellama:7b                (Meta dedicated code model ~4GB)"
+    echo " 12) deepseek-coder:6.7b         (DeepSeek specialized code model ~4GB)"
+    echo " 13) Custom                      (Enter comma-separated model names)"
+    read -p "Enter your choice (1-13) [Default: 7]: " modelChoice
+    modelChoice=${modelChoice:-7}
+
+    case $modelChoice in
+        1) models=("qwen2.5-coder:3b" "llama3.2") ;;
+        2) models=("qwen2.5-coder:7b" "llama3.1") ;;
+        3) models=("qwen2.5-coder:14b" "mistral-nemo") ;;
+        4) models=("qwen2.5-coder:1.5b") ;;
+        5) models=("qwen2.5-coder:3b") ;;
+        6) models=("llama3.2") ;;
+        7) models=("qwen2.5-coder:7b") ;;
+        8) models=("llama3.1") ;;
+        9) models=("mistral-nemo") ;;
+        10) models=("qwen2.5-coder:14b") ;;
+        11) models=("codellama:7b") ;;
+        12) models=("deepseek-coder:6.7b") ;;
+        13)
+            read -p "Enter custom models (comma-separated): " customModels
+            if [ ! -z "$customModels" ]; then
+                IFS=',' read -ra models <<< "$customModels"
+                for i in "${!models[@]}"; do models[$i]=$(echo "${models[$i]}" | xargs); done
+            fi
+            ;;
+        *) models=("qwen2.5-coder:7b") ;;
+    esac
+elif [ "$aiChoice" == "3" ]; then
+    echo -e "${YELLOW}⏭️ Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually.${NC}"
+else
+    echo -e "${GREEN}⏭️ Cloud AI mode selected (Google Gemini). Zero Ollama overhead.${NC}"
+fi
 
 # 2. Dependency Checks
 if ! command -v git &> /dev/null; then
@@ -176,14 +221,19 @@ fi
 
 # 3. Check for Ollama & Download Local AI Models
 if [ ${#models[@]} -eq 0 ]; then
-    echo -e "${YELLOW}⏭️ Skipping local AI model download as requested.${NC}"
+    if [ "$aiChoice" == "3" ]; then
+        echo -e "${YELLOW}⏭️ Skipping local AI models (Configuring Cloud mode for now; manual Ollama setup can be done later).${NC}"
+    else
+        echo -e "${GREEN}⏭️ Skipping local AI models as requested (Pure Cloud mode).${NC}"
+    fi
     export AGENT_PROVIDER="google"
     export AGENT_MODEL="gemini-3.5-flash-lite"
 else
     export AGENT_PROVIDER="custom"
     export AGENT_MODEL="${models[0]}"
     if ! command -v ollama &> /dev/null; then
-        echo -e "${YELLOW}⚠️ Ollama is not installed. Local AI model pull will be skipped.${NC}"
+        echo -e "${YELLOW}⚠️ Ollama command is not currently available in this terminal. Local AI model pull will be skipped.${NC}"
+        echo -e "${CYAN}To pull models manually later, run: ollama pull ${models[0]}${NC}"
     else
         echo -e "${YELLOW}📥 Pulling Local AI Models via Ollama...${NC}"
         for model in "${models[@]}"; do
@@ -230,52 +280,63 @@ if [ ! -f "$tfsecPath" ]; then
 fi
 
 # 8. Install NPM Dependencies
+echo -e "\n${CYAN}How would you like to install Node.js dependencies?${NC}"
+echo " 1) Fast Install [Default] - Auto-download pre-bundled dependencies (~400MB) from Google Drive (~2 mins)"
+echo " 2) Clean Install (Recommended) - Build fresh dependencies from source via 'npm install' (Takes 30+ mins)"
+read -p "Enter your choice (1 or 2) [Default: 1]: " depChoice
+depChoice=${depChoice:-1}
+
 scriptDir=$(pwd)
 zipTarget=""
-if [ -f "$lcPathFull/node_modules.zip" ]; then zipTarget="$lcPathFull/node_modules.zip"
-elif [ -f "$scriptDir/node_modules.zip" ]; then zipTarget="$scriptDir/node_modules.zip"
-elif [ -f "$scriptDir/chat/node_modules.zip" ]; then zipTarget="$scriptDir/chat/node_modules.zip"
-fi
 
-# If pre-bundled node_modules doesn't exist and no local zip was found, download it from Google Drive
-if [ ! -d "$lcPathFull/node_modules" ] && [ -z "$zipTarget" ]; then
-    gdriveFileId="1DXB_zWhrbBIjuq_hd12KsB25T8cEzSlS"
-    downloadDest="$lcPathFull/node_modules.zip"
-    echo -e "${YELLOW}Pre-bundled node_modules not found locally.${NC}"
-    echo -e "${CYAN}📦 Downloading pre-bundled dependencies (~400MB) from Google Drive to accelerate setup...${NC}"
-    cookieFile=$(mktemp)
-    initUrl="https://drive.google.com/uc?export=download&id=$gdriveFileId"
-    page=$(curl -s -c "$cookieFile" -L "$initUrl")
-    action=$(echo "$page" | grep -o 'action="[^"]*"' | head -n1 | cut -d'"' -f2)
-    [ -z "$action" ] && action="https://drive.usercontent.google.com/download"
-    uuid=$(echo "$page" | grep -o 'name="uuid"[^>]*value="[^"]*"' | head -n1 | sed -n 's/.*value="\([^"]*\)".*/\1/p')
-    downloadUrl="${action}?id=${gdriveFileId}&export=download&confirm=t"
-    [ -n "$uuid" ] && downloadUrl="${downloadUrl}&uuid=${uuid}"
-
-    echo -e "${YELLOW}Downloading node_modules.zip (curl progress below)...${NC}"
-    curl -# -b "$cookieFile" -L "$downloadUrl" -o "$downloadDest"
-    rm -f "$cookieFile"
-
-    if [ -f "$downloadDest" ] && [ $(wc -c < "$downloadDest") -gt 10000000 ]; then
-        echo -e "${GREEN}📦 Download completed successfully!${NC}"
-        zipTarget="$downloadDest"
-    else
-        echo -e "${YELLOW}⚠️ Download failed or incomplete. Falling back to standard npm install.${NC}"
-        rm -f "$downloadDest"
+if [ "$depChoice" == "1" ]; then
+    if [ -f "$lcPathFull/node_modules.zip" ]; then zipTarget="$lcPathFull/node_modules.zip"
+    elif [ -f "$scriptDir/node_modules.zip" ]; then zipTarget="$scriptDir/node_modules.zip"
+    elif [ -f "$scriptDir/chat/node_modules.zip" ]; then zipTarget="$scriptDir/chat/node_modules.zip"
     fi
-fi
 
-if [ ! -d "$lcPathFull/node_modules" ] && [ ! -z "$zipTarget" ]; then
-    echo -e "${YELLOW}📦 Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)...${NC}"
-    unzip -q -o "$zipTarget" -d "$lcPathFull"
+    # If pre-bundled node_modules doesn't exist and no local zip was found, download it from Google Drive
+    if [ ! -d "$lcPathFull/node_modules" ] && [ -z "$zipTarget" ]; then
+        gdriveFileId="1DXB_zWhrbBIjuq_hd12KsB25T8cEzSlS"
+        downloadDest="$lcPathFull/node_modules.zip"
+        echo -e "${YELLOW}Pre-bundled node_modules not found locally.${NC}"
+        echo -e "${CYAN}📦 Downloading pre-bundled dependencies (~400MB) from Google Drive to accelerate setup...${NC}"
+        cookieFile=$(mktemp)
+        initUrl="https://drive.google.com/uc?export=download&id=$gdriveFileId"
+        page=$(curl -s -c "$cookieFile" -L "$initUrl")
+        action=$(echo "$page" | grep -o 'action="[^"]*"' | head -n1 | cut -d'"' -f2)
+        [ -z "$action" ] && action="https://drive.usercontent.google.com/download"
+        uuid=$(echo "$page" | grep -o 'name="uuid"[^>]*value="[^"]*"' | head -n1 | sed -n 's/.*value="\([^"]*\)".*/\1/p')
+        downloadUrl="${action}?id=${gdriveFileId}&export=download&confirm=t"
+        [ -n "$uuid" ] && downloadUrl="${downloadUrl}&uuid=${uuid}"
+
+        echo -e "${YELLOW}Downloading node_modules.zip (curl progress below)...${NC}"
+        curl -# -b "$cookieFile" -L "$downloadUrl" -o "$downloadDest"
+        rm -f "$cookieFile"
+
+        if [ -f "$downloadDest" ] && [ $(wc -c < "$downloadDest") -gt 10000000 ]; then
+            echo -e "${GREEN}📦 Download completed successfully!${NC}"
+            zipTarget="$downloadDest"
+        else
+            echo -e "${YELLOW}⚠️ Download failed or incomplete. Falling back to standard npm install.${NC}"
+            rm -f "$downloadDest"
+        fi
+    fi
+
+    if [ ! -d "$lcPathFull/node_modules" ] && [ ! -z "$zipTarget" ]; then
+        echo -e "${YELLOW}📦 Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)...${NC}"
+        unzip -q -o "$zipTarget" -d "$lcPathFull"
+    fi
+else
+    echo -e "${CYAN}Clean install selected. Skipping pre-bundled package download.${NC}"
 fi
 
 if [ -d "$lcPathFull/node_modules" ]; then
-    echo -e "${GREEN}📦 Found pre-bundled node_modules. Skipping npm install for faster setup!${NC}"
+    echo -e "${GREEN}📦 Found node_modules. Finalizing package setup...${NC}"
     cd "$lcPathFull" || exit
     npm install cross-env --no-save --silent
 else
-    echo -e "${YELLOW}📦 Installing Node dependencies (This has been optimized for speed)...${NC}"
+    echo -e "${YELLOW}📦 Installing Node dependencies from source (This has been optimized for speed)...${NC}"
     cd "$lcPathFull" || exit
     npm install --no-audit --no-fund --prefer-offline --loglevel verbose
 fi
@@ -288,20 +349,36 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 if [ -f "$lcPathFull/terramind.yaml" ]; then
     sed -i "s|REPLACE_WITH_TF_WORKSPACE|$tfWorkspace|g" "$lcPathFull/terramind.yaml"
     sed -i "s|REPLACE_WITH_MCP_RUNNER_PATH|$lcPathFull/mcp-tf-runner.js|g" "$lcPathFull/terramind.yaml"
-    # Inject agents endpoint override for custom models
-    sed -i -z 's/endpoints:\n  google:/endpoints:\n  agents:\n    models: ["gemini-3.5-flash-lite", "gemini-1.5-flash-latest", "llama3.2", "llama3.1", "qwen2.5-coder:3b", "qwen2.5-coder:7b", "mistral-nemo", "qwen2.5-coder:14b"]\n  google:/' "$lcPathFull/terramind.yaml"
+    
+    if [ ${#models[@]} -gt 0 ]; then
+        echo -e "${CYAN}Injecting Ollama endpoints and local models into terramind.yaml...${NC}"
+        baseModelsJson='"gemini-3.5-flash-lite", "gemini-1.5-flash-latest"'
+        localModelsJson=""
+        for m in "${models[@]}"; do
+            if [ -z "$localModelsJson" ]; then
+                localModelsJson="\"$m\""
+            else
+                localModelsJson="$localModelsJson, \"$m\""
+            fi
+        done
+        allModelsJson="$baseModelsJson, $localModelsJson"
+        
+        sed -i "s|models: \[\"gemini-3.5-flash-lite\", \"gemini-1.5-flash-latest\"\]|models: [$allModelsJson]|g" "$lcPathFull/terramind.yaml"
+        
+        ollamaBlock="  custom:\n    - name: \"Ollama\"\n      apiKey: \"ollama\"\n      baseURL: \"http://127.0.0.1:11434/v1\"\n      models:\n        default: [$localModelsJson]\n        fetch: true\n      titleConvo: true\n      titleModel: \"current_model\"\n      summarize: false\n      displayInFilter: true"
+        sed -i "s|  google: {}|  google: {}\n$ollamaBlock|g" "$lcPathFull/terramind.yaml"
+    else
+        echo -e "${GREEN}Pure Cloud mode active. Zero Ollama endpoints injected into terramind.yaml.${NC}"
+    fi
 fi
 
 envSource="$lcPathFull/.env.example"
+envDest="$lcPathFull/.env"
 
 if [ -f "$envSource" ]; then
-    cp "$envSource" "$lcPathFull/.env"
+    cp "$envSource" "$envDest"
     
     if [ ! -z "$apiKey" ]; then
-        sed -i "s/REPLACE_WITH_YOUR_KEY/$apiKey/g" "$lcPathFull/.env"
-    fi
-    
-    if grep -q "APP_TITLE=" "$lcPathFull/.env"; then
         sed -i "s/REPLACE_WITH_YOUR_KEY/$apiKey/g" "$envDest"
     fi
     

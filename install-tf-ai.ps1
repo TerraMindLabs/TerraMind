@@ -136,31 +136,98 @@ if (!(Test-Path $basePath)) {
 $tfWorkspace = Join-Path $basePath "Terraform"
 $lcPathFull = Join-Path $basePath "Mind"
 
-Write-Host "`n [?] Select local Ollama models to pull based on your system RAM:" -ForegroundColor Cyan
-Write-Host "    [1] Low-end (8GB RAM): llama3.2, qwen2.5-coder:3b" -ForegroundColor White
-Write-Host "    [2] Mid-range (16GB RAM): llama3.1, qwen2.5-coder:7b" -ForegroundColor White
-Write-Host "    [3] High-end (32GB+ RAM): mistral-nemo, qwen2.5-coder:14b" -ForegroundColor White
-Write-Host "    [4] Skip local models (Use only Gemini/Cloud)" -ForegroundColor Yellow
-Write-Host "    [5] Custom (comma-separated list)" -ForegroundColor DarkGray
-$modelChoice = Read-Host "`n => Enter your choice (1-5) [Default: 4]"
+Write-Host "`n [?] Select your AI Engine & Local Model Configuration:" -ForegroundColor Cyan
+Write-Host "    [1] Configure Local AI via Ollama (100% Offline / Private)" -ForegroundColor White
+Write-Host "    [2] Use Cloud AI Only (Google Gemini) [Default]" -ForegroundColor Yellow
+Write-Host "    [3] Skip for now (I will download Ollama and configure manually later)" -ForegroundColor DarkGray
+$aiChoice = Read-Host "`n => Enter your choice (1-3) [Default: 2]"
+if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "2" }
 
 $models = @()
 $customModels = ""
-if ($modelChoice -eq "1") {
-    $customModels = "llama3.2, qwen2.5-coder:3b"
-} elseif ($modelChoice -eq "2") {
-    $customModels = "llama3.1, qwen2.5-coder:7b"
-} elseif ($modelChoice -eq "3") {
-    $customModels = "mistral-nemo, qwen2.5-coder:14b"
-} elseif ($modelChoice -eq "5") {
-    $customModels = Read-Host " Enter models to pull (comma-separated) [Default: llama3.2]"
-    if ([string]::IsNullOrWhiteSpace($customModels)) {
-        $customModels = "llama3.2"
-    }
-}
 
-if (-not [string]::IsNullOrWhiteSpace($customModels)) {
-    $models = $customModels -split "," | ForEach-Object { $_.Trim() }
+if ($aiChoice -eq "1") {
+    # Check if Ollama is installed; if not, attempt automatic installation
+    if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
+        Write-Host "[cfg] Ollama is not installed. Attempting automatic installation..." -ForegroundColor Yellow
+        $installed = $false
+        if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+            Write-Host "Installing Ollama via winget..." -ForegroundColor Cyan
+            winget install Ollama.Ollama --accept-package-agreements --accept-source-agreements
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            if (Get-Command "ollama" -ErrorAction SilentlyContinue) { $installed = $true }
+        }
+        
+        if (-not $installed) {
+            Write-Host "Downloading Ollama installer (OllamaSetup.exe)..." -ForegroundColor Cyan
+            $tempOllama = Join-Path $env:TEMP "OllamaSetup.exe"
+            try {
+                Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $tempOllama -UseBasicParsing
+                Write-Host "Running Ollama installer..." -ForegroundColor Yellow
+                Start-Process -FilePath $tempOllama -Wait
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                if (Get-Command "ollama" -ErrorAction SilentlyContinue) { $installed = $true }
+            } catch {
+                Write-Warning "Could not automatically download Ollama: $_"
+            }
+        }
+        
+        if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
+            Write-Warning "Ollama was installed or requires a terminal restart to be recognized in PATH."
+            Write-Host "You can also manually launch Ollama from your Start Menu." -ForegroundColor Yellow
+        } else {
+            Write-Host "[OK] Ollama is installed!" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[OK] Found existing Ollama installation." -ForegroundColor Green
+    }
+
+    Write-Host "`n [?] Select local Ollama models based on your hardware / RAM:" -ForegroundColor Cyan
+    Write-Host "    -- Bundles based on System RAM --" -ForegroundColor DarkGray
+    Write-Host "    [1] Low-End (8GB RAM):          qwen2.5-coder:3b, llama3.2" -ForegroundColor White
+    Write-Host "    [2] Mid-Range (16GB RAM):       qwen2.5-coder:7b, llama3.1" -ForegroundColor White
+    Write-Host "    [3] High-End (32GB+ RAM):       qwen2.5-coder:14b, mistral-nemo" -ForegroundColor White
+    Write-Host "    -- Individual Models (8+ Options) --" -ForegroundColor DarkGray
+    Write-Host "    [4] qwen2.5-coder:1.5b          (Ultra-lightweight, runs on any machine ~1GB)" -ForegroundColor White
+    Write-Host "    [5] qwen2.5-coder:3b            (Fast & lightweight ~2GB)" -ForegroundColor White
+    Write-Host "    [6] llama3.2:3b                 (Meta versatile 3B model ~2.2GB)" -ForegroundColor White
+    Write-Host "    [7] qwen2.5-coder:7b            (Recommended for Terraform/DevOps ~4.5GB)" -ForegroundColor White
+    Write-Host "    [8] llama3.1:8b                 (Meta flagship open model ~4.7GB)" -ForegroundColor White
+    Write-Host "    [9] mistral-nemo:12b            (Mistral high precision ~7GB)" -ForegroundColor White
+    Write-Host "    [10] qwen2.5-coder:14b          (Advanced enterprise code generation ~9GB)" -ForegroundColor White
+    Write-Host "    [11] codellama:7b               (Meta dedicated code model ~4GB)" -ForegroundColor White
+    Write-Host "    [12] deepseek-coder:6.7b        (DeepSeek specialized code model ~4GB)" -ForegroundColor White
+    Write-Host "    [13] Custom                     (Enter comma-separated model names)" -ForegroundColor DarkGray
+    $modelChoice = Read-Host "`n => Enter your choice (1-13) [Default: 7]"
+    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "7" }
+
+    switch ($modelChoice) {
+        "1"  { $customModels = "qwen2.5-coder:3b, llama3.2" }
+        "2"  { $customModels = "qwen2.5-coder:7b, llama3.1" }
+        "3"  { $customModels = "qwen2.5-coder:14b, mistral-nemo" }
+        "4"  { $customModels = "qwen2.5-coder:1.5b" }
+        "5"  { $customModels = "qwen2.5-coder:3b" }
+        "6"  { $customModels = "llama3.2" }
+        "7"  { $customModels = "qwen2.5-coder:7b" }
+        "8"  { $customModels = "llama3.1" }
+        "9"  { $customModels = "mistral-nemo" }
+        "10" { $customModels = "qwen2.5-coder:14b" }
+        "11" { $customModels = "codellama:7b" }
+        "12" { $customModels = "deepseek-coder:6.7b" }
+        "13" {
+            $customModels = Read-Host " Enter models to pull (comma-separated) [Default: qwen2.5-coder:7b]"
+            if ([string]::IsNullOrWhiteSpace($customModels)) { $customModels = "qwen2.5-coder:7b" }
+        }
+        default { $customModels = "qwen2.5-coder:7b" }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($customModels)) {
+        $models = $customModels -split "," | ForEach-Object { $_.Trim() }
+    }
+} elseif ($aiChoice -eq "3") {
+    Write-Host "`n[Skip] Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually." -ForegroundColor Yellow
+} else {
+    Write-Host "`n[Skip] Cloud AI mode selected (Google Gemini). Zero Ollama overhead." -ForegroundColor Green
 }
 
 # 2. Dependency Checks
@@ -197,15 +264,20 @@ if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
 
 # 3. Check for Ollama & Download Local AI Models
 if ($models.Count -eq 0) {
-    Write-Host "[Skip] Skipping local AI model download as requested." -ForegroundColor Yellow
+    if ($aiChoice -eq "3") {
+        Write-Host "[Skip] Skipping local AI models (Configuring Cloud mode for now; manual Ollama setup can be done later)." -ForegroundColor Yellow
+    } else {
+        Write-Host "[Skip] Skipping local AI models as requested (Pure Cloud mode)." -ForegroundColor Green
+    }
     $env:AGENT_PROVIDER = "google"
     $env:AGENT_MODEL = "gemini-3.5-flash-lite"
 } else {
     $env:AGENT_PROVIDER = "custom"
-    $env:AGENT_MODEL = $customModels.Split(',')[0].Trim()
+    $env:AGENT_MODEL = $models[0]
 
     if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
-        Write-Warning "Ollama is not installed. Local AI model pull will be skipped."
+        Write-Warning "Ollama command is not currently available in this terminal session. Local AI model pull will be skipped."
+        Write-Host "To pull models manually later, run: ollama pull $($models[0])" -ForegroundColor Cyan
     } else {
         Write-Host " Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
         foreach ($model in $models) {
@@ -250,8 +322,16 @@ if (!(Test-Path $tfsecPath)) {
 }
 
 # 8. Install NPM Dependencies
-    $scriptPath = $PSScriptRoot
-    $zipTarget = ""
+Write-Host "`n [?] How would you like to install Node.js dependencies?" -ForegroundColor Cyan
+Write-Host "    [1] Fast Install [Default] - Auto-download pre-bundled dependencies (~400MB) from Google Drive (~2 mins)" -ForegroundColor White
+Write-Host "    [2] Clean Install (Recommended) - Build fresh dependencies from source via 'npm install' (Takes 30+ mins)" -ForegroundColor White
+$depChoice = Read-Host "`n => Enter your choice (1 or 2) [Default: 1]"
+if ([string]::IsNullOrWhiteSpace($depChoice)) { $depChoice = "1" }
+
+$scriptPath = $PSScriptRoot
+$zipTarget = ""
+
+if ($depChoice -eq "1") {
     if (Test-Path "$lcPathFull\node_modules.zip") { $zipTarget = "$lcPathFull\node_modules.zip" }
     elseif (Test-Path "$scriptPath\node_modules.zip") { $zipTarget = "$scriptPath\node_modules.zip" }
     elseif (Test-Path "$scriptPath\chat\node_modules.zip") { $zipTarget = "$scriptPath\chat\node_modules.zip" }
@@ -319,13 +399,16 @@ if (!(Test-Path $tfsecPath)) {
             Expand-Archive -Path $zipTarget -DestinationPath "$lcPathFull" -Force
         }
     }
+} else {
+    Write-Host "[pkg] Clean install selected. Skipping pre-bundled package download." -ForegroundColor Cyan
+}
 
 if (Test-Path "$lcPathFull\node_modules") {
-    Write-Host "[pkg] Found pre-bundled node_modules. Skipping npm install for faster setup!" -ForegroundColor Green
+    Write-Host "[pkg] Found node_modules. Finalizing package setup..." -ForegroundColor Green
     Set-Location -Path $lcPathFull
     npm install cross-env --no-save --silent
 } else {
-    Write-Host "[pkg] Installing Node dependencies (This has been optimized for speed)..." -ForegroundColor Yellow
+    Write-Host "[pkg] Installing Node dependencies from source (This has been optimized for speed)..." -ForegroundColor Yellow
     Set-Location -Path $lcPathFull
     npm install --no-audit --no-fund --prefer-offline --loglevel verbose
 }
@@ -340,9 +423,37 @@ Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -Foreg
         $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
         $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
         
-        # Inject agents if not already present
-        if ($yamlContent -notmatch "agents:") {
-            $yamlContent = $yamlContent -replace "endpoints:`r?`n  google:", "endpoints:`r`n  agents:`r`n    models: [`"gemini-3.5-flash-lite`", `"gemini-1.5-flash-latest`", `"llama3.2`", `"llama3.1`", `"qwen2.5-coder:3b`", `"qwen2.5-coder:7b`", `"mistral-nemo`", `"qwen2.5-coder:14b`"]`r`n  google:"
+        if ($models.Count -gt 0) {
+            Write-Host "[cfg] Injecting Ollama endpoints and local models into terramind.yaml..." -ForegroundColor Cyan
+            
+            # Format model array for agents
+            $baseModels = @("gemini-3.5-flash-lite", "gemini-1.5-flash-latest")
+            $allAgentModels = $baseModels + $models
+            $modelsJson = ($allAgentModels | ForEach-Object { "`"$_`"" }) -join ", "
+            $ollamaModelsJson = ($models | ForEach-Object { "`"$_`"" }) -join ", "
+
+            # Update agents models list
+            $yamlContent = $yamlContent -replace 'models:\s*\["gemini-3.5-flash-lite",\s*"gemini-1.5-flash-latest"\]', "models: [$modelsJson]"
+            
+            # Inject custom Ollama endpoint block if not already present
+            if ($yamlContent -notmatch "name:\s*`"Ollama`"") {
+                $ollamaBlock = @"
+  custom:
+    - name: "Ollama"
+      apiKey: "ollama"
+      baseURL: "http://127.0.0.1:11434/v1"
+      models:
+        default: [$ollamaModelsJson]
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: false
+      displayInFilter: true
+"@
+                $yamlContent = $yamlContent -replace "  google:\s*\{\}", "  google: {}`r`n$ollamaBlock"
+            }
+        } else {
+            Write-Host "[cfg] Pure Cloud mode active. Zero Ollama endpoints injected into terramind.yaml." -ForegroundColor Green
         }
         
         Set-Content -Path $lcConfig -Value $yamlContent -Encoding UTF8

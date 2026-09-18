@@ -1,12 +1,17 @@
-📋 Roadmap for Next Session
-Interactive Dependency Installation Choice:
+# 📋 Roadmap & Completed Milestones
 
-Add a setup prompt in the installers:
-Option 1 (Default): Fast Install — Auto-download pre-bundled dependencies from Google Drive (~400MB) for rapid startup.
-Option 2: Clean npm install — Build fresh dependencies from source (recommended for clean environments or custom architectures).
-Fully Dynamic Ollama / Local Model Configuration:
+## ✅ Completed Milestones
+- [x] **Embed Chat Engine**: Merged and embedded `chat/` codebase directly into the root `TerraMind` repository as tracked files.
+- [x] **Interactive Dependency Installation Choice**: Added interactive choice in `install-tf-ai.ps1` and `install-tf-ai.sh` allowing users to select between:
+  - **Option 1 (Default)**: Fast Install via pre-bundled dependencies (~400MB) from Google Drive.
+  - **Option 2**: Clean `npm install` from source for clean/custom environments.
+- [x] **Fully Dynamic Ollama / Local Model Configuration**:
+  - Removed hardcoded Ollama endpoints from base `chat/terramind.yaml`.
+  - Zero Ollama overhead by default when Cloud/Gemini is chosen.
+  - Dynamically injects chosen models and Ollama endpoints into `terramind.yaml` only when local models are explicitly requested.
+  - Fixed `$envDest` variable scoping in `install-tf-ai.sh`.
 
-Remove hardcoded model declarations from the base configuration.
-Only trigger Ollama detection, model pulling, and endpoint injection into terramind.yaml / .env if the user explicitly selects local models during the installation menu.
-Keep the setup minimal and lightweight by default (e.g., Gemini / Cloud only, zero Ollama overhead if not chosen).
-Whenever you're ready to resume, just let me know and we'll dive right in! Have a great rest of your day!
+## 🚀 Future Targets
+- [ ] End-to-end installer dry-run testing on fresh machines.
+- [ ] Additional MCP tools (e.g. cloud provider CLI dry-run runners).
+- [ ] Docker containerization / compose setup for TerraMind.
