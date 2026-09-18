@@ -1,5 +1,4 @@
 import React, { useMemo, useCallback } from 'react';
-import { Feather } from 'lucide-react';
 import { Sparkles, ProviderIcon } from '@librechat/client';
 import { useGetModelsQuery } from 'librechat-data-provider/react-query';
 import {
@@ -35,7 +34,12 @@ const createEndpointIcon = (
   { provider, imageURL }: ProviderIconResolution,
 ): React.ReactNode => {
   if (endpoint === EModelEndpoint.agents) {
-    return React.createElement(Feather, { size: artSize, className: artClassName });
+    return React.createElement('img', {
+      src: '/assets/only_logo.png',
+      alt: 'TerraMind',
+      className: artClassName,
+      style: { width: artSize, height: artSize, objectFit: 'contain' },
+    });
   }
 
   if (endpoint === EModelEndpoint.assistants || endpoint === EModelEndpoint.azureAssistants) {

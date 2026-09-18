@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { Feather } from 'lucide-react';
 import { ProviderId } from 'librechat-data-provider';
 import { Sparkles, AssistantIcon, ProviderIcon } from '@librechat/client';
 import type * as t from 'librechat-data-provider';
@@ -31,7 +30,13 @@ function AgentAvatar({
     );
   }
 
-  return <Feather className={cn(agentName === '' ? 'icon-2xl' : '', className)} size={size} />;
+  return (
+    <img
+      src="/assets/only_logo.png"
+      alt="TerraMind"
+      className={cn('object-contain', agentName === '' ? 'icon-2xl' : 'icon-md', className)}
+    />
+  );
 }
 
 function AssistantAvatar({

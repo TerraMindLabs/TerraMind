@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import { Feather } from 'lucide-react';
 import { EModelEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
 import { AssistantIcon, TooltipAnchor, ProviderAvatar } from '@librechat/client';
 import type { IconProps } from '~/common';
@@ -70,7 +69,7 @@ const MessageEndpointIcon: React.FC<IconProps> = (props) => {
     ) : (
       <div className="h-6 w-6">
         <div className="shadow-stroke flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
-          <Feather className="h-2/3 w-2/3 text-text-tertiary" aria-hidden="true" />
+          <img src="/assets/only_logo.png" alt="TerraMind" className="h-2/3 w-2/3 object-contain" aria-hidden="true" />
         </div>
       </div>
     ),

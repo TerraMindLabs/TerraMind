@@ -1,4 +1,4 @@
-import { Feather } from 'lucide-react';
+
 import { EModelEndpoint, alternateName } from 'librechat-data-provider';
 import { Sparkles, ProviderIcon, getProviderIconDef } from '@librechat/client';
 import type { IconProps } from '~/common';
@@ -47,7 +47,7 @@ const MinimalIcon: React.FC<IconProps> = (props) => {
 
   if (endpoint === EModelEndpoint.agents) {
     return renderWrapper(
-      <Feather className="icon-sm" aria-hidden="true" />,
+      <img src="/assets/only_logo.png" alt="TerraMind" className="icon-sm object-contain" aria-hidden="true" />,
       modelLabel ?? alternateName[EModelEndpoint.agents],
     );
   }
