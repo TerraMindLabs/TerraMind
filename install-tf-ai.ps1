@@ -582,6 +582,11 @@ if (Test-Path "$lcPathFull\node_modules") {
     npm install --no-audit --no-fund --prefer-offline --loglevel verbose
 }
 
+if (!(Test-Path "$lcPathFull\packages\api\dist\credentials.cjs") -or !(Test-Path "$lcPathFull\packages\data-schemas\dist\index.cjs")) {
+    Write-Host "[cfg] Building internal package modules (@librechat/api, data-schemas)..." -ForegroundColor Yellow
+    Invoke-CommandWithSpinner -Message "Compiling package modules" -CommandString "npm run build:packages" -WorkingDir $lcPathFull
+}
+
 # 9. Configure Environment Variables and Copy Files
 Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
 
