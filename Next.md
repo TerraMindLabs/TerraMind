@@ -11,8 +11,8 @@
   - Dynamically injects chosen models and Ollama endpoints into `terramind.yaml` only when local models are explicitly requested.
 - [x] **One-Liner Web Installer (Zero Dead Weight)**:
   - Enabled remote installation without cloning the Git repository:
-    - Windows: `irm https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.ps1 | iex`
-    - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.sh | bash`
+    - Windows: `irm https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.ps1 | iex`
+    - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh | bash`
   - Eliminates duplicate cloned folders and unused files.
 - [x] **Standalone Uninstaller Shortcuts**:
   - Automatically generates `Uninstall-TerraMind.bat` (Windows) and `uninstall-terramind.sh` (Linux/macOS) in the user's installation directory for one-click clean removal.

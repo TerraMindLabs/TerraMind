@@ -41,12 +41,12 @@ You do **not** need to manually clone this repository. The one-liner installer a
 
 #### Windows (PowerShell as Administrator or Standard):
 ```powershell
-irm https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.ps1 | iex
+irm https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.ps1 | iex
 ```
 
 #### Linux & macOS (Terminal):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh | bash
 ```
 
 ---
@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-
 If you have already cloned the repository or prefer manual cloning:
 
 ```bash
-git clone https://github.com/mdshareq/TerraMind.git
+git clone https://github.com/TerraMindLabs/TerraMind.git
 cd TerraMind
 ```
 

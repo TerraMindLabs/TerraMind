@@ -269,9 +269,9 @@ if [ ! -d "$lcPathFull" ]; then
         cp -r "$BUNDLED_CHAT_PATH" "$basePath"
         mv "$basePath/chat" "$basePath/Mind"
     else
-        echo -e "${CYAN}📦 Downloading TerraMind application codebase from GitHub...${NC}"
-        tempClone=$(mktemp -d)
-        git clone --depth 1 https://github.com/mdshareq/TerraMind.git "$tempClone"
+        echo -e "${CYAN}[git] Downloading TerraMind application codebase from GitHub...${NC}"
+        tempClone="/tmp/terramind_src_$RANDOM"
+        git clone --depth 1 https://github.com/TerraMindLabs/TerraMind.git "$tempClone"
         if [ -d "$tempClone/chat" ]; then
             mv "$tempClone/chat" "$lcPathFull"
             rm -rf "$tempClone"

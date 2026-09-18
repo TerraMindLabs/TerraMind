@@ -314,7 +314,7 @@ if (!(Test-Path $lcPathFull)) {
     } else {
         Write-Host "[git] Downloading TerraMind application codebase from GitHub..." -ForegroundColor Cyan
         $tempClone = Join-Path $env:TEMP ("terramind_src_" + [System.Guid]::NewGuid().ToString().Substring(0,8))
-        git clone --depth 1 https://github.com/mdshareq/TerraMind.git $tempClone
+        git clone --depth 1 https://github.com/TerraMindLabs/TerraMind.git $tempClone
         if (Test-Path "$tempClone\chat") {
             Move-Item -Path "$tempClone\chat" -Destination $lcPathFull -Force
             Remove-Item -Recurse -Force $tempClone -ErrorAction SilentlyContinue

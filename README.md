@@ -21,12 +21,12 @@ You do not need to clone this repository manually. Run the single command below 
 
 **On Windows (PowerShell as Administrator or Standard):**
 ```powershell
-irm https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.ps1 | iex
+irm https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.ps1 | iex
 ```
 
 **On Linux / macOS (Terminal):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mdshareq/TerraMind/main/install-tf-ai.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh | bash
 ```
 
 *(Alternatively, if you have already cloned this repository locally, you can directly run `.\install-tf-ai.ps1` or `./install-tf-ai.sh`)*.
