@@ -5690,7 +5690,7 @@ const interfaceSchema = z.object({
 		groups: true,
 		roles: true
 	},
-	marketplace: { use: false },
+	marketplace: { use: true },
 	mcpServers: {
 		use: true,
 		create: true,

@@ -133,8 +133,26 @@ async function run() {
       console.log(`[MongoDB] Successfully inserted ${aclEntries.length} ACL entries into ${colName}.`);
     }
 
-    // 3. Ensure all roles (especially USER) have Marketplace and Agents permissions enabled
+    // 3. Ensure both ADMIN and USER roles have Marketplace and Agents permissions enabled
     const rolesCollection = database.collection("roles");
+    for (const roleName of ["ADMIN", "USER"]) {
+      await rolesCollection.updateOne(
+        { name: roleName },
+        {
+          $set: {
+            "permissions.marketplace.USE": true,
+            "permissions.marketplace.use": true,
+            "permissions.agents.USE": true,
+            "permissions.agents.use": true,
+          },
+          $setOnInsert: {
+            name: roleName,
+            description: "",
+          }
+        },
+        { upsert: true }
+      );
+    }
     await rolesCollection.updateMany(
       {},
       {
@@ -146,7 +164,7 @@ async function run() {
         }
       }
     );
-    console.log("[MongoDB] Ensured marketplace and agents permissions are active for all roles.");
+    console.log("[MongoDB] Ensured marketplace and agents permissions are active for ADMIN, USER, and all roles.");
 
   } catch (error) {
     console.error("[MongoDB] Error seeding agent (Is MongoDB running?):", error.message);

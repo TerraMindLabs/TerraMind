@@ -2162,7 +2162,7 @@ export const interfaceSchema = z
       roles: true,
     },
     marketplace: {
-      use: false,
+      use: true,
     },
     mcpServers: {
       use: true,
