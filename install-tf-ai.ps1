@@ -37,6 +37,114 @@ function Invoke-CommandWithSpinner {
     Write-Host "`r [OK] $Message (Done in ${totalSec}s)                         " -ForegroundColor Green
 }
 
+function Ensure-MongoDB {
+    Write-Host "`n [db] Checking MongoDB database availability on port 27017..." -ForegroundColor Cyan
+    
+    # 1. Test if port 27017 is already responding
+    $isListening = $false
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $iar = $tcp.BeginConnect("127.0.0.1", 27017, $null, $null)
+        $wait = $iar.AsyncWaitHandle.WaitOne(1500, $false)
+        if ($wait -and $tcp.Connected) {
+            $tcp.EndConnect($iar)
+            $isListening = $true
+        }
+        $tcp.Close()
+    } catch {
+        $isListening = $false
+    }
+
+    if ($isListening) {
+        Write-Host " [OK] MongoDB is active and listening on port 27017." -ForegroundColor Green
+        return $true
+    }
+
+    # 2. Port is NOT listening. Check if a Windows service for MongoDB exists
+    $mongoSvc = Get-Service -Name "MongoDB" -ErrorAction SilentlyContinue
+    if (!$mongoSvc) {
+        $mongoSvc = Get-Service | Where-Object { $_.Name -like "*mongo*" -or $_.DisplayName -like "*mongo*" } | Select-Object -First 1
+    }
+
+    if ($mongoSvc) {
+        Write-Host " [db] Found MongoDB Windows Service ('$($mongoSvc.Name)'), but it is currently stopped." -ForegroundColor Yellow
+        Write-Host " [db] Attempting to start MongoDB service..." -ForegroundColor Yellow
+        
+        # Try standard start first
+        cmd.exe /c "net start `"$($mongoSvc.Name)`"" 2>$null
+        Start-Sleep -Seconds 2
+
+        # If still stopped, request elevation via UAC prompt to start service
+        $checkSvc = Get-Service -Name $mongoSvc.Name -ErrorAction SilentlyContinue
+        if ($checkSvc -and $checkSvc.Status -ne "Running") {
+            Write-Host " [db] Requesting elevation to start MongoDB Windows service..." -ForegroundColor Cyan
+            try {
+                Start-Process "cmd.exe" -ArgumentList "/c net start `"$($mongoSvc.Name)`"" -Verb RunAs -WindowStyle Hidden -Wait
+                Start-Sleep -Seconds 2
+            } catch {
+                # User may have clicked No on UAC prompt
+            }
+        }
+
+        # Check port again
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $iar = $tcp.BeginConnect("127.0.0.1", 27017, $null, $null)
+            $wait = $iar.AsyncWaitHandle.WaitOne(2000, $false)
+            if ($wait -and $tcp.Connected) {
+                $tcp.EndConnect($iar)
+                Write-Host " [OK] MongoDB service started successfully and is ready!" -ForegroundColor Green
+                $tcp.Close()
+                return $true
+            }
+            $tcp.Close()
+        } catch {}
+    }
+
+    # 3. Check if Docker is running and offer containerized Mongo
+    if (Get-Command "docker" -ErrorAction SilentlyContinue) {
+        $dockerRunning = $false
+        try {
+            docker info 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $dockerRunning = $true }
+        } catch {}
+
+        if ($dockerRunning) {
+            Write-Host "`n [?] Docker detected! Would you like to run MongoDB in a lightweight Docker container?" -ForegroundColor Cyan
+            Write-Host "    Command: docker run -d -p 27017:27017 --name terramind-mongo mongo:latest" -ForegroundColor DarkGray
+            $useDocker = Read-Host "    Start MongoDB via Docker? (Y/n)"
+            if ($useDocker -notmatch "^[nN]$") {
+                Write-Host " [db] Starting MongoDB container..." -ForegroundColor Cyan
+                docker run -d -p 27017:27017 --name terramind-mongo mongo:latest 2>&1 | Out-Null
+                docker start terramind-mongo 2>&1 | Out-Null
+                Start-Sleep -Seconds 3
+                return $true
+            }
+        }
+    }
+
+    # 4. MongoDB is not installed at all. Offer automated winget installation
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        Write-Host "`n [!] MongoDB is not detected on your system." -ForegroundColor Yellow
+        Write-Host "    TerraMind requires MongoDB to store chats, configurations, and AI agent prompts." -ForegroundColor White
+        Write-Host "`n [?] Would you like TerraMind to automatically install MongoDB Community Server for you?" -ForegroundColor Cyan
+        Write-Host "    [1] Auto-install MongoDB via Windows Package Manager (winget) [Recommended]" -ForegroundColor White
+        Write-Host "    [2] I will start/install MongoDB manually" -ForegroundColor White
+        $dbChoice = Read-Host "`n => Enter choice (1 or 2) [Default: 1]"
+        if ([string]::IsNullOrWhiteSpace($dbChoice) -or $dbChoice -eq "1") {
+            Write-Host "`n [db] Installing MongoDB Community Server via winget..." -ForegroundColor Yellow
+            Invoke-CommandWithSpinner -Message "Installing MongoDB Community Server via winget" -CommandString "winget install MongoDB.Server -e --accept-package-agreements --accept-source-agreements --silent"
+            Start-Sleep -Seconds 3
+            cmd.exe /c "net start MongoDB" 2>$null
+            return $true
+        }
+    }
+
+    Write-Host "`n [!] Please make sure MongoDB is running before launching TerraMind." -ForegroundColor Yellow
+    Write-Host "     Download link: https://www.mongodb.com/try/download/community" -ForegroundColor DarkGray
+    return $false
+}
+
 Write-Host "===========================================================" -ForegroundColor DarkGray
 Write-Host "  _____                    __  __ _           _            " -ForegroundColor Cyan
 Write-Host " |_   _|__ _ __ _ __ __ _ |  \/  (_)_ __   __| |           " -ForegroundColor Cyan
@@ -270,8 +378,7 @@ if (!(Get-Command "npm" -ErrorAction SilentlyContinue)) {
     return
 }
 
-Write-Host "[WARN] IMPORTANT: Ensure MongoDB Community Server is installed and running natively in the background." -ForegroundColor Yellow
-Write-Host "   (https://www.mongodb.com/try/download/community)" -ForegroundColor Yellow
+Ensure-MongoDB | Out-Null
 
 if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
     Write-Host "[cfg] Terraform is not installed. Attempting automatic installation via winget..." -ForegroundColor Yellow
@@ -581,7 +688,7 @@ if (!(Test-Path "$lcPathFull\seed-agent.js") -and (Test-Path "$bundledChatPath\s
 }
 
 if (Test-Path "$lcPathFull\seed-agent.js") {
-    cmd.exe /c "net start MongoDB" 2>$null
+    Ensure-MongoDB | Out-Null
     node seed-agent.js
 } else {
     Write-Warning "Could not find seed-agent.js. Skipping Agent database seeding."

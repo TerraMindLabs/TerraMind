@@ -39,6 +39,39 @@ run_with_spinner() {
     printf "\r ${GREEN}[OK] %s (Completed in %ds)${NC}                     \n" "$title" "$total"
 }
 
+ensure_mongodb() {
+    echo -e "\n${CYAN}🔍 Checking MongoDB database availability on port 27017...${NC}"
+    if nc -z 127.0.0.1 27017 2>/dev/null || (echo > /dev/tcp/127.0.0.1/27017) 2>/dev/null; then
+        echo -e "${GREEN}✅ MongoDB is active and listening on port 27017.${NC}"
+        return 0
+    fi
+
+    if command -v systemctl &> /dev/null; then
+        echo -e "${YELLOW}⚙️ Attempting to start MongoDB system service (mongod)...${NC}"
+        sudo systemctl start mongod 2>/dev/null || sudo service mongodb start 2>/dev/null || true
+        sleep 2
+        if nc -z 127.0.0.1 27017 2>/dev/null || (echo > /dev/tcp/127.0.0.1/27017) 2>/dev/null; then
+            echo -e "${GREEN}✅ MongoDB service started successfully and is ready!${NC}"
+            return 0
+        fi
+    fi
+
+    if command -v docker &> /dev/null && docker info &> /dev/null; then
+        echo -e "\n${CYAN}[?] Docker detected! Would you like to run MongoDB in a Docker container?${NC}"
+        read -p "Run MongoDB via Docker? (Y/n): " useDocker
+        if [[ ! "$useDocker" =~ ^[nN]$ ]]; then
+            docker run -d -p 27017:27017 --name terramind-mongo mongo:latest >/dev/null 2>&1 || docker start terramind-mongo >/dev/null 2>&1
+            sleep 3
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}⚠️ Notice: MongoDB is not running on port 27017.${NC}"
+    echo -e "   TerraMind requires MongoDB to store chats and agent prompts."
+    echo -e "   Please ensure MongoDB is started before running TerraMind."
+    return 1
+}
+
 echo ""
 echo -e "${WHITE}Welcome to TerraMind (TF-AI-Gen) Setup${NC}"
 echo ""
@@ -229,8 +262,7 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 
-echo -e "${YELLOW}⚠️ IMPORTANT: Ensure MongoDB Community Server is installed and running natively in the background.${NC}"
-echo -e "${YELLOW}   (https://www.mongodb.com/try/download/community)${NC}"
+ensure_mongodb || true
 
 if ! command -v terraform &> /dev/null; then
     echo -e "${YELLOW}⚙️ Terraform is not installed.${NC}"
@@ -484,6 +516,7 @@ if [ ! -f "$lcPathFull/seed-agent.js" ] && [ -f "$BUNDLED_CHAT_PATH/seed-agent.j
 fi
 
 if [ -f "$lcPathFull/seed-agent.js" ]; then
+    ensure_mongodb || true
     node seed-agent.js
 else
     echo -e "${YELLOW}⚠️ Could not find seed-agent.js. Skipping Agent database seeding.${NC}"
