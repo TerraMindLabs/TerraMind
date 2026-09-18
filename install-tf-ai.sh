@@ -17,6 +17,28 @@ echo -e "   ██║   █████╗  ██████╔╝████
 echo -e "   ██║   ██╔══╝  ██╔══██╗██╔══██╗██╔══██║██║╚██╔╝██║██║██║╚██╗██║██║  ██║"
 echo -e "   ██║   ███████╗██║  ██║██║  ██║██║  ██║██║ ╚═╝ ██║██║██║ ╚████║██████╔╝"
 echo -e "   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ${NC}"
+run_with_spinner() {
+    local title="$1"
+    local cmd="$2"
+    local dir="${3:-$PWD}"
+    
+    (cd "$dir" && eval "$cmd") >/dev/null 2>&1 &
+    local pid=$!
+    local spin='-\|/'
+    local i=0
+    local start=$(date +%s)
+    
+    while kill -0 $pid 2>/dev/null; do
+        local elapsed=$(( $(date +%s) - start ))
+        i=$(( (i+1) % 4 ))
+        printf "\r ${CYAN}[*] %s (${spin:$i:1}) [%ds]${NC} " "$title" "$elapsed"
+        sleep 0.25
+    done
+    wait $pid
+    local total=$(( $(date +%s) - start ))
+    printf "\r ${GREEN}[OK] %s (Completed in %ds)${NC}                     \n" "$title" "$total"
+}
+
 echo ""
 echo -e "${WHITE}Welcome to TerraMind (TF-AI-Gen) Setup${NC}"
 echo ""
@@ -69,15 +91,13 @@ if [ "$action" == "2" ]; then
     fi
 
     if [ -d "$lcPathFull" ]; then
-        echo -e "${YELLOW}🗑️ Deleting TerraMind installation at $lcPathFull...${NC}"
-        rm -rf "$lcPathFull"
+        run_with_spinner "Deleting TerraMind installation ($lcPathFull)" "rm -rf \"$lcPathFull\""
     else
         echo -e "${CYAN}⏩ TerraMind installation not found at $lcPathFull, skipping...${NC}"
     fi
 
     if [ -d "$tfWorkspace" ]; then
-        echo -e "${YELLOW}🗑️ Deleting Terraform Workspace at $tfWorkspace...${NC}"
-        rm -rf "$tfWorkspace"
+        run_with_spinner "Deleting Terraform Workspace ($tfWorkspace)" "rm -rf \"$tfWorkspace\""
     else
         echo -e "${CYAN}⏩ Terraform Workspace not found at $tfWorkspace, skipping...${NC}"
     fi
@@ -339,19 +359,17 @@ if [ "$depChoice" == "1" ]; then
     fi
 
     if [ ! -d "$lcPathFull/node_modules" ] && [ ! -z "$zipTarget" ]; then
-        echo -e "${YELLOW}📦 Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)...${NC}"
-        unzip -q -o "$zipTarget" -d "$lcPathFull"
+        echo -e "${CYAN}📦 Found node_modules.zip at $zipTarget!${NC}"
+        run_with_spinner "Extracting pre-bundled dependencies (~400MB)" "unzip -q -o \"$zipTarget\" -d \"$lcPathFull\""
     fi
 else
     echo -e "${CYAN}Clean install selected. Skipping pre-bundled package download.${NC}"
 fi
 
 if [ -d "$lcPathFull/node_modules" ]; then
-    echo -e "${GREEN}📦 Found node_modules. Finalizing package setup...${NC}"
-    cd "$lcPathFull" || exit
-    npm install cross-env --no-save --silent
+    run_with_spinner "Finalizing package setup and CLI utilities" "npm install cross-env --no-save --silent" "$lcPathFull"
 else
-    echo -e "${YELLOW}📦 Installing Node dependencies from source (This has been optimized for speed)...${NC}"
+    echo -e "${YELLOW}📦 Installing Node dependencies from source (Takes 30+ mins)...${NC}"
     cd "$lcPathFull" || exit
     npm install --no-audit --no-fund --prefer-offline --loglevel verbose
 fi
@@ -423,6 +441,12 @@ if [ -f "$envSource" ]; then
         echo "MONGO_URI=mongodb://127.0.0.1:27017/TerraMind" >> "$envDest"
     fi
 
+    if grep -q "SCHEDULES_SINGLE_PROCESS=" "$envDest"; then
+        sed -i "s|^SCHEDULES_SINGLE_PROCESS=.*|SCHEDULES_SINGLE_PROCESS=true|g" "$envDest"
+    else
+        echo "SCHEDULES_SINGLE_PROCESS=true" >> "$envDest"
+    fi
+
     if grep -q "HELP_AND_FAQ_URL=" "$envDest"; then
         sed -i "s|^HELP_AND_FAQ_URL=.*|HELP_AND_FAQ_URL=https://www.google.com|g" "$envDest"
     else
@@ -443,8 +467,9 @@ fi
 if [ -d "$lcPathFull/client/dist" ]; then
     echo -e "${GREEN}⚡ Found pre-built frontend (client/dist). Skipping build for faster setup!${NC}"
 else
-    echo -e "${YELLOW}🏗️ Building Frontend (npm run frontend)...${NC}"
-    npm run frontend
+    echo -e "${YELLOW}🏗️ Compiling frontend assets (Vite / React)...${NC}"
+    echo -e "   (Note: standard chunk size & eval notices during minification are normal)"
+    run_with_spinner "Building frontend production bundle" "npm run frontend" "$lcPathFull"
 fi
 
 # 11. Seed Default Agents

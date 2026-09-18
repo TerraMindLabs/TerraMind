@@ -37,14 +37,14 @@ curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/instal
 Once installed, you will find two companion shortcuts in your TerraMind folder:
 
 * **Start the AI Server**:
-  - **Windows**: Double-click `Start-TerraMind.bat`
+  - **Windows**: Double-click `Start-TerraMind.exe` (or the Desktop shortcut / `Start-TerraMind.bat`)
   - **Linux / macOS**: Run `./start-terramind.sh`
   - Open your browser to `http://localhost:3080`
 
 * **Clean Uninstallation**:
-  - **Windows**: Double-click `Uninstall-TerraMind.bat`
+  - **Windows**: Double-click `Uninstall-TerraMind.exe` (or `Uninstall-TerraMind.bat`)
   - **Linux / macOS**: Run `./uninstall-terramind.sh`
-  - Cleanly terminates running processes, removes application files, and optionally cleans global MCP packages and local Ollama models.
+  - Cleanly terminates running processes, removes application files, desktop shortcuts, and optionally cleans global MCP packages and local Ollama models.
 
 ## 📚 Post-Installation Setup
 Because of the Zero-Click Agent Deployment, you do not need to manually create or configure the AI. The installer automatically creates and injects a fully configured 'Terraform DevOps Expert' AI directly into your platform! 

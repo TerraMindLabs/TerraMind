@@ -510,6 +510,14 @@ const startServer = async () => {
       }
       serverReady = true;
       logger.info('Server readiness checks passing.');
+      const appPort = process.env.PORT || 3080;
+      console.log('\n\x1b[32m=======================================================================\x1b[0m');
+      console.log('\x1b[1m\x1b[36m   🎉 TerraMind AI Server is ONLINE and READY!\x1b[0m');
+      console.log('\x1b[32m=======================================================================\x1b[0m');
+      console.log(`\x1b[1m👉 Web Application URL:\x1b[0m \x1b[1m\x1b[33mhttp://localhost:${appPort}\x1b[0m`);
+      console.log('\x1b[90m👉 Leaving this window open keeps the server running.\x1b[0m');
+      console.log('\x1b[90m👉 Press Ctrl+C in this terminal anytime to stop the server.\x1b[0m');
+      console.log('\x1b[32m=======================================================================\x1b[0m\n');
     } catch (initErr) {
       serverReady = false;
       logger.error('Post-listen initialization failed:', initErr);

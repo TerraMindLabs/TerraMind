@@ -16,9 +16,16 @@
   - Eliminates duplicate cloned folders and unused files.
 - [x] **Standalone Uninstaller Shortcuts**:
   - Automatically generates `Uninstall-TerraMind.bat` (Windows) and `uninstall-terramind.sh` (Linux/macOS) in the user's installation directory for one-click clean removal.
+- [x] **Interactive Loading Spinners & Progress Indicators**:
+  - Implemented real-time animated spinners with elapsed seconds for long-running steps: archive extraction, package finalizing, frontend build, and workspace uninstallation deletion.
+- [x] **Eliminated Redis Requirement & Scheduler Error**:
+  - Added `SCHEDULES_SINGLE_PROCESS=true` to `.env` and `.env.example`, allowing process-local in-memory job scheduling for single-replica local installs with zero Redis overhead.
+- [x] **Prominent Server Readiness Banner**:
+  - Added clear, colorful terminal readiness banner in `chat/api/server/index.js` announcing server URL (`http://localhost:3080`) when startup checks pass.
+- [x] **Native Windows `.exe` Launchers with TerraMind Logo**:
+  - Automatically compiles standalone `Start-TerraMind.exe` and `Uninstall-TerraMind.exe` with the embedded `favicon.ico` logo, and generates a branded Desktop shortcut.
 - [x] **Updated Documentation**:
-  - Updated `README.md` with one-liner installation commands and operational guidance.
-  - Comprehensive overhaul of `SETUP_GUIDE.md` covering prerequisites, setup options, zero-click agent activation, test prompts, and troubleshooting.
+  - Updated `README.md` and `SETUP_GUIDE.md` with one-liner installation commands, launcher options, and operational guidance.
 
 ## 🚀 Future Targets
 - [ ] End-to-end installer dry-run testing on fresh machines.

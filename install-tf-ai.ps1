@@ -8,6 +8,35 @@ try {
     # Ignore if the terminal doesn't support programmatic resizing (e.g., Windows Terminal handles this differently)
 }
 
+function Invoke-CommandWithSpinner {
+    param(
+        [string]$Message,
+        [string]$CommandString,
+        [string]$WorkingDir = ""
+    )
+    $spinChars = @('|', '/', '-', '\')
+    $i = 0
+    $start = [System.Diagnostics.Stopwatch]::StartNew()
+    $job = Start-Job -ScriptBlock {
+        param($cmd, $dir)
+        if ($dir) { Set-Location $dir }
+        cmd.exe /c "$cmd" 2>&1 | Out-Null
+    } -ArgumentList $CommandString, $WorkingDir
+
+    while ($job.State -eq 'Running') {
+        $elapsed = [math]::Floor($start.Elapsed.TotalSeconds)
+        $char = $spinChars[$i % $spinChars.Length]
+        Write-Host -NoNewline "`r [*] $Message ($char) [${elapsed}s] " -ForegroundColor Cyan
+        $i++
+        Start-Sleep -Milliseconds 250
+    }
+    $start.Stop()
+    Receive-Job $job | Out-Null
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    $totalSec = [math]::Floor($start.Elapsed.TotalSeconds)
+    Write-Host "`r [OK] $Message (Done in ${totalSec}s)                         " -ForegroundColor Green
+}
+
 Write-Host "===========================================================" -ForegroundColor DarkGray
 Write-Host "  _____                    __  __ _           _            " -ForegroundColor Cyan
 Write-Host " |_   _|__ _ __ _ __ __ _ |  \/  (_)_ __   __| |           " -ForegroundColor Cyan
@@ -70,17 +99,14 @@ if ($action -eq "2") {
     }
 
     if (Test-Path $lcPathFull) {
-        Write-Host "[rm] Deleting TerraMind installation at $lcPathFull (this is optimized for speed)..." -ForegroundColor Yellow
-        # cmd.exe rmdir is significantly faster than PowerShell's Remove-Item for deep node_modules folders
-        cmd.exe /c "rmdir /s /q `"$lcPathFull`"" 2>$null
+        Invoke-CommandWithSpinner -Message "Deleting TerraMind installation ($lcPathFull)" -CommandString "rmdir /s /q `"$lcPathFull`""
         if (Test-Path $lcPathFull) { Remove-Item -Recurse -Force $lcPathFull -ErrorAction SilentlyContinue }
     } else {
         Write-Host "[Skip] TerraMind installation not found at $lcPathFull, skipping..." -ForegroundColor Cyan
     }
 
     if (Test-Path $tfWorkspace) {
-        Write-Host "[rm] Deleting Terraform Workspace at $tfWorkspace..." -ForegroundColor Yellow
-        cmd.exe /c "rmdir /s /q `"$tfWorkspace`"" 2>$null
+        Invoke-CommandWithSpinner -Message "Deleting Terraform Workspace ($tfWorkspace)" -CommandString "rmdir /s /q `"$tfWorkspace`""
         if (Test-Path $tfWorkspace) { Remove-Item -Recurse -Force $tfWorkspace -ErrorAction SilentlyContinue }
     } else {
         Write-Host "[Skip] Terraform Workspace not found at $tfWorkspace, skipping..." -ForegroundColor Cyan
@@ -406,12 +432,11 @@ if ($depChoice -eq "1") {
     }
 
     if (!(Test-Path "$lcPathFull\node_modules") -and ($zipTarget -ne "")) {
-        Write-Host "[pkg] Found node_modules.zip at $zipTarget! Extracting to speed up installation (this might take a minute)..." -ForegroundColor Yellow
-        # Use tar if available (much faster than Expand-Archive for many small files)
+        Write-Host "[pkg] Found node_modules.zip at $zipTarget!" -ForegroundColor Cyan
         if (Get-Command "tar" -ErrorAction SilentlyContinue) {
-            cmd.exe /c "tar -xf `"$zipTarget`" -C `"$lcPathFull`""
+            Invoke-CommandWithSpinner -Message "Extracting pre-bundled dependencies (~400MB)" -CommandString "tar -xf `"$zipTarget`" -C `"$lcPathFull`""
         } else {
-            Expand-Archive -Path $zipTarget -DestinationPath "$lcPathFull" -Force
+            Invoke-CommandWithSpinner -Message "Extracting pre-bundled dependencies (~400MB)" -CommandString "powershell -Command `"Expand-Archive -Path '$zipTarget' -DestinationPath '$lcPathFull' -Force`""
         }
     }
 } else {
@@ -419,11 +444,9 @@ if ($depChoice -eq "1") {
 }
 
 if (Test-Path "$lcPathFull\node_modules") {
-    Write-Host "[pkg] Found node_modules. Finalizing package setup..." -ForegroundColor Green
-    Set-Location -Path $lcPathFull
-    npm install cross-env --no-save --silent
+    Invoke-CommandWithSpinner -Message "Finalizing package setup and CLI utilities" -CommandString "npm install cross-env --no-save --silent" -WorkingDir $lcPathFull
 } else {
-    Write-Host "[pkg] Installing Node dependencies from source (This has been optimized for speed)..." -ForegroundColor Yellow
+    Write-Host "[pkg] Installing Node dependencies from source (Takes 30+ mins)..." -ForegroundColor Yellow
     Set-Location -Path $lcPathFull
     npm install --no-audit --no-fund --prefer-offline --loglevel verbose
 }
@@ -511,6 +534,12 @@ if (Test-Path $envSource) {
         $envContent += "`nMONGO_URI=mongodb://127.0.0.1:27017/TerraMind"
     }
 
+    if ($envContent -match "SCHEDULES_SINGLE_PROCESS=") {
+        $envContent = $envContent -replace ".*SCHEDULES_SINGLE_PROCESS=.*", "SCHEDULES_SINGLE_PROCESS=true"
+    } else {
+        $envContent += "`nSCHEDULES_SINGLE_PROCESS=true"
+    }
+
     if ($envContent -match "HELP_AND_FAQ_URL=") {
         $envContent = $envContent -replace "HELP_AND_FAQ_URL=.*", "HELP_AND_FAQ_URL=https://www.google.com"
     } else {
@@ -535,8 +564,9 @@ if (Test-Path $htmlPath) {
 if (Test-Path "$lcPathFull\client\dist") {
     Write-Host " [?] Found pre-built frontend (client/dist). Skipping build for faster setup!" -ForegroundColor Green
 } else {
-    Write-Host " Building Frontend (npm run frontend)..." -ForegroundColor Yellow
-    npm run frontend
+    Write-Host "`n [bld] Compiling frontend assets (Vite / React)..." -ForegroundColor Yellow
+    Write-Host "       (Note: standard chunk size & eval notices during minification are normal)" -ForegroundColor DarkGray
+    Invoke-CommandWithSpinner -Message "Building frontend production bundle" -CommandString "npm run frontend" -WorkingDir $lcPathFull
 }
 
 # 11. Seed Default Agents
@@ -556,8 +586,11 @@ if (Test-Path "$lcPathFull\seed-agent.js") {
     Write-Warning "Could not find seed-agent.js. Skipping Agent database seeding."
 }
 
-# 12. Create Launch & Uninstall Scripts
+# 12. Create Launch & Uninstall Shortcuts
 Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
+
+$iconPath = Join-Path $lcPathFull "etc\favicon\favicon.ico"
+
 $batPath = Join-Path $basePath "Start-TerraMind.bat"
 $batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnpm run backend`r`npause"
 Set-Content -Path $batPath -Value $batContent -Encoding UTF8
@@ -620,7 +653,11 @@ if /i "%removeModels%"=="y" (
     )
 )
 
+set "desktopDir=%USERPROFILE%\Desktop"
+if exist "%desktopDir%\TerraMind.lnk" del /f /q "%desktopDir%\TerraMind.lnk" >nul 2>&1
 if exist "%~dp0Start-TerraMind.bat" del /f /q "%~dp0Start-TerraMind.bat" >nul 2>&1
+if exist "%~dp0Start-TerraMind.exe" del /f /q "%~dp0Start-TerraMind.exe" >nul 2>&1
+if exist "%~dp0Uninstall-TerraMind.exe" del /f /q "%~dp0Uninstall-TerraMind.exe" >nul 2>&1
 
 echo.
 echo ===========================================================
@@ -631,6 +668,97 @@ pause
 "@
 Set-Content -Path $uninstallerPath -Value $uninstallerContent -Encoding UTF8
 Write-Host "[OK] Created uninstaller script: $uninstallerPath" -ForegroundColor Green
+
+# Native C# Compilation for Start-TerraMind.exe & Uninstall-TerraMind.exe with TerraMind Logo
+$cscPath = Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (!(Test-Path $cscPath)) {
+    $cscPath = Join-Path $env:windir "Microsoft.NET\Framework\v4.0.30319\csc.exe"
+}
+
+if ((Test-Path $cscPath) -and (Test-Path $iconPath)) {
+    try {
+        $csStart = @"
+using System;
+using System.Diagnostics;
+using System.IO;
+
+class Program {
+    static void Main() {
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        string mindDir = Path.Combine(baseDir, "Mind");
+        ProcessStartInfo psi = new ProcessStartInfo();
+        psi.FileName = "cmd.exe";
+        psi.Arguments = "/k title TerraMind AI Server && npm run backend";
+        psi.WorkingDirectory = mindDir;
+        psi.UseShellExecute = true;
+        Process.Start(psi);
+    }
+}
+"@
+        $tempCs = Join-Path $env:TEMP "Start-TerraMind.cs"
+        Set-Content -Path $tempCs -Value $csStart -Encoding UTF8
+        $startExePath = Join-Path $basePath "Start-TerraMind.exe"
+        & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$startExePath" "$tempCs" 2>&1 | Out-Null
+        Remove-Item $tempCs -Force -ErrorAction SilentlyContinue
+
+        if (Test-Path $startExePath) {
+            Write-Host "[OK] Compiled native launcher with TerraMind logo: $startExePath" -ForegroundColor Green
+        }
+
+        $csUninstall = @"
+using System;
+using System.Diagnostics;
+using System.IO;
+
+class Program {
+    static void Main() {
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        string batPath = Path.Combine(baseDir, "Uninstall-TerraMind.bat");
+        ProcessStartInfo psi = new ProcessStartInfo();
+        psi.FileName = "cmd.exe";
+        psi.Arguments = "/c \"" + batPath + "\"";
+        psi.WorkingDirectory = baseDir;
+        psi.UseShellExecute = true;
+        Process.Start(psi);
+    }
+}
+"@
+        $tempCsUn = Join-Path $env:TEMP "Uninstall-TerraMind.cs"
+        Set-Content -Path $tempCsUn -Value $csUninstall -Encoding UTF8
+        $unExePath = Join-Path $basePath "Uninstall-TerraMind.exe"
+        & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$unExePath" "$tempCsUn" 2>&1 | Out-Null
+        Remove-Item $tempCsUn -Force -ErrorAction SilentlyContinue
+
+        if (Test-Path $unExePath) {
+            Write-Host "[OK] Compiled native uninstaller with TerraMind logo: $unExePath" -ForegroundColor Green
+        }
+    } catch {
+        # Fallback to .bat scripts if compilation is restricted
+    }
+}
+
+# Create Desktop Shortcut with TerraMind Logo
+try {
+    $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
+    if ($desktopPath -and (Test-Path $desktopPath)) {
+        $wsh = New-Object -ComObject WScript.Shell
+        $lnk = $wsh.CreateShortcut((Join-Path $desktopPath "TerraMind.lnk"))
+        if (Test-Path (Join-Path $basePath "Start-TerraMind.exe")) {
+            $lnk.TargetPath = Join-Path $basePath "Start-TerraMind.exe"
+        } else {
+            $lnk.TargetPath = Join-Path $basePath "Start-TerraMind.bat"
+        }
+        $lnk.WorkingDirectory = Join-Path $basePath "Mind"
+        if (Test-Path $iconPath) {
+            $lnk.IconLocation = "$iconPath,0"
+        }
+        $lnk.Description = "TerraMind AI Cloud Architect"
+        $lnk.Save()
+        Write-Host "[OK] Created Desktop shortcut with TerraMind Logo: $desktopPath\TerraMind.lnk" -ForegroundColor Green
+    }
+} catch {
+    # Non-fatal
+}
 
 # Optional: Clean up temporary cloned repository if user cloned locally and installed elsewhere
 if (![string]::IsNullOrWhiteSpace($PSScriptRoot) -and (Test-Path (Join-Path $PSScriptRoot ".git")) -and ((Resolve-Path $PSScriptRoot).Path -ne (Resolve-Path $basePath).Path)) {
@@ -656,7 +784,7 @@ if ($LASTEXITCODE -eq 1) {
     Write-Host "`n Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)" -ForegroundColor Cyan
     npm run backend
 } else {
-    Write-Host "`n[>] To start it later, simply double-click Start-TerraMind.bat in your installation folder!" -ForegroundColor Cyan
-    Write-Host "[>] To uninstall it later, simply run Uninstall-TerraMind.bat in your installation folder!" -ForegroundColor Yellow
+    Write-Host "`n[>] To start TerraMind later, double-click Start-TerraMind.exe (or the Desktop shortcut)!" -ForegroundColor Cyan
+    Write-Host "[>] To uninstall TerraMind, simply run Uninstall-TerraMind.exe (or Uninstall-TerraMind.bat)!" -ForegroundColor Yellow
     Pause
 }

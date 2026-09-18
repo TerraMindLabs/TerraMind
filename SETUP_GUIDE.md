@@ -144,7 +144,7 @@ Enter choice (1, 2, or 3) [Default: 2]:
 Once the installation completes, two dedicated launchers are created in your installation folder:
 
 ### Starting the Server
-* **Windows**: Double-click `Start-TerraMind.bat` (or run it from PowerShell/CMD)
+* **Windows**: Double-click `Start-TerraMind.exe` (or the Desktop shortcut / `Start-TerraMind.bat`)
 * **Linux / macOS**: Run `./start-terramind.sh`
 
 This script starts:
@@ -199,7 +199,7 @@ Open a new conversation with the **Terraform DevOps Expert** agent selected and 
 
 If you ever wish to remove TerraMind from your machine, a standalone uninstaller is generated directly inside your installation directory:
 
-* **Windows**: Double-click `Uninstall-TerraMind.bat`
+* **Windows**: Double-click `Uninstall-TerraMind.exe` (or `Uninstall-TerraMind.bat`)
 * **Linux / macOS**: Run `./uninstall-terramind.sh`
 
 ### What the Uninstaller Does:
