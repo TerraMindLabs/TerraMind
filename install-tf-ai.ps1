@@ -581,6 +581,7 @@ if (!(Test-Path "$lcPathFull\seed-agent.js") -and (Test-Path "$bundledChatPath\s
 }
 
 if (Test-Path "$lcPathFull\seed-agent.js") {
+    cmd.exe /c "net start MongoDB" 2>$null
     node seed-agent.js
 } else {
     Write-Warning "Could not find seed-agent.js. Skipping Agent database seeding."
@@ -592,7 +593,7 @@ Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
 $iconPath = Join-Path $lcPathFull "etc\favicon\favicon.ico"
 
 $batPath = Join-Path $basePath "Start-TerraMind.bat"
-$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnpm run backend`r`npause"
+$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnet start MongoDB >nul 2>&1`r`nif exist seed-agent.js node seed-agent.js >nul 2>&1`r`nnpm run backend`r`npause"
 Set-Content -Path $batPath -Value $batContent -Encoding UTF8
 Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
 
@@ -688,7 +689,7 @@ class Program {
         string mindDir = Path.Combine(baseDir, "Mind");
         ProcessStartInfo psi = new ProcessStartInfo();
         psi.FileName = "cmd.exe";
-        psi.Arguments = "/k title TerraMind AI Server && npm run backend";
+        psi.Arguments = "/k title TerraMind AI Server && net start MongoDB >nul 2>&1 && if exist seed-agent.js node seed-agent.js >nul 2>&1 && npm run backend";
         psi.WorkingDirectory = mindDir;
         psi.UseShellExecute = true;
         Process.Start(psi);
