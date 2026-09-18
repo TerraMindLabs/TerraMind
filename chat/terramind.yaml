@@ -6,6 +6,12 @@ interface:
 endpoints:
   agents:
     models: ["gemini-3.5-flash-lite", "gemini-1.5-flash-latest"]
+    capabilities:
+      - "tools"
+      - "actions"
+      - "skills"
+      - "artifacts"
+      - "context"
   google: {}
 modelSpecs:
   enforce: false
@@ -13,7 +19,7 @@ modelSpecs:
   list:
     - name: "terraform-devops-expert"
       label: "Terraform DevOps Expert"
-      description: "Automates Terraform infrastructure creation, validation, and deployment — with built-in self-correction and human approval before any real changes."
+      description: "Principal Cloud Architect that writes modular, secure, and validated Terraform code — with automated project organization, self-correction, and human approval gates."
       iconURL: "/assets/only_logo.png"
       default: true
       preset:
@@ -21,21 +27,21 @@ modelSpecs:
         agent_id: "agent_tf-devops-expert"
     - name: "finops-cost-optimizer"
       label: "FinOps & Cloud Cost Optimizer"
-      description: "Analyzes .tf files, estimates monthly costs, and recommends rightsizing (Spot, Graviton, auto-scaling) — estimates only, no live billing data."
+      description: "Principal Cloud Economist that analyzes IaC, delivers multi-cloud cost comparisons (AWS vs GCP vs Azure), and recommends aggressive rightsizing and Spot/Graviton savings."
       iconURL: "/assets/only_logo.png"
       preset:
         endpoint: "agents"
         agent_id: "agent_finops-cost-optimizer"
     - name: "k8s-gitops-architect"
       label: "Kubernetes & GitOps Platform Engineer"
-      description: "Generates production K8s manifests, Helm charts (values.yaml, templates), and ArgoCD/Flux GitOps rollouts."
+      description: "Principal Kubernetes Platform Architect that designs workload-tailored manifests, production resource sizing, resilient health probes, Helm charts, and GitOps rollouts."
       iconURL: "/assets/only_logo.png"
       preset:
         endpoint: "agents"
         agent_id: "agent_k8s-gitops-architect"
     - name: "cicd-pipeline-engineer"
       label: "CI/CD Pipeline Engineer"
-      description: "Writes automated pipelines (GitHub Actions, GitLab CI) with state locking, automated PR plan comments, and security gates."
+      description: "Principal DevSecOps Engineer that designs multi-stage CI/CD pipelines (GitHub Actions, GitLab CI) with OIDC keyless authentication, security gates, PR plan comments, and state locking."
       iconURL: "/assets/only_logo.png"
       preset:
         endpoint: "agents"

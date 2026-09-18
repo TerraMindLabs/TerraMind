@@ -14,7 +14,33 @@ This repository contains a fully automated deployment stack for TerraMind, power
 *   `install-tf-ai.sh` & `install-tf-ai.ps1`: The interactive one-shot installers for Linux/macOS and Windows.
 *   `chat/terramind.yaml`: The pre-configured engine mapping connecting the AI to the file system and Terraform binary.
 *   `chat/mcp-tf-runner.js`: The custom automation engine that allows the AI to securely run `terraform init`, `fmt`, `validate`, and `tfsec`.
-*   `chat/seed-agent.js`: The database injection script that pre-builds the AI agent natively into MongoDB.
+*   `chat/seed-agent.js`: The database injection script that pre-builds the 4 AI agents and pre-seeds the top 10 DevOps skills into MongoDB.
+
+### 🤖 4 Integrated DevOps Agents & Selective Skill Scoping
+Each agent operates with **selective domain scoping** (`skills_scope: "selected"`), ensuring each expert accesses only the specific blueprints and runbooks relevant to its domain:
+
+1. **🏗️ Terraform DevOps Expert**: Principal Cloud Architect that creates, formats, validates, and provisions modular Terraform code with strict human approval gates.
+   * *Scoped Skills:* `tf-remote-state-backend`, `aws-production-vpc-3tier`, `tf-module-scaffolding`, `vault-secrets-cloud-integration`, `cloud-disaster-recovery-runbook`
+2. **💰 FinOps & Cloud Cost Optimizer**: Principal Cloud Economist providing multi-cloud cost benchmarks (AWS vs GCP vs Azure), Spot/Graviton rightsizing, visual spend charts, and monthly budget impact.
+   * *Scoped Skills:* `finops-multicloud-cost-optimization`, `finops-multicloud-cost-charts`
+3. **☸️ Kubernetes & GitOps Platform Engineer**: Principal Platform Architect tailoring workload-specific K8s manifests, resource QoS, health probes, Helm charts, and ArgoCD/Flux GitOps rollouts.
+   * *Scoped Skills:* `k8s-workload-hardening`, `k8s-zero-trust-network-policy`, `helm-production-chart-scaffolding`, `vault-secrets-cloud-integration`, `cloud-disaster-recovery-runbook`
+4. **🔄 CI/CD Pipeline Engineer**: Principal DevSecOps Engineer creating 5-stage GitHub Actions & GitLab CI pipelines with OIDC keyless authentication, PR plan comments, and state locking.
+   * *Scoped Skills:* `cicd-github-actions-terraform`, `helm-production-chart-scaffolding`, `tf-remote-state-backend`
+
+### 🧠 Top Built-In DevOps Skills (Pre-Seeded)
+TerraMind automatically injects production-grade architecture blueprints and SOP playbooks into MongoDB:
+1. `tf-remote-state-backend`: S3 + DynamoDB / GCS remote state storage, encryption, and zero-downtime migration runbook.
+2. `aws-production-vpc-3tier`: Highly available 3-tier VPC blueprint with subnet CIDR formulas, NAT routing, and EKS tagging.
+3. `tf-module-scaffolding`: Reusable Terraform child/root module scaffolding with semantic variable validation and output contracts.
+4. `k8s-workload-hardening`: Non-root securityContext, CPU/RAM QoS tuning (preventing OOMKilled), graceful termination, and PDB.
+5. `k8s-zero-trust-network-policy`: Namespace default-deny traffic rules with least-privilege ingress/egress microservice policies.
+6. `helm-production-chart-scaffolding`: Production Helm v3 chart layout, label helpers (`_helpers.tpl`), and JSON Schema validation.
+7. `cicd-github-actions-terraform`: Keyless Cloud OIDC authentication, concurrency state locking, and automated PR plan diff comments.
+8. `finops-multicloud-cost-optimization`: Cross-cloud instance equivalence matrix (AWS Graviton vs GCP Tau vs Azure Ampere) and gp2-to-gp3 savings.
+9. `finops-multicloud-cost-charts`: Multi-cloud side-by-side cost comparison tables, ASCII/Markdown spend distribution charts, 3-year TCO projections, and commitment discount models.
+10. `vault-secrets-cloud-integration`: Zero-secret Terraform patterns with AWS Secrets Manager and External Secrets Operator (ESO).
+11. `cloud-disaster-recovery-runbook`: Multi-region failover tiers, cross-region state replication, and Velero cluster backup automation.
 
 ## ⚡ Quick Start (One-Liner Installation)
 You do not need to clone this repository manually. Run the single command below in your terminal, and TerraMind will install directly into your chosen directory with zero dead weight:
