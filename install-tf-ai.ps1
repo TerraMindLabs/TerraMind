@@ -633,6 +633,11 @@ if (Test-Path $envSource) {
         } else {
             $envContent += "`nGEMINI_API_KEY=`"$apiKey`""
         }
+        if ($envContent -match "GOOGLE_KEY=") {
+            $envContent = $envContent -replace ".*GOOGLE_KEY=.*", "GOOGLE_KEY=`"$apiKey`""
+        } else {
+            $envContent += "`nGOOGLE_KEY=`"$apiKey`""
+        }
     }
 
     if ($envContent -match "MONGO_URI=") {
@@ -645,6 +650,12 @@ if (Test-Path $envSource) {
         $envContent = $envContent -replace ".*SCHEDULES_SINGLE_PROCESS=.*", "SCHEDULES_SINGLE_PROCESS=true"
     } else {
         $envContent += "`nSCHEDULES_SINGLE_PROCESS=true"
+    }
+
+    if ($envContent -match "ALLOW_PASSWORD_RESET=") {
+        $envContent = $envContent -replace ".*ALLOW_PASSWORD_RESET=.*", "ALLOW_PASSWORD_RESET=true"
+    } else {
+        $envContent += "`nALLOW_PASSWORD_RESET=true"
     }
 
     if ($envContent -match "HELP_AND_FAQ_URL=") {

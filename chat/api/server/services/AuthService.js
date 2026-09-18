@@ -409,7 +409,7 @@ const registerUser = async (user, additionalData = {}) => {
 
       // Sleep for 1 second
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      return { status: 200, message: genericVerificationMessage };
+      return { status: 409, message: 'An account with this email address already exists. Please log in.' };
     }
 
     // Only the first user in the unscoped, single-tenant deployment bootstraps ADMIN.
@@ -454,6 +454,9 @@ const registerUser = async (user, additionalData = {}) => {
       logger.warn(
         `[registerUser] [Email: ${email}] [Temporary User deleted: ${JSON.stringify(result)}]`,
       );
+    }
+    if (err.code === 11000) {
+      return { status: 409, message: 'An account with this email or username already exists. Please log in.' };
     }
     return { status: 500, message: 'Something went wrong' };
   }

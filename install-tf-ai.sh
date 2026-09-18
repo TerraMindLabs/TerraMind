@@ -471,6 +471,11 @@ if [ -f "$envSource" ]; then
         else
             echo "GEMINI_API_KEY=\"$apiKey\"" >> "$envDest"
         fi
+        if grep -q "GOOGLE_KEY=" "$envDest"; then
+            sed -i "s|.*GOOGLE_KEY=.*|GOOGLE_KEY=\"$apiKey\"|" "$envDest"
+        else
+            echo "GOOGLE_KEY=\"$apiKey\"" >> "$envDest"
+        fi
     fi
 
     if grep -q "MONGO_URI=" "$envDest"; then
@@ -483,6 +488,12 @@ if [ -f "$envSource" ]; then
         sed -i "s|^SCHEDULES_SINGLE_PROCESS=.*|SCHEDULES_SINGLE_PROCESS=true|g" "$envDest"
     else
         echo "SCHEDULES_SINGLE_PROCESS=true" >> "$envDest"
+    fi
+
+    if grep -q "ALLOW_PASSWORD_RESET=" "$envDest"; then
+        sed -i "s|^#\?ALLOW_PASSWORD_RESET=.*|ALLOW_PASSWORD_RESET=true|g" "$envDest"
+    else
+        echo "ALLOW_PASSWORD_RESET=true" >> "$envDest"
     fi
 
     if grep -q "HELP_AND_FAQ_URL=" "$envDest"; then
