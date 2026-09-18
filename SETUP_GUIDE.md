@@ -144,7 +144,7 @@ Enter choice (1, 2, or 3) [Default: 2]:
 Once the installation completes, two dedicated launchers are created in your installation folder:
 
 ### Starting the Server
-* **Windows**: Double-click `Start-TerraMind.exe` (or the Desktop shortcut / `Start-TerraMind.bat`)
+* **Windows**: Double-click `TerraMind.exe` (or the Desktop shortcut / `TerraMind.bat`)
 * **Linux / macOS**: Run `./start-terramind.sh`
 
 This script starts:

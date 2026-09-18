@@ -37,12 +37,12 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/
 Once installed, you will find two companion shortcuts in your TerraMind folder:
 
 * **Start the AI Server**:
-  - **Windows**: Double-click `Start-TerraMind.exe` (or the Desktop shortcut / `Start-TerraMind.bat`)
+  - **Windows**: Double-click `TerraMind.exe` (or the Desktop shortcut / `TerraMind.bat`)
   - **Linux / macOS**: Run `./start-terramind.sh`
   - Open your browser to `http://localhost:3080`
 
 * **Clean Uninstallation**:
-  - **Windows**: Double-click `Uninstall-TerraMind.exe` (or `Uninstall-TerraMind.bat`)
+  - **Windows**: Double-click `Uninstall_TerraMind.exe` (or `Uninstall_TerraMind.bat`)
   - **Linux / macOS**: Run `./uninstall-terramind.sh`
   - Cleanly terminates running processes, removes application files, desktop shortcuts, and optionally cleans global MCP packages and local Ollama models.
 

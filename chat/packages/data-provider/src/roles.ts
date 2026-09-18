@@ -249,7 +249,7 @@ export const roleDefaults = defaultRolesSchema.parse({
         [Permissions.VIEW_ROLES]: false,
       },
       [PermissionTypes.MARKETPLACE]: {
-        [Permissions.USE]: false,
+        [Permissions.USE]: true,
       },
       [PermissionTypes.FILE_SEARCH]: {},
       [PermissionTypes.FILE_CITATIONS]: {},

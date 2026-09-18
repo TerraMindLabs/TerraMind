@@ -5461,7 +5461,7 @@ const roleDefaults = defaultRolesSchema.parse({
 				["VIEW_GROUPS"]: false,
 				["VIEW_ROLES"]: false
 			},
-			["MARKETPLACE"]: { ["USE"]: false },
+			["MARKETPLACE"]: { ["USE"]: true },
 			["FILE_SEARCH"]: {},
 			["FILE_CITATIONS"]: {},
 			["MCP_SERVERS"]: {

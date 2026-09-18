@@ -504,8 +504,44 @@ if (!(Test-Path $tfsecPath)) {
 Write-Host "`n [?] How would you like to install Node.js dependencies?" -ForegroundColor Cyan
 Write-Host "    [1] Fast Install [Default] - Auto-download pre-bundled dependencies (~400MB) from Google Drive (~2 mins)" -ForegroundColor White
 Write-Host "    [2] Clean Install (Recommended) - Build fresh dependencies from source via 'npm install' (Takes 30+ mins)" -ForegroundColor White
-$depChoice = Read-Host "`n => Enter your choice (1 or 2) [Default: 1]"
-if ([string]::IsNullOrWhiteSpace($depChoice)) { $depChoice = "1" }
+
+$depChoice = "1"
+$timeoutSeconds = 30
+$chosen = $false
+
+try {
+    if (-not [System.Console]::IsInputRedirected) {
+        $startTime = [System.DateTime]::Now
+        $lastDisplaySec = -1
+        while (($remaining = $timeoutSeconds - [int]([System.DateTime]::Now - $startTime).TotalSeconds) -ge 0) {
+            if ($remaining -ne $lastDisplaySec) {
+                $lastDisplaySec = $remaining
+                Write-Host -NoNewline "`r => Enter your choice (1 or 2) [Auto-selecting 1 in ${remaining}s]: "
+            }
+            if ([System.Console]::KeyAvailable) {
+                $key = [System.Console]::ReadKey($true)
+                if ($key.Key -eq [System.ConsoleKey]::Enter) {
+                    Write-Host ""
+                    $chosen = $true
+                    break
+                } elseif ($key.KeyChar -eq '1' -or $key.KeyChar -eq '2') {
+                    $depChoice = [string]$key.KeyChar
+                    Write-Host "$depChoice"
+                    $chosen = $true
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if (-not $chosen) {
+            Write-Host "`n[Auto] Timeout reached. Selected Fast Install [1] by default." -ForegroundColor Green
+        }
+    } else {
+        Write-Host " => Non-interactive session detected. Defaulting to Fast Install [1]." -ForegroundColor Cyan
+    }
+} catch {
+    $depChoice = "1"
+}
 
 $scriptPath = $PSScriptRoot
 $zipTarget = ""
@@ -575,6 +611,17 @@ if ($depChoice -eq "1") {
             Invoke-CommandWithSpinner -Message "Extracting pre-bundled dependencies (~400MB)" -CommandString "tar -xf `"$zipTarget`" -C `"$lcPathFull`""
         } else {
             Invoke-CommandWithSpinner -Message "Extracting pre-bundled dependencies (~400MB)" -CommandString "powershell -Command `"Expand-Archive -Path '$zipTarget' -DestinationPath '$lcPathFull' -Force`""
+        }
+    }
+
+    # Delete .zip after successful extraction to save disk space
+    if (Test-Path "$lcPathFull\node_modules") {
+        if ($zipTarget -and (Test-Path $zipTarget)) {
+            Write-Host "[pkg] Cleaning up $zipTarget to free up disk space..." -ForegroundColor Cyan
+            Remove-Item $zipTarget -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path "$lcPathFull\node_modules.zip") {
+            Remove-Item "$lcPathFull\node_modules.zip" -Force -ErrorAction SilentlyContinue
         }
     }
 } else {
@@ -767,12 +814,12 @@ Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
 
 $iconPath = Join-Path $lcPathFull "etc\favicon\favicon.ico"
 
-$batPath = Join-Path $basePath "Start-TerraMind.bat"
+$batPath = Join-Path $basePath "TerraMind.bat"
 $batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnet start MongoDB >nul 2>&1`r`nif exist seed-agent.js node seed-agent.js >nul 2>&1`r`nnpm run backend`r`npause"
 Set-Content -Path $batPath -Value $batContent -Encoding UTF8
 Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
 
-$uninstallerPath = Join-Path $basePath "Uninstall-TerraMind.bat"
+$uninstallerPath = Join-Path $basePath "Uninstall_TerraMind.bat"
 $uninstallerContent = @"
 @echo off
 title TerraMind Uninstaller
@@ -831,8 +878,13 @@ if /i "%removeModels%"=="y" (
 
 set "desktopDir=%USERPROFILE%\Desktop"
 if exist "%desktopDir%\TerraMind.lnk" del /f /q "%desktopDir%\TerraMind.lnk" >nul 2>&1
+if exist "%~dp0TerraMind.bat" del /f /q "%~dp0TerraMind.bat" >nul 2>&1
+if exist "%~dp0TerraMind.exe" del /f /q "%~dp0TerraMind.exe" >nul 2>&1
 if exist "%~dp0Start-TerraMind.bat" del /f /q "%~dp0Start-TerraMind.bat" >nul 2>&1
 if exist "%~dp0Start-TerraMind.exe" del /f /q "%~dp0Start-TerraMind.exe" >nul 2>&1
+if exist "%~dp0Uninstall_TerraMind.bat" del /f /q "%~dp0Uninstall_TerraMind.bat" >nul 2>&1
+if exist "%~dp0Uninstall_TerraMind.exe" del /f /q "%~dp0Uninstall_TerraMind.exe" >nul 2>&1
+if exist "%~dp0Uninstall-TerraMind.bat" del /f /q "%~dp0Uninstall-TerraMind.bat" >nul 2>&1
 if exist "%~dp0Uninstall-TerraMind.exe" del /f /q "%~dp0Uninstall-TerraMind.exe" >nul 2>&1
 
 echo.
@@ -845,7 +897,7 @@ pause
 Set-Content -Path $uninstallerPath -Value $uninstallerContent -Encoding UTF8
 Write-Host "[OK] Created uninstaller script: $uninstallerPath" -ForegroundColor Green
 
-# Native C# Compilation for Start-TerraMind.exe & Uninstall-TerraMind.exe with TerraMind Logo
+# Native C# Compilation for TerraMind.exe & Uninstall_TerraMind.exe with TerraMind Logo
 $cscPath = Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if (!(Test-Path $cscPath)) {
     $cscPath = Join-Path $env:windir "Microsoft.NET\Framework\v4.0.30319\csc.exe"
@@ -871,9 +923,9 @@ class Program {
     }
 }
 "@
-        $tempCs = Join-Path $env:TEMP "Start-TerraMind.cs"
+        $tempCs = Join-Path $env:TEMP "TerraMind.cs"
         Set-Content -Path $tempCs -Value $csStart -Encoding UTF8
-        $startExePath = Join-Path $basePath "Start-TerraMind.exe"
+        $startExePath = Join-Path $basePath "TerraMind.exe"
         & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$startExePath" "$tempCs" 2>&1 | Out-Null
         Remove-Item $tempCs -Force -ErrorAction SilentlyContinue
 
@@ -889,7 +941,7 @@ using System.IO;
 class Program {
     static void Main() {
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        string batPath = Path.Combine(baseDir, "Uninstall-TerraMind.bat");
+        string batPath = Path.Combine(baseDir, "Uninstall_TerraMind.bat");
         ProcessStartInfo psi = new ProcessStartInfo();
         psi.FileName = "cmd.exe";
         psi.Arguments = "/c \"" + batPath + "\"";
@@ -899,9 +951,9 @@ class Program {
     }
 }
 "@
-        $tempCsUn = Join-Path $env:TEMP "Uninstall-TerraMind.cs"
+        $tempCsUn = Join-Path $env:TEMP "Uninstall_TerraMind.cs"
         Set-Content -Path $tempCsUn -Value $csUninstall -Encoding UTF8
-        $unExePath = Join-Path $basePath "Uninstall-TerraMind.exe"
+        $unExePath = Join-Path $basePath "Uninstall_TerraMind.exe"
         & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$unExePath" "$tempCsUn" 2>&1 | Out-Null
         Remove-Item $tempCsUn -Force -ErrorAction SilentlyContinue
 
@@ -919,10 +971,10 @@ try {
     if ($desktopPath -and (Test-Path $desktopPath)) {
         $wsh = New-Object -ComObject WScript.Shell
         $lnk = $wsh.CreateShortcut((Join-Path $desktopPath "TerraMind.lnk"))
-        if (Test-Path (Join-Path $basePath "Start-TerraMind.exe")) {
-            $lnk.TargetPath = Join-Path $basePath "Start-TerraMind.exe"
+        if (Test-Path (Join-Path $basePath "TerraMind.exe")) {
+            $lnk.TargetPath = Join-Path $basePath "TerraMind.exe"
         } else {
-            $lnk.TargetPath = Join-Path $basePath "Start-TerraMind.bat"
+            $lnk.TargetPath = Join-Path $basePath "TerraMind.bat"
         }
         $lnk.WorkingDirectory = Join-Path $basePath "Mind"
         if (Test-Path $iconPath) {
@@ -935,6 +987,10 @@ try {
 } catch {
     # Non-fatal
 }
+
+# Clean up any leftover zip archives across installation folders to free up disk space
+Get-ChildItem -Path $lcPathFull -Filter "*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $basePath -Filter "*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 # Optional: Clean up temporary cloned repository if user cloned locally and installed elsewhere
 if (![string]::IsNullOrWhiteSpace($PSScriptRoot) -and (Test-Path (Join-Path $PSScriptRoot ".git")) -and ((Resolve-Path $PSScriptRoot).Path -ne (Resolve-Path $basePath).Path)) {
@@ -960,7 +1016,7 @@ if ($LASTEXITCODE -eq 1) {
     Write-Host "`n Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)" -ForegroundColor Cyan
     npm run backend
 } else {
-    Write-Host "`n[>] To start TerraMind later, double-click Start-TerraMind.exe (or the Desktop shortcut)!" -ForegroundColor Cyan
-    Write-Host "[>] To uninstall TerraMind, simply run Uninstall-TerraMind.exe (or Uninstall-TerraMind.bat)!" -ForegroundColor Yellow
+    Write-Host "`n[>] To start TerraMind later, double-click TerraMind.exe (or the Desktop shortcut)!" -ForegroundColor Cyan
+    Write-Host "[>] To uninstall TerraMind, simply run Uninstall_TerraMind.exe (or Uninstall_TerraMind.bat)!" -ForegroundColor Yellow
     Pause
 }
