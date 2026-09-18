@@ -199,7 +199,7 @@ Open a new conversation with the **Terraform DevOps Expert** agent selected and 
 
 If you ever wish to remove TerraMind from your machine, a standalone uninstaller is generated directly inside your installation directory:
 
-* **Windows**: Double-click `Uninstall-TerraMind.exe` (or `Uninstall-TerraMind.bat`)
+* **Windows**: Double-click `Uninstall_TerraMind.exe` (or `Uninstall_TerraMind.bat`)
 * **Linux / macOS**: Run `./uninstall-terramind.sh`
 
 ### What the Uninstaller Does:
@@ -209,6 +209,35 @@ If you ever wish to remove TerraMind from your machine, a standalone uninstaller
 4. **Interactive Deep Clean (Optional)**:
    - Asks if you want to uninstall globally installed MCP tools (`@modelcontextprotocol/server-filesystem`, etc.).
    - Asks if you want to delete local Ollama models downloaded during setup.
+
+---
+
+## 👥 Managing Administrators & Users
+
+TerraMind features built-in role-based access control (`ADMIN` and `USER`).
+
+### 1. Default Role Assignment
+* **First Registered Account**: The very first user to register on the web interface is automatically assigned the **`ADMIN`** role.
+* **Subsequent Accounts**: Any account registered subsequently receives the standard **`USER`** role. Both Admins and Users enjoy access to the Agent Marketplace and AI agents.
+
+### 2. User & Admin Management CLI Commands
+All user management operations can be run directly from the `Mind` installation directory:
+
+| Action | Command | Description |
+| :--- | :--- | :--- |
+| **List Users & Roles** | `npm run list-users` | Displays all registered accounts with their ID, email, and role (`ADMIN` / `USER`). |
+| **Change Role / Make Admin** | `npm run set-role <email> ADMIN` | Promotes a user to `ADMIN` (or pass `USER` to demote). Runs interactively if parameters are omitted. |
+| **Shortcut: Make Admin** | `npm run make-admin <email>` | Direct alias to elevate an account to `ADMIN`. |
+| **Create a User** | `npm run create-user` | Interactively creates a new user account without needing web registration. |
+| **Reset Password** | `npm run reset-password` | Interactively resets the password for any user account. |
+| **Ban User** | `npm run ban-user <email> <mins>` | Suspends a user account for a specified duration in minutes. |
+| **Delete User** | `npm run delete-user` | Cleanly removes a user and cascades their conversations, files, and tokens. |
+
+### 3. Registration Security & Access Control
+Inside `Mind/.env`, administrators can lock down access:
+* **`ALLOW_REGISTRATION=false`**: Disables public sign-ups on the login page. New users can only be onboarded manually by an administrator using `npm run create-user`.
+* **`ALLOW_SOCIAL_REGISTRATION=false`**: Prevents automatic registration from OAuth identity providers.
+* **`ALLOW_UNVERIFIED_EMAIL_LOGIN=true`**: Allows logging in immediately without an outbound SMTP email verification service configured.
 
 ---
 

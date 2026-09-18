@@ -9,7 +9,7 @@ const listUsers = async () => {
     await connect();
     const users = await User.find(
       {},
-      'email provider avatar username name createdAt termsAccepted termsAcceptedAt',
+      'email role provider avatar username name createdAt termsAccepted termsAcceptedAt',
     );
 
     console.log('\nUser List:');
@@ -17,6 +17,7 @@ const listUsers = async () => {
     users.forEach((user) => {
       console.log(`ID: ${user._id.toString()}`);
       console.log(`Email: ${user.email}`);
+      console.log(`Role: ${user.role || 'USER'}`);
       console.log(`Username: ${user.username || 'N/A'}`);
       console.log(`Name: ${user.name || 'N/A'}`);
       console.log(`Provider: ${user.provider || 'email'}`);
