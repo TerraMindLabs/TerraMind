@@ -48,4 +48,6 @@ target
 
 # Virtual machine crash logs
 hs_err_pid*
-replay_pid*
+replay_pid*
+Error.md
+vid.md

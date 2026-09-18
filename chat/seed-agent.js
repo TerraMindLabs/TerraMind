@@ -5,6 +5,15 @@ const crypto = require('crypto');
 const uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/TerraMind";
 const client = new MongoClient(uri);
 
+function formatMcpTools(serverNames) {
+  const tools = [];
+  for (const name of serverNames) {
+    tools.push(`sys__server__sys_mcp_${name}`);
+    tools.push(`sys__all__sys_mcp_${name}`);
+  }
+  return tools;
+}
+
 async function run() {
   try {
     await client.connect();
@@ -23,13 +32,13 @@ async function run() {
     const terraformAgent = {
       id: FIXED_AGENT_ID,
       name: "Terraform DevOps Expert",
-      description: "Automates Terraform infrastructure creation, validation, and deployment.",
-      instructions: "You are a DevOps automation expert specializing in Terraform. You have access to three custom tools:\n\n1. `terraform-registry`: Use this to look up providers, read their documentation, and find correct resource syntaxes.\n2. `local-fs`: Use this to read, write, and modify the user's local .tf files inside their workspace.\n3. `tf-runner`: Use this to actually execute `terraform init`, `terraform plan`, `terraform apply`, etc. on their machine.\n\nYour goal is to guide the user from infrastructure request to fully deployed code. Always read the local files first to understand the existing state before making changes.",
+      description: "Automates Terraform infrastructure creation, validation, and deployment — with built-in self-correction and human approval before any real changes.",
+      instructions: "You are a DevOps automation expert specializing in Terraform. You have access to three custom tools:\n\n1. `terraform-registry`: Use this to look up providers, read their documentation, and find correct resource syntaxes.\n2. `local-fs`: Use this to read, write, and modify the user's local .tf files inside their workspace.\n3. `tf-runner`: Use this to execute terraform init, fmt, validate, plan, apply, etc. on their machine.\n\nYour goal is to guide the user from infrastructure request to fully deployed code, safely.\n\nWorkflow for every request:\n1. Always read the local .tf files first to understand the existing state before making changes.\n2. Write or modify Terraform code using best practices — proper naming, variables/outputs where appropriate, no hardcoded secrets.\n3. After writing or modifying files, always run `terraform fmt` and `terraform validate` via tf-runner before presenting the code as final.\n4. If a security scanner (e.g. tfsec) is available, run it and automatically fix any flagged issues, explaining what you changed and why.\n5. Before running `terraform apply` or `terraform destroy`, always run `terraform plan` first, show the user the full plan output, and get their explicit confirmation. Never apply or destroy real infrastructure without this approval step.\n6. After a successful apply, summarize what was deployed and note anything the user should be aware of (cost implications, public exposure, etc.).\n\nNever run `terraform apply` or `terraform destroy` unprompted or as a side effect of another request — these are the only actions that require explicit, unambiguous user approval each time.",
       provider: process.env.AGENT_PROVIDER || "google",
       model: process.env.AGENT_MODEL || "gemini-3.5-flash-lite",
       model_parameters: {},
       mcpServerNames: ["terraform-registry", "local-fs", "tf-runner"],
-      tools: ["terraform-registry", "local-fs", "tf-runner"],
+      tools: formatMcpTools(["terraform-registry", "local-fs", "tf-runner"]),
       is_promoted: true,
       avatar: { filepath: "/assets/only_logo.png" },
       support_contact: { name: "TerraMind" },
@@ -52,6 +61,8 @@ async function run() {
         {
           $set: {
             id: FIXED_AGENT_ID,
+            description: terraformAgent.description,
+            instructions: terraformAgent.instructions,
             provider: terraformAgent.provider,
             model: terraformAgent.model,
             avatar: terraformAgent.avatar,
@@ -138,13 +149,13 @@ async function run() {
     const finopsAgent = {
       id: FINOPS_ID,
       name: "FinOps & Cloud Cost Optimizer",
-      description: "Analyzes .tf files, calculates monthly cost estimates, and recommends rightsizing (Spot, Graviton, auto-scaling).",
-      instructions: "You are a FinOps and cloud cost optimization expert. You have access to two custom tools:\n\n1. `local-fs`: Use this to read the user's local .tf files and understand their infrastructure setup.\n2. `terraform-registry`: Use this to look up provider documentation, resource pricing, and instance specifications.\n\nYour goal is to analyze Terraform infrastructure code, estimate monthly cloud costs, identify over-provisioned resources, and recommend cost-saving strategies such as Spot/Preemptible instances, Graviton/ARM processors, Reserved Instances, and auto-scaling configurations. Always read local files first before making recommendations.",
+      description: "Analyzes .tf files, estimates monthly costs, and recommends rightsizing (Spot, Graviton, auto-scaling) — estimates only, no live billing data.",
+      instructions: "You are a FinOps and cloud cost optimization expert. You have access to two custom tools:\n\n1. `local-fs`: Use this to read the user's local .tf files and understand their infrastructure setup.\n2. `terraform-registry`: Use this to look up provider documentation, resource specifications, and general pricing references.\n\nYour goal is to analyze Terraform infrastructure code, estimate monthly cloud costs, identify over-provisioned resources, and recommend cost-saving strategies such as Spot/Preemptible instances, Graviton/ARM processors, Reserved Instances, and auto-scaling configurations.\n\nAlways read local files first before making recommendations.\n\nWhen presenting cost estimates, always note that figures are approximate: actual billing depends on region, usage patterns, data transfer, and current provider pricing, which this tool does not query live. Recommend the user verify final numbers against their cloud provider's official pricing calculator before committing to any change, especially before applying a recommendation that involves deleting or resizing existing resources.",
       provider: process.env.AGENT_PROVIDER || "google",
       model: process.env.AGENT_MODEL || "gemini-3.5-flash-lite",
       model_parameters: {},
       mcpServerNames: ["local-fs", "terraform-registry"],
-      tools: ["local-fs", "terraform-registry"],
+      tools: formatMcpTools(["local-fs", "terraform-registry"]),
       is_promoted: true,
       avatar: { filepath: "/assets/only_logo.png" },
       support_contact: { name: "TerraMind" },
@@ -161,7 +172,7 @@ async function run() {
       finopsObjectId = existingFinops._id;
       await agentsCollection.updateOne(
         { _id: finopsObjectId },
-        { $set: { id: FINOPS_ID, provider: finopsAgent.provider, model: finopsAgent.model, avatar: finopsAgent.avatar, support_contact: finopsAgent.support_contact, mcpServerNames: finopsAgent.mcpServerNames, tools: finopsAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
+        { $set: { id: FINOPS_ID, description: finopsAgent.description, instructions: finopsAgent.instructions, provider: finopsAgent.provider, model: finopsAgent.model, avatar: finopsAgent.avatar, support_contact: finopsAgent.support_contact, mcpServerNames: finopsAgent.mcpServerNames, tools: finopsAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
       );
     } else {
       const r = await agentsCollection.insertOne(finopsAgent);
@@ -194,7 +205,7 @@ async function run() {
       model: process.env.AGENT_MODEL || "gemini-3.5-flash-lite",
       model_parameters: {},
       mcpServerNames: ["local-fs"],
-      tools: ["local-fs"],
+      tools: formatMcpTools(["local-fs"]),
       is_promoted: true,
       avatar: { filepath: "/assets/only_logo.png" },
       support_contact: { name: "TerraMind" },
@@ -211,7 +222,7 @@ async function run() {
       k8sObjectId = existingK8s._id;
       await agentsCollection.updateOne(
         { _id: k8sObjectId },
-        { $set: { id: K8S_ID, provider: k8sAgent.provider, model: k8sAgent.model, avatar: k8sAgent.avatar, support_contact: k8sAgent.support_contact, mcpServerNames: k8sAgent.mcpServerNames, tools: k8sAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
+        { $set: { id: K8S_ID, description: k8sAgent.description, instructions: k8sAgent.instructions, provider: k8sAgent.provider, model: k8sAgent.model, avatar: k8sAgent.avatar, support_contact: k8sAgent.support_contact, mcpServerNames: k8sAgent.mcpServerNames, tools: k8sAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
       );
     } else {
       const r = await agentsCollection.insertOne(k8sAgent);
@@ -244,7 +255,7 @@ async function run() {
       model: process.env.AGENT_MODEL || "gemini-3.5-flash-lite",
       model_parameters: {},
       mcpServerNames: ["local-fs"],
-      tools: ["local-fs"],
+      tools: formatMcpTools(["local-fs"]),
       is_promoted: true,
       avatar: { filepath: "/assets/only_logo.png" },
       support_contact: { name: "TerraMind" },
@@ -261,7 +272,7 @@ async function run() {
       cicdObjectId = existingCicd._id;
       await agentsCollection.updateOne(
         { _id: cicdObjectId },
-        { $set: { id: CICD_ID, provider: cicdAgent.provider, model: cicdAgent.model, avatar: cicdAgent.avatar, support_contact: cicdAgent.support_contact, mcpServerNames: cicdAgent.mcpServerNames, tools: cicdAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
+        { $set: { id: CICD_ID, description: cicdAgent.description, instructions: cicdAgent.instructions, provider: cicdAgent.provider, model: cicdAgent.model, avatar: cicdAgent.avatar, support_contact: cicdAgent.support_contact, mcpServerNames: cicdAgent.mcpServerNames, tools: cicdAgent.tools, projectIds: ["default", "global"], is_promoted: true, updatedAt: new Date() } }
       );
     } else {
       const r = await agentsCollection.insertOne(cicdAgent);

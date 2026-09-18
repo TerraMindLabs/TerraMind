@@ -13,12 +13,33 @@ modelSpecs:
   list:
     - name: "terraform-devops-expert"
       label: "Terraform DevOps Expert"
-      description: "Automates Terraform infrastructure creation, validation, and deployment."
+      description: "Automates Terraform infrastructure creation, validation, and deployment — with built-in self-correction and human approval before any real changes."
       iconURL: "/assets/only_logo.png"
       default: true
       preset:
         endpoint: "agents"
         agent_id: "agent_tf-devops-expert"
+    - name: "finops-cost-optimizer"
+      label: "FinOps & Cloud Cost Optimizer"
+      description: "Analyzes .tf files, estimates monthly costs, and recommends rightsizing (Spot, Graviton, auto-scaling) — estimates only, no live billing data."
+      iconURL: "/assets/only_logo.png"
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_finops-cost-optimizer"
+    - name: "k8s-gitops-architect"
+      label: "Kubernetes & GitOps Platform Engineer"
+      description: "Generates production K8s manifests, Helm charts (values.yaml, templates), and ArgoCD/Flux GitOps rollouts."
+      iconURL: "/assets/only_logo.png"
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_k8s-gitops-architect"
+    - name: "cicd-pipeline-engineer"
+      label: "CI/CD Pipeline Engineer"
+      description: "Writes automated pipelines (GitHub Actions, GitLab CI) with state locking, automated PR plan comments, and security gates."
+      iconURL: "/assets/only_logo.png"
+      preset:
+        endpoint: "agents"
+        agent_id: "agent_cicd-pipeline-engineer"
 mcpServers:
   terraform-registry:
     type: stdio
