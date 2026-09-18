@@ -77,6 +77,91 @@ ensure_mongodb() {
     return 1
 }
 
+ensure_terraform() {
+    if command -v terraform &> /dev/null; then
+        local tfVer=$(terraform version 2>/dev/null | head -n 1)
+        echo -e "${GREEN}✅ Found Terraform CLI: ${tfVer}${NC}"
+        return 0
+    fi
+
+    echo -e "\n${YELLOW}⚙️ Terraform CLI is not installed. Attempting automatic installation...${NC}"
+
+    local arch="amd64"
+    case $(uname -m) in
+        x86_64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        armv7l) arch="arm" ;;
+    esac
+
+    # 1. Fast official HashiCorp standalone binary installation (Zero repo/apt dependencies)
+    local tfVer="1.10.5"
+    local tfZipUrl="https://releases.hashicorp.com/terraform/${tfVer}/terraform_${tfVer}_linux_${arch}.zip"
+    local tempDir=$(mktemp -d 2>/dev/null || echo "/tmp/tf_install_$$")
+    mkdir -p "$tempDir"
+
+    if curl -fsSL "$tfZipUrl" -o "$tempDir/terraform.zip" 2>/dev/null; then
+        if command -v unzip &> /dev/null; then
+            unzip -q -o "$tempDir/terraform.zip" -d "$tempDir" 2>/dev/null
+        elif command -v python3 &> /dev/null; then
+            python3 -c "import zipfile; zipfile.ZipFile('$tempDir/terraform.zip').extractall('$tempDir')" 2>/dev/null
+        elif command -v busybox &> /dev/null; then
+            busybox unzip "$tempDir/terraform.zip" -d "$tempDir" 2>/dev/null
+        fi
+
+        if [ -f "$tempDir/terraform" ]; then
+            chmod +x "$tempDir/terraform"
+            if [ -w /usr/local/bin ]; then
+                mv "$tempDir/terraform" /usr/local/bin/
+            elif command -v sudo &> /dev/null; then
+                sudo mv "$tempDir/terraform" /usr/local/bin/ 2>/dev/null || true
+            fi
+            if [ ! -f /usr/local/bin/terraform ] && [ -f "$tempDir/terraform" ]; then
+                mkdir -p "$HOME/.local/bin"
+                mv "$tempDir/terraform" "$HOME/.local/bin/"
+                export PATH="$HOME/.local/bin:$PATH"
+            fi
+            rm -rf "$tempDir"
+        fi
+    fi
+
+    if command -v terraform &> /dev/null; then
+        local installedVer=$(terraform version 2>/dev/null | head -n 1)
+        echo -e "${GREEN}✅ Terraform CLI installed successfully: ${installedVer}${NC}"
+        return 0
+    fi
+
+    # 2. Package manager fallback (apt-get)
+    if command -v apt-get &> /dev/null; then
+        echo -e "${CYAN}Attempting Terraform CLI installation via apt...${NC}"
+        local sudoCmd=""
+        if [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null; then
+            sudoCmd="sudo"
+        fi
+        $sudoCmd apt-get update -qq 2>/dev/null || true
+        $sudoCmd apt-get install -y -qq gnupg software-properties-common wget curl unzip 2>/dev/null || true
+        wget -O- https://apt.releases.hashicorp.com/gpg 2>/dev/null | gpg --dearmor 2>/dev/null | $sudoCmd tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null || true
+        local codename=$(lsb_release -cs 2>/dev/null || echo "jammy")
+        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $codename main" | $sudoCmd tee /etc/apt/sources.list.d/hashicorp.list > /dev/null || true
+        $sudoCmd apt-get update -qq 2>/dev/null || true
+        $sudoCmd apt-get install -y -qq terraform 2>/dev/null || true
+    fi
+
+    # 3. Brew fallback
+    if ! command -v terraform &> /dev/null && command -v brew &> /dev/null; then
+        brew install terraform 2>/dev/null || true
+    fi
+
+    if command -v terraform &> /dev/null; then
+        local installedVer=$(terraform version 2>/dev/null | head -n 1)
+        echo -e "${GREEN}✅ Terraform CLI installed successfully: ${installedVer}${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}⚠️ Could not automatically install Terraform CLI.${NC}"
+    echo -e "   Please install Terraform manually: https://developer.hashicorp.com/terraform/downloads"
+    exit 1
+}
+
 echo ""
 echo -e "${WHITE}Welcome to TerraMind (TF-AI-Gen) Setup${NC}"
 echo ""
@@ -270,12 +355,7 @@ fi
 
 ensure_mongodb || true
 
-if ! command -v terraform &> /dev/null; then
-    echo -e "${YELLOW}⚙️ Terraform is not installed.${NC}"
-    echo -e "${RED}Please install Terraform CLI (https://developer.hashicorp.com/terraform/downloads) first!${NC}"
-    echo "For Ubuntu/Debian: sudo apt-get update && sudo apt-get install -y gnupg software-properties-common && wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null && echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com \$(lsb_release -cs) main\" | sudo tee /etc/apt/sources.list.d/hashicorp.list && sudo apt update && sudo apt-get install terraform"
-    exit 1
-fi
+ensure_terraform
 
 # 3. Check for Ollama & Download Local AI Models
 if [ ${#models[@]} -eq 0 ]; then
@@ -510,6 +590,17 @@ if [ -f "$htmlPath" ]; then
     sed -i 's/<title>LibreChat<\/title>/<title>TerraMind<\/title>/g' "$htmlPath"
     sed -i 's/content="LibreChat"/content="TerraMind"/g' "$htmlPath"
     echo -e "${GREEN}✅ Updated index.html with TerraMind title.${NC}"
+fi
+
+# 9b. Deploy TerraMind Logo Assets
+logoSrc="$lcPathFull/etc/logo/white_trans.png.png"
+if [ -f "$logoSrc" ]; then
+    mkdir -p "$lcPathFull/client/public/assets" "$lcPathFull/client/dist/assets"
+    cp "$logoSrc" "$lcPathFull/client/public/assets/white_trans.png"
+    cp "$logoSrc" "$lcPathFull/client/public/assets/terramind-logo.png"
+    cp "$logoSrc" "$lcPathFull/client/dist/assets/white_trans.png"
+    cp "$logoSrc" "$lcPathFull/client/dist/assets/terramind-logo.png"
+    echo -e "${GREEN}✅ Deployed TerraMind branding logos to client assets.${NC}"
 fi
 
 # 10. Build Frontend

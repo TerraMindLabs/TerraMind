@@ -381,17 +381,41 @@ if (!(Get-Command "npm" -ErrorAction SilentlyContinue)) {
 Ensure-MongoDB | Out-Null
 
 if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
-    Write-Host "[cfg] Terraform is not installed. Attempting automatic installation via winget..." -ForegroundColor Yellow
+    Write-Host "[cfg] Terraform is not installed. Attempting automatic installation..." -ForegroundColor Yellow
+    $tfInstalled = $false
     if (Get-Command "winget" -ErrorAction SilentlyContinue) {
-        winget install Hashicorp.Terraform --accept-package-agreements --accept-source-agreements
+        Write-Host " [pkg] Installing HashiCorp Terraform via winget..." -ForegroundColor Cyan
+        winget install Hashicorp.Terraform --accept-package-agreements --accept-source-agreements --silent
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        if (!(Get-Command "terraform" -ErrorAction SilentlyContinue)) {
-            Write-Warning "Terraform was installed but may require a terminal restart to be fully recognized."
+        if (Get-Command "terraform" -ErrorAction SilentlyContinue) { $tfInstalled = $true }
+    }
+    
+    if (-not $tfInstalled) {
+        try {
+            Write-Host " [pkg] Downloading official HashiCorp Terraform binary (~25MB)..." -ForegroundColor Cyan
+            $tfVer = "1.10.5"
+            $tfZip = Join-Path $env:TEMP "terraform_${tfVer}_windows_amd64.zip"
+            $tfTargetDir = "$basePath\bin"
+            if (!(Test-Path $tfTargetDir)) { New-Item -ItemType Directory -Force -Path $tfTargetDir | Out-Null }
+            Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/${tfVer}/terraform_${tfVer}_windows_amd64.zip" -OutFile $tfZip -UseBasicParsing
+            Expand-Archive -Path $tfZip -DestinationPath $tfTargetDir -Force
+            Remove-Item $tfZip -Force -ErrorAction SilentlyContinue
+            if (Test-Path "$tfTargetDir\terraform.exe") {
+                $env:Path = "$tfTargetDir;" + $env:Path
+                $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+                if ($userPath -notlike "*$tfTargetDir*") {
+                    [System.Environment]::SetEnvironmentVariable("Path", "$tfTargetDir;$userPath", "User")
+                }
+                $tfInstalled = $true
+                Write-Host " [OK] Terraform CLI installed successfully to $tfTargetDir\terraform.exe!" -ForegroundColor Green
+            }
+        } catch {
+            Write-Warning "Could not automatically download Terraform: $_"
         }
-    } else {
-        Write-Error "Terraform is not installed and winget is unavailable. Please install Terraform CLI (https://developer.hashicorp.com/terraform/downloads) first!"
-        Pause
-        return
+    }
+
+    if (-not $tfInstalled) {
+        Write-Warning "Terraform is not installed and automated setup failed. Please install Terraform CLI (https://developer.hashicorp.com/terraform/downloads) manually."
     }
 }
 
@@ -676,6 +700,18 @@ if (Test-Path $htmlPath) {
     $htmlContent = $htmlContent -replace "content=`"LibreChat`"", "content=`"TerraMind`""
     Set-Content -Path $htmlPath -Value $htmlContent -Encoding UTF8
     Write-Host "[OK] Updated index.html with TerraMind title." -ForegroundColor Green
+}
+
+# 9b. Deploy TerraMind Logo Assets
+$logoSrc = "$lcPathFull\etc\logo\white_trans.png.png"
+if (Test-Path $logoSrc) {
+    New-Item -ItemType Directory -Force -Path "$lcPathFull\client\public\assets" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$lcPathFull\client\dist\assets" | Out-Null
+    Copy-Item $logoSrc "$lcPathFull\client\public\assets\white_trans.png" -Force
+    Copy-Item $logoSrc "$lcPathFull\client\public\assets\terramind-logo.png" -Force
+    Copy-Item $logoSrc "$lcPathFull\client\dist\assets\white_trans.png" -Force
+    Copy-Item $logoSrc "$lcPathFull\client\dist\assets\terramind-logo.png" -Force
+    Write-Host "[OK] Deployed TerraMind branding logos to client assets." -ForegroundColor Green
 }
 
 # 10. Build Frontend
