@@ -46,6 +46,25 @@ Once installed, you will find two companion shortcuts in your TerraMind folder:
   - **Linux / macOS**: Run `./uninstall-terramind.sh`
   - Cleanly terminates running processes, removes application files, desktop shortcuts, and optionally cleans global MCP packages and local Ollama models.
 
+---
+
+## 👥 Managing Administrators & Users
+
+TerraMind includes built-in role-based access control with **`ADMIN`** and **`USER`** tiers:
+
+* **Automatic Admin Elevation**: The very first user account registered on the web app (`http://localhost:3080`) is automatically granted **`ADMIN`** status.
+* **Subsequent Users**: All subsequent accounts are assigned the standard **`USER`** role. Both Admins and Users have access to the Agent Marketplace and AI models.
+* **CLI Management Utilities** (run from your installation's `Mind/` directory):
+  * **List all users and roles**: `npm run list-users`
+  * **Promote to Admin**: `npm run make-admin <email>` *(or `npm run set-role <email> <ADMIN|USER>`)*
+  * **Create accounts directly**: `npm run create-user`
+  * **Reset passwords**: `npm run reset-password`
+  * **Suspend or delete accounts**: `npm run ban-user <email> <mins>` / `npm run delete-user`
+* **Locking Down Registration**:
+  * Edit `Mind/.env` and set `ALLOW_REGISTRATION=false` to disable public sign-ups, restricting access strictly to accounts created by an administrator.
+
+---
+
 ## 📚 Post-Installation Setup
 Because of the Zero-Click Agent Deployment, you do not need to manually create or configure the AI. The installer automatically creates and injects a fully configured 'Terraform DevOps Expert' AI directly into your platform! 
 
