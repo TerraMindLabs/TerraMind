@@ -3,9 +3,9 @@
 
 # Log file
 *.log
-
-# BlueJ files
-*.ctxt
+logs/
+*.pid
+*.seed
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
@@ -18,9 +18,34 @@
 *.zip
 *.tar.gz
 *.rar
-target.md
+node_modules.zip
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Compiled Frontend / Builds
+dist/
+**/dist/
+build/
+.turbo/
+
+# Environment Variables & Secrets
+.env
+**/.env
+!**/.env.example
+!**/.env.test.example
+
+# Local Terraform Working Dirs & Binaries
+Terraform/
+Mind/
+tfsec
+tfsec.exe
+
+# Target files
+target.md
 target
+
+# Virtual machine crash logs
+hs_err_pid*
+replay_pid*
