@@ -965,7 +965,11 @@ export async function validateAgentModel(
     };
   }
 
-  const availableModels = modelsConfig[resolveModelCatalogKey(endpoint, modelsConfig)];
+  const catalogKey = resolveModelCatalogKey(endpoint, modelsConfig);
+  const availableModels =
+    modelsConfig[catalogKey] ??
+    modelsConfig[endpoint?.toLowerCase() ?? ''] ??
+    modelsConfig[endpoint ?? ''];
   if (!availableModels) {
     return {
       isValid: false,

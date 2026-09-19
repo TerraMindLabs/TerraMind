@@ -107,6 +107,10 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
       const name = normalizeEndpointName(configName);
       endpointsMap[name] = endpoint;
       modelsConfig[name] = [];
+      if (configName && configName !== name) {
+        endpointsMap[configName] = endpoint;
+        modelsConfig[configName] = modelsConfig[name];
+      }
 
       const resolvedApiKey = resolveConfigSecret(apiKey) ?? '';
       const resolvedBaseURL = extractEnvVariable(baseURL);
@@ -268,7 +272,13 @@ export function createLoadConfigModels(deps: LoadConfigModelsDeps) {
         const defaults = (endpoint.models?.default ?? []).map((m) =>
           typeof m === 'string' ? m : m.name,
         );
-        modelsConfig[name] = !modelData?.length ? defaults : modelData;
+        const resolvedModels = !modelData?.length
+          ? defaults
+          : Array.from(new Set([...defaults, ...modelData]));
+        modelsConfig[name] = resolvedModels;
+        if (endpoint.name && endpoint.name !== name) {
+          modelsConfig[endpoint.name] = resolvedModels;
+        }
       }
 
       /** A shared fetch caches token config under one endpoint's tokenKey;

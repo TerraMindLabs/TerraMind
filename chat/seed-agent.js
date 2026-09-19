@@ -737,12 +737,12 @@ async function run() {
 
     // Resolve target provider and model
     let targetProvider = process.env.AGENT_PROVIDER || "google";
-    if (targetProvider.toLowerCase() === "custom") {
-      targetProvider = "Ollama";
+    if (targetProvider.toLowerCase() === "custom" || targetProvider.toLowerCase() === "ollama") {
+      targetProvider = "ollama";
     }
     let targetModel = process.env.AGENT_MODEL;
     if (!targetModel) {
-      if (targetProvider === "Ollama") {
+      if (targetProvider === "ollama") {
         targetModel = "qwen2.5-coder:7b";
       } else if (targetProvider === "openAI") {
         targetModel = "gpt-4o-mini";
@@ -754,14 +754,14 @@ async function run() {
     }
     console.log(`[MongoDB] Configuring agents with provider: '${targetProvider}', model: '${targetModel}'`);
 
-    // Automatically heal any legacy 'custom' provider records in database
+    // Automatically heal any legacy 'custom' or 'Ollama' provider records in database
     await agentsCollection.updateMany(
-      { provider: "custom" },
-      { $set: { provider: "Ollama" } }
+      { provider: { $in: ["custom", "Ollama"] } },
+      { $set: { provider: "ollama" } }
     );
     const convosCollection = database.collection("conversations");
     await convosCollection.updateMany(
-      { endpoint: "custom" },
+      { endpoint: { $in: ["custom", "Ollama"] } },
       { $set: { endpoint: "agents" } }
     );
 
@@ -783,6 +783,8 @@ async function run() {
               description: s.description,
               body: s.body,
               is_promoted: true,
+              source: "deployment",
+              deployment: true,
               projectIds: ["default", "global"],
               updatedAt: new Date()
             }
@@ -795,6 +797,8 @@ async function run() {
           description: s.description,
           body: s.body,
           is_promoted: true,
+          source: "deployment",
+          deployment: true,
           projectIds: ["default", "global"],
           author: primaryUser,
           createdAt: new Date(),
@@ -843,6 +847,10 @@ async function run() {
         await col.insertMany(aclEntries);
       }
     }
+    await skillsCol.updateMany(
+      {},
+      { $set: { source: "deployment", deployment: true, is_promoted: true } }
+    );
     console.log(`[MongoDB] Successfully seeded and synchronized ${SKILLS.length} DevOps skills with ACL entries.`);
 
     // ─── 2. Terraform DevOps Expert ──────────────────────────────────────────

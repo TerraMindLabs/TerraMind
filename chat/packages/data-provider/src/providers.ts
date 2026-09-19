@@ -84,6 +84,9 @@ const providerAliases: Record<string, ProviderId> = {
 
 const modelCatalogAliases: Partial<Record<string, string>> = {
   [Providers.VERTEXAI]: EModelEndpoint.google,
+  Ollama: 'ollama',
+  ollama: 'ollama',
+  custom: 'ollama',
 };
 
 const normalize = (input: string): string => input.toLowerCase().replace(/[\s._-]/g, '');
@@ -111,5 +114,16 @@ export function resolveModelCatalogKey<T>(
   catalogs?: Partial<Record<string, T>>,
 ): string {
   const key = provider ?? '';
-  return catalogs?.[key] != null ? key : (modelCatalogAliases[key] ?? key);
+  if (catalogs?.[key] != null) {
+    return key;
+  }
+  const lower = key.toLowerCase();
+  if (catalogs?.[lower] != null) {
+    return lower;
+  }
+  const alias = modelCatalogAliases[key] ?? modelCatalogAliases[lower];
+  if (alias && catalogs?.[alias] != null) {
+    return alias;
+  }
+  return alias ?? key;
 }

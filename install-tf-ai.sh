@@ -495,7 +495,7 @@ ensure_terraform
 
 # 3. Check for Ollama & Download Local AI Models
 if [ ${#models[@]} -gt 0 ]; then
-    export AGENT_PROVIDER="Ollama"
+    export AGENT_PROVIDER="ollama"
     defaultModel="${models[0]}"
     for m in "${models[@]}"; do
         if [[ "$m" == "qwen2.5-coder:7b"* ]]; then

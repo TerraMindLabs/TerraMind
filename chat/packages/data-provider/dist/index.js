@@ -6057,7 +6057,7 @@ const providerAliases = {
 	mistralai: "mistral",
 	togetherai: "together"
 };
-const modelCatalogAliases = { ["vertexai"]: "google" };
+const modelCatalogAliases = { ["vertexai"]: "google", Ollama: "ollama", ollama: "ollama", custom: "ollama" };
 const normalize = (input) => input.toLowerCase().replace(/[\s._-]/g, "");
 const providerByNormalizedId = Object.values(ProviderId).reduce((acc, id) => {
 	acc[normalize(id)] = id;
@@ -6072,7 +6072,12 @@ function resolveProviderId(input) {
 /** Resolves a runtime provider to its model catalog, using a native alias only when needed. */
 function resolveModelCatalogKey(provider, catalogs) {
 	const key = provider ?? "";
-	return catalogs?.[key] != null ? key : modelCatalogAliases[key] ?? key;
+	if (catalogs?.[key] != null) return key;
+	const lower = key.toLowerCase();
+	if (catalogs?.[lower] != null) return lower;
+	const alias = modelCatalogAliases[key] ?? modelCatalogAliases[lower];
+	if (alias && catalogs?.[alias] != null) return alias;
+	return alias ?? key;
 }
 //#endregion
 //#region src/svg.ts

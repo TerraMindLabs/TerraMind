@@ -3,9 +3,36 @@ cache: true
 interface:
   marketplace:
     use: true
+  skills:
+    use: true
+    defaultActiveOnShare: true
 endpoints:
   agents:
-    models: ["gemini-3.5-flash-lite", "gemini-1.5-flash-latest"]
+    models:
+      - "gemini-3.5-flash-lite"
+      - "gemini-1.5-flash-latest"
+      - "gemini-2.0-flash"
+      - "gpt-4o"
+      - "gpt-4o-mini"
+      - "claude-3-5-sonnet-20241022"
+      - "qwen2.5-coder:7b"
+      - "qwen2.5-coder:14b"
+      - "qwen2.5-coder:32b"
+      - "deepseek-coder-v2:16b"
+      - "codellama:7b"
+      - "codellama:13b"
+      - "codellama:34b"
+      - "mistral-nemo:12b"
+      - "mistral-small:24b"
+      - "llama3.1:8b"
+      - "llama3.1:70b"
+      - "llama3.2:1b"
+      - "llama3.2:3b"
+      - "llama3.3:70b"
+      - "starcoder2:7b"
+      - "starcoder2:15b"
+      - "sqlcoder:7b"
+      - "sqlcoder:15b"
     capabilities:
       - "tools"
       - "actions"
@@ -13,6 +40,37 @@ endpoints:
       - "artifacts"
       - "context"
   google: {}
+  openAI: {}
+  anthropic: {}
+  custom:
+    - name: "Ollama"
+      apiKey: "ollama"
+      baseURL: "http://127.0.0.1:11434/v1"
+      models:
+        default:
+          - "qwen2.5-coder:7b"
+          - "qwen2.5-coder:14b"
+          - "qwen2.5-coder:32b"
+          - "deepseek-coder-v2:16b"
+          - "codellama:7b"
+          - "codellama:13b"
+          - "codellama:34b"
+          - "mistral-nemo:12b"
+          - "mistral-small:24b"
+          - "llama3.1:8b"
+          - "llama3.1:70b"
+          - "llama3.2:1b"
+          - "llama3.2:3b"
+          - "llama3.3:70b"
+          - "starcoder2:7b"
+          - "starcoder2:15b"
+          - "sqlcoder:7b"
+          - "sqlcoder:15b"
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: false
+      displayInFilter: true
 modelSpecs:
   enforce: false
   prioritize: true

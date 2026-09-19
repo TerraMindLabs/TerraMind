@@ -1,4 +1,4 @@
-﻿# Attempt to resize the console window for a better installer experience
+# Attempt to resize the console window for a better installer experience
 try {
     $size = $Host.UI.RawUI.WindowSize
     $size.Width = 150
@@ -523,7 +523,7 @@ if ($models.Count -eq 0) {
         $env:AGENT_MODEL = "gemini-3.5-flash-lite"
     }
 } else {
-    $env:AGENT_PROVIDER = "Ollama"
+    $env:AGENT_PROVIDER = "ollama"
     $env:AGENT_MODEL = $models[0]
 
     if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
