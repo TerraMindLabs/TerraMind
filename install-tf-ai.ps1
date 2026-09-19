@@ -289,12 +289,12 @@ $lcPathFull = Join-Path $basePath "Mind"
 Write-Host "`n======================================================================" -ForegroundColor Cyan
 Write-Host "                🤖 Select your AI Engine Setup                       " -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host " 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]" -ForegroundColor White
+Write-Host " 1) Local AI via Ollama (100% Offline / Private / Free)" -ForegroundColor White
 Write-Host " 2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)" -ForegroundColor White
-Write-Host " 3) Hybrid (Both Local Ollama + Cloud AI Models)" -ForegroundColor White
+Write-Host " 3) Hybrid (Both Local Ollama + Cloud AI Models) [Recommended]" -ForegroundColor White
 Write-Host " 4) Skip for now (Configure models & keys manually later)" -ForegroundColor White
-$aiChoice = Read-Host "`n => Enter your choice (1-4) [Default: 1]"
-if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "1" }
+$aiChoice = Read-Host "`n => Enter your choice (1-4) [Default: 3]"
+if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "3" }
 
 $geminiApiKey = ""
 $openaiApiKey = ""
@@ -383,56 +383,56 @@ if ($aiChoice -eq "1" -or $aiChoice -eq "3") {
     Ensure-OllamaRunning
 
     Write-Host "`n======================================================================" -ForegroundColor Cyan
-    Write-Host "          Select Local Ollama Models (Categorized by RAM)            " -ForegroundColor Cyan
+    Write-Host "          Select Local Ollama Models (Sorted by RAM Tier)            " -ForegroundColor Cyan
     Write-Host "          Model Library: https://ollama.com/library                   " -ForegroundColor DarkGray
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "  👉 TIP: You can choose multiple options separated by commas (e.g. 7,8 or 2,5)" -ForegroundColor Yellow
+    Write-Host "  👉 TIP: Enter a single choice or comma-separated numbers (e.g. 5 or 4,7)" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  --- Recommended Hardware Bundles ---" -ForegroundColor DarkGray
-    Write-Host "  [1] Best / Heavy Tier   (32GB+ RAM)  👉 qwen2.5-coder:14b, mistral-nemo" -ForegroundColor White
-    Write-Host "  [2] High Tier           (16GB RAM)   👉 qwen2.5-coder:7b, llama3.1" -ForegroundColor White
-    Write-Host "  [3] Mid Tier            (12GB RAM)   👉 qwen2.5-coder:7b" -ForegroundColor White
-    Write-Host "  [4] Low Tier / Laptop   (8GB RAM)    👉 qwen2.5-coder:3b, llama3.2" -ForegroundColor White
+    Write-Host "  🟢 LOW-END / LAPTOP (4GB - 8GB RAM):" -ForegroundColor Green
+    Write-Host "  [1] qwen2.5-coder:1.5b          (~1GB VRAM - Ultra-fast, runs anywhere)" -ForegroundColor Green
+    Write-Host "  [2] qwen2.5-coder:3b            (~2GB VRAM - Lightweight code assistant)" -ForegroundColor Green
+    Write-Host "  [3] llama3.2                    (~2.2GB VRAM - Meta 3B general & DevOps)" -ForegroundColor Green
+    Write-Host "  [4] Low-End Bundle              👉 qwen2.5-coder:3b + llama3.2" -ForegroundColor Green
     Write-Host ""
-    Write-Host "  --- Individual Model Options ---" -ForegroundColor DarkGray
-    Write-Host "  [5] qwen2.5-coder:1.5b  (Ultra-lightweight ~1GB RAM - runs on almost any PC)" -ForegroundColor White
-    Write-Host "  [6] qwen2.5-coder:3b    (Fast & lightweight coding ~2GB RAM)" -ForegroundColor White
-    Write-Host "  [7] llama3.2            (Meta fast 3B general & DevOps ~2.2GB RAM)" -ForegroundColor White
-    Write-Host "  [8] qwen2.5-coder:7b    (Recommended DevOps / Terraform specialist ~4.5GB RAM)" -ForegroundColor White
-    Write-Host "  [9] llama3.1            (Meta flagship 8B open model ~4.7GB RAM)" -ForegroundColor White
-    Write-Host "  [10] mistral-nemo       (Mistral 12B high precision reasoning ~7GB RAM)" -ForegroundColor White
-    Write-Host "  [11] qwen2.5-coder:14b  (Enterprise coding powerhouse ~9GB RAM)" -ForegroundColor White
-    Write-Host "  [12] codellama:7b       (Meta dedicated code model ~4GB RAM)" -ForegroundColor White
-    Write-Host "  [13] deepseek-coder:6.7b(DeepSeek dedicated code model ~4GB RAM)" -ForegroundColor White
-    Write-Host "  [14] Custom model name  (Enter exact model tag from ollama.com/library)" -ForegroundColor White
-    Write-Host "  [15] Skip pulling models now (I will run 'ollama pull <model>' later)" -ForegroundColor DarkGray
-    $modelChoice = Read-Host "`n => Enter choice(s) [Default: 8 (qwen2.5-coder:7b)]"
-    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "8" }
+    Write-Host "  🟡 MID-RANGE / WORKSTATION (12GB - 16GB RAM):" -ForegroundColor Yellow
+    Write-Host "  [5] qwen2.5-coder:7b            (~4.5GB - ⭐ Recommended for Terraform/IaC)" -ForegroundColor Yellow
+    Write-Host "  [6] llama3.1                    (~4.7GB - Meta flagship 8B generalist)" -ForegroundColor Yellow
+    Write-Host "  [7] codellama:7b                (~4GB - Meta specialized code model)" -ForegroundColor Yellow
+    Write-Host "  [8] Mid-Range Bundle            👉 qwen2.5-coder:7b + llama3.1" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  🔴 HIGH-END / POWERHOUSE (32GB+ RAM / Dedicated GPU):" -ForegroundColor Red
+    Write-Host "  [9] qwen2.5-coder:14b           (~9GB - Enterprise full-stack coding)" -ForegroundColor Red
+    Write-Host "  [10] mistral-nemo               (~7GB - High-precision 128k context)" -ForegroundColor Red
+    Write-Host "  [11] High-End Bundle            👉 qwen2.5-coder:14b + mistral-nemo" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  ⚪ OTHER OPTIONS:" -ForegroundColor White
+    Write-Host "  [12] Custom Model               (Enter model tag from ollama.com/library)" -ForegroundColor White
+    Write-Host "  [13] Skip Model Pull            (I will run 'ollama pull' manually later)" -ForegroundColor DarkGray
+    $modelChoice = Read-Host "`n => Enter choice(s) [Default: 5 (qwen2.5-coder:7b)]"
+    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "5" }
 
     $selectedModels = [System.Collections.Generic.List[string]]::new()
     $tokens = $modelChoice -split "[,;\s]+" | Where-Object { $_ -ne "" }
     foreach ($token in $tokens) {
         switch ($token) {
-            "1" { $selectedModels.Add("qwen2.5-coder:14b"); $selectedModels.Add("mistral-nemo") }
-            "2" { $selectedModels.Add("qwen2.5-coder:7b"); $selectedModels.Add("llama3.1") }
-            "3" { $selectedModels.Add("qwen2.5-coder:7b") }
+            "1" { $selectedModels.Add("qwen2.5-coder:1.5b") }
+            "2" { $selectedModels.Add("qwen2.5-coder:3b") }
+            "3" { $selectedModels.Add("llama3.2") }
             "4" { $selectedModels.Add("qwen2.5-coder:3b"); $selectedModels.Add("llama3.2") }
-            "5" { $selectedModels.Add("qwen2.5-coder:1.5b") }
-            "6" { $selectedModels.Add("qwen2.5-coder:3b") }
-            "7" { $selectedModels.Add("llama3.2") }
-            "8" { $selectedModels.Add("qwen2.5-coder:7b") }
-            "9" { $selectedModels.Add("llama3.1") }
+            "5" { $selectedModels.Add("qwen2.5-coder:7b") }
+            "6" { $selectedModels.Add("llama3.1") }
+            "7" { $selectedModels.Add("codellama:7b") }
+            "8" { $selectedModels.Add("qwen2.5-coder:7b"); $selectedModels.Add("llama3.1") }
+            "9" { $selectedModels.Add("qwen2.5-coder:14b") }
             "10" { $selectedModels.Add("mistral-nemo") }
-            "11" { $selectedModels.Add("qwen2.5-coder:14b") }
-            "12" { $selectedModels.Add("codellama:7b") }
-            "13" { $selectedModels.Add("deepseek-coder:6.7b") }
-            "14" {
+            "11" { $selectedModels.Add("qwen2.5-coder:14b"); $selectedModels.Add("mistral-nemo") }
+            "12" {
                 $customInput = Read-Host " Enter custom model name(s) (comma-separated, e.g. phi3:mini, starcoder2:7b)"
                 if (-not [string]::IsNullOrWhiteSpace($customInput)) {
                     $customInput -split "[,;\s]+" | Where-Object { $_ -ne "" } | ForEach-Object { $selectedModels.Add($_) }
                 }
             }
-            "15" { }
+            "13" { }
             default {
                 if ($token -notmatch "^\d+$") {
                     $selectedModels.Add($token)
@@ -441,7 +441,7 @@ if ($aiChoice -eq "1" -or $aiChoice -eq "3") {
         }
     }
     $models = @($selectedModels | Select-Object -Unique)
-    if ($models.Count -eq 0 -and $modelChoice -ne "15") {
+    if ($models.Count -eq 0 -and $modelChoice -ne "13") {
         $models = @("qwen2.5-coder:7b")
     }
 } elseif ($aiChoice -eq "4") {

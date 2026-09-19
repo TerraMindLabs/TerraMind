@@ -110,27 +110,28 @@ Select your preferred AI engine setup during installation:
 ======================================================================
                 🤖 Select your AI Engine Setup                       
 ======================================================================
- 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]
+ 1) Local AI via Ollama (100% Offline / Private / Free)
  2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)
- 3) Hybrid (Both Local Ollama + Cloud AI Models)
+ 3) Hybrid (Both Local Ollama + Cloud AI Models) [Recommended]
  4) Skip for now (Configure models & keys manually later)
-Enter your choice (1-4) [Default: 1]:
+Enter your choice (1-4) [Default: 3]:
 ```
 
-#### Choice 1: Local AI via Ollama (100% Offline / Private / Free) [Recommended]
+#### Choice 3: Hybrid (Both Local Ollama + Cloud AI Models) [Recommended]
+* Combines the best of both worlds: local privacy for sensitive code editing and premier cloud models for high-level architecture planning.
+
+#### Choice 1: Local AI via Ollama (100% Offline / Private / Free)
 * **Zero Cloud Dependency & Zero Cost**: Runs completely on your hardware without internet or cloud API fees.
 * **No Cloud API Keys Required**: You will **never** be forced or prompted to provide a Gemini, OpenAI, or Anthropic key.
 * **Automatic Installation & Background Management**: If Ollama is not installed, the installer downloads it automatically. In environments without systemd (e.g. WSL or bare Docker), TerraMind automatically launches and monitors `ollama serve` in the background.
-* **Categorized RAM Tiers & Multi-Model Selection**:
-  You can choose single models or enter comma-separated numbers (e.g. `7,8` or `2,5`) to pull multiple models in a single run:
+* **Streamlined, Color-Coded RAM Tiers & Multi-Model Selection**:
+  You can choose single models or enter comma-separated numbers (e.g. `5` or `4,7`):
 
-| Tier / Category | Target Hardware | Included Models | Model Library Link |
+| Color / Tier | Target Hardware | Included Models / Bundles | Model Library Link |
 | :--- | :--- | :--- | :--- |
-| **Best / Heavy Tier** | 32 GB+ RAM / GPU | `qwen2.5-coder:14b`, `mistral-nemo` | [Ollama Library](https://ollama.com/library) |
-| **High Tier** | 16 GB RAM | `qwen2.5-coder:7b`, `llama3.1` | [Ollama Library](https://ollama.com/library) |
-| **Mid Tier** | 12 GB RAM | `qwen2.5-coder:7b` | [Ollama Library](https://ollama.com/library) |
-| **Low Tier / Laptop** | 8 GB RAM | `qwen2.5-coder:3b`, `llama3.2` | [Ollama Library](https://ollama.com/library) |
-| **Ultra-Lightweight** | 4-8 GB RAM | `qwen2.5-coder:1.5b` (~1GB VRAM) | [Ollama Library](https://ollama.com/library) |
+| **🟢 Low-End / Laptop** | 4GB - 8GB RAM | `qwen2.5-coder:1.5b`, `qwen2.5-coder:3b`, `llama3.2`, Low-End Bundle | [Ollama Library](https://ollama.com/library) |
+| **🟡 Mid-Range / Workstation** | 12GB - 16GB RAM | `qwen2.5-coder:7b` (⭐ Recommended), `llama3.1`, `codellama:7b`, Mid Bundle | [Ollama Library](https://ollama.com/library) |
+| **🔴 High-End / Powerhouse** | 32GB+ RAM / GPU | `qwen2.5-coder:14b`, `mistral-nemo`, High-End Bundle | [Ollama Library](https://ollama.com/library) |
 
 #### Choice 2: Cloud AI (Google Gemini, OpenAI, Anthropic Claude)
 * **High Reasoning & Zero Local GPU Burden**: Offloads heavy model computation to cloud inference APIs.

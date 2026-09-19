@@ -329,12 +329,12 @@ lcPathFull="$basePath/Mind"
 echo -e "\n${CYAN}======================================================================${NC}"
 echo -e "${CYAN}                🤖 Select your AI Engine Setup                       ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
-echo " 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]"
+echo " 1) Local AI via Ollama (100% Offline / Private / Free)"
 echo " 2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)"
-echo " 3) Hybrid (Both Local Ollama + Cloud AI Models)"
+echo " 3) Hybrid (Both Local Ollama + Cloud AI Models) [Recommended]"
 echo " 4) Skip for now (Configure models & keys manually later)"
-read -p "Enter your choice (1-4) [Default: 1]: " aiChoice
-aiChoice=${aiChoice:-1}
+read -p "Enter your choice (1-4) [Default: 3]: " aiChoice
+aiChoice=${aiChoice:-3}
 
 geminiApiKey=""
 openaiApiKey=""
@@ -395,26 +395,34 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
 
     ensure_ollama_running
 
-    echo -e "\n${CYAN}Select local Ollama models based on your hardware / RAM:${NC}"
-    echo -e "${WHITE} -- Bundles based on System RAM --${NC}"
-    echo "  1) Best / Flagship (32GB+ RAM):    qwen2.5-coder:14b, mistral-nemo (Enterprise IaC & 128k context)"
-    echo "  2) High-End (16GB RAM) [Default]:  qwen2.5-coder:7b, llama3.1 (⭐ Recommended for Terraform/DevOps)"
-    echo "  3) Mid-Range (12GB RAM):           qwen2.5-coder:3b, llama3.2 (Fast, lightweight coding)"
-    echo "  4) Low-End (8GB RAM):              qwen2.5-coder:1.5b, llama3.2:1b (Ultra-lightweight / Edge)"
-    echo -e "${WHITE} -- Individual Models (Select one or multiple, e.g. 7 or 7,8 or 2,5) --${NC}"
-    echo "  5) qwen2.5-coder:14b               (~9GB - Best Code Generation & Architecture)"
-    echo "  6) mistral-nemo:12b                (~7GB - High Precision 128k Context Reasoning)"
-    echo "  7) qwen2.5-coder:7b                (~4.5GB - ⭐ Recommended Default for Terraform/DevOps)"
-    echo "  8) llama3.1:8b                     (~4.7GB - Meta Flagship Open-Source Model)"
-    echo "  9) deepseek-coder:6.7b             (~4GB - Dedicated Code Model)"
-    echo " 10) codellama:7b                    (~4GB - Meta Dedicated Code Model)"
-    echo " 11) qwen2.5-coder:3b                (~2GB - Fast & Lightweight Coding)"
-    echo " 12) llama3.2:3b                     (~2.2GB - Meta Compact Reasoning)"
-    echo " 13) qwen2.5-coder:1.5b              (~1GB - Runs on any machine)"
-    echo " 14) llama3.2:1b                     (~1.3GB - Ultra-Compact Edge)"
-    echo " 15) Custom                          (Enter custom model names from https://ollama.com/library)"
-    read -p "Enter your choice (e.g. 7 or 7,8 or 2) [Default: 7]: " rawModelChoice
-    rawModelChoice=${rawModelChoice:-7}
+    echo -e "\n${CYAN}======================================================================${NC}"
+    echo -e "${CYAN}          Select Local Ollama Models (Sorted by RAM Tier)            ${NC}"
+    echo -e "${CYAN}          Model Library: https://ollama.com/library                   ${NC}"
+    echo -e "${CYAN}======================================================================${NC}"
+    echo -e "${YELLOW}  👉 TIP: Enter a single choice or comma-separated numbers (e.g. 5 or 4,7)${NC}\n"
+
+    echo -e "${GREEN}  🟢 LOW-END / LAPTOP (4GB - 8GB RAM):${NC}"
+    echo -e "${GREEN}  [1] qwen2.5-coder:1.5b          (~1GB VRAM - Ultra-fast, runs anywhere)${NC}"
+    echo -e "${GREEN}  [2] qwen2.5-coder:3b            (~2GB VRAM - Lightweight code assistant)${NC}"
+    echo -e "${GREEN}  [3] llama3.2                    (~2.2GB VRAM - Meta 3B general & DevOps)${NC}"
+    echo -e "${GREEN}  [4] Low-End Bundle              👉 qwen2.5-coder:3b + llama3.2${NC}\n"
+
+    echo -e "${YELLOW}  🟡 MID-RANGE / WORKSTATION (12GB - 16GB RAM):${NC}"
+    echo -e "${YELLOW}  [5] qwen2.5-coder:7b            (~4.5GB - ⭐ Recommended for Terraform/IaC)${NC}"
+    echo -e "${YELLOW}  [6] llama3.1                    (~4.7GB - Meta flagship 8B generalist)${NC}"
+    echo -e "${YELLOW}  [7] codellama:7b                (~4GB - Meta specialized code model)${NC}"
+    echo -e "${YELLOW}  [8] Mid-Range Bundle            👉 qwen2.5-coder:7b + llama3.1${NC}\n"
+
+    echo -e "${RED}  🔴 HIGH-END / POWERHOUSE (32GB+ RAM / Dedicated GPU):${NC}"
+    echo -e "${RED}  [9] qwen2.5-coder:14b           (~9GB - Enterprise full-stack coding)${NC}"
+    echo -e "${RED}  [10] mistral-nemo               (~7GB - High-precision 128k context)${NC}"
+    echo -e "${RED}  [11] High-End Bundle            👉 qwen2.5-coder:14b + mistral-nemo${NC}\n"
+
+    echo -e "${WHITE}  ⚪ OTHER OPTIONS:${NC}"
+    echo -e "${WHITE}  [12] Custom Model               (Enter model tag from ollama.com/library)${NC}"
+    echo -e "${WHITE}  [13] Skip Model Pull            (I will run 'ollama pull' manually later)${NC}"
+    read -p "Enter choice(s) [Default: 5 (qwen2.5-coder:7b)]: " rawModelChoice
+    rawModelChoice=${rawModelChoice:-5}
 
     IFS=',' read -ra choiceArray <<< "$rawModelChoice"
     declare -a selectedModels=()
@@ -422,21 +430,18 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
     for choice in "${choiceArray[@]}"; do
         choice=$(echo "$choice" | xargs)
         case $choice in
-            1) selectedModels+=("qwen2.5-coder:14b" "mistral-nemo") ;;
-            2) selectedModels+=("qwen2.5-coder:7b" "llama3.1") ;;
-            3) selectedModels+=("qwen2.5-coder:3b" "llama3.2") ;;
-            4) selectedModels+=("qwen2.5-coder:1.5b" "llama3.2:1b") ;;
-            5) selectedModels+=("qwen2.5-coder:14b") ;;
-            6) selectedModels+=("mistral-nemo") ;;
-            7) selectedModels+=("qwen2.5-coder:7b") ;;
-            8) selectedModels+=("llama3.1") ;;
-            9) selectedModels+=("deepseek-coder:6.7b") ;;
-            10) selectedModels+=("codellama:7b") ;;
-            11) selectedModels+=("qwen2.5-coder:3b") ;;
-            12) selectedModels+=("llama3.2") ;;
-            13) selectedModels+=("qwen2.5-coder:1.5b") ;;
-            14) selectedModels+=("llama3.2:1b") ;;
-            15)
+            1) selectedModels+=("qwen2.5-coder:1.5b") ;;
+            2) selectedModels+=("qwen2.5-coder:3b") ;;
+            3) selectedModels+=("llama3.2") ;;
+            4) selectedModels+=("qwen2.5-coder:3b" "llama3.2") ;;
+            5) selectedModels+=("qwen2.5-coder:7b") ;;
+            6) selectedModels+=("llama3.1") ;;
+            7) selectedModels+=("codellama:7b") ;;
+            8) selectedModels+=("qwen2.5-coder:7b" "llama3.1") ;;
+            9) selectedModels+=("qwen2.5-coder:14b") ;;
+            10) selectedModels+=("mistral-nemo") ;;
+            11) selectedModels+=("qwen2.5-coder:14b" "mistral-nemo") ;;
+            12)
                 read -p "Enter custom model name(s) from https://ollama.com/library (comma-separated): " customInput
                 if [ -n "$customInput" ]; then
                     IFS=',' read -ra customArr <<< "$customInput"
@@ -446,6 +451,7 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
                     done
                 fi
                 ;;
+            13) ;;
             *)
                 if [[ "$choice" =~ [a-zA-Z] ]]; then
                     selectedModels+=("$choice")
@@ -454,7 +460,7 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
         esac
     done
 
-    if [ ${#selectedModels[@]} -eq 0 ]; then
+    if [ ${#selectedModels[@]} -eq 0 ] && [ "$rawModelChoice" != "13" ]; then
         selectedModels=("qwen2.5-coder:7b")
     fi
 
