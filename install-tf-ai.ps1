@@ -1,4 +1,4 @@
-# Attempt to resize the console window for a better installer experience
+﻿# Attempt to resize the console window for a better installer experience
 try {
     $size = $Host.UI.RawUI.WindowSize
     $size.Width = 150
@@ -145,6 +145,23 @@ function Ensure-MongoDB {
     return $false
 }
 
+function Ensure-OllamaRunning {
+    if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
+        $running = $false
+        try {
+            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/version" -TimeoutSec 2 -ErrorAction Stop
+            if ($resp.version) { $running = $true }
+        } catch {
+            $running = $false
+        }
+        if (-not $running) {
+            Write-Host " [ollama] Starting Ollama background server..." -ForegroundColor Cyan
+            Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 Write-Host "===========================================================" -ForegroundColor DarkGray
 Write-Host "  _____                    __  __ _           _            " -ForegroundColor Cyan
 Write-Host " |_   _|__ _ __ _ __ __ _ |  \/  (_)_ __   __| |           " -ForegroundColor Cyan
@@ -249,8 +266,6 @@ Write-Host "[START] Starting TerraMind (TF-AI-Gen) One-Shot Installation..." -Fo
 
 # 1. Prompt for Configuration
 $currentDrive = (Get-Location).Drive.Name
-Write-Host "Google Gemini API Key is free at: https://aistudio.google.com/apikey" -ForegroundColor Cyan
-$apiKey = Read-Host "Enter your Google Gemini API Key (or press enter to set later in web app)"
 
 $drive = Read-Host "Enter the drive to install TerraMind into (e.g., C, D, G) [Default: $currentDrive]"
 if ([string]::IsNullOrWhiteSpace($drive)) { $drive = $currentDrive }
@@ -271,20 +286,68 @@ if (!(Test-Path $basePath)) {
 $tfWorkspace = Join-Path $basePath "Terraform"
 $lcPathFull = Join-Path $basePath "Mind"
 
-Write-Host "`n [?] Select your AI Engine & Local Model Configuration:" -ForegroundColor Cyan
-Write-Host "    [1] Configure Local AI via Ollama (100% Offline / Private)" -ForegroundColor White
-Write-Host "    [2] Use Cloud AI Only (Google Gemini) [Default]" -ForegroundColor Yellow
-Write-Host "    [3] Skip for now (I will download Ollama and configure manually later)" -ForegroundColor DarkGray
-$aiChoice = Read-Host "`n => Enter your choice (1-3) [Default: 2]"
-if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "2" }
+Write-Host "`n======================================================================" -ForegroundColor Cyan
+Write-Host "                🤖 Select your AI Engine Setup                       " -ForegroundColor Cyan
+Write-Host "======================================================================" -ForegroundColor Cyan
+Write-Host " 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]" -ForegroundColor White
+Write-Host " 2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)" -ForegroundColor White
+Write-Host " 3) Hybrid (Both Local Ollama + Cloud AI Models)" -ForegroundColor White
+Write-Host " 4) Skip for now (Configure models & keys manually later)" -ForegroundColor White
+$aiChoice = Read-Host "`n => Enter your choice (1-4) [Default: 1]"
+if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "1" }
+
+$geminiApiKey = ""
+$openaiApiKey = ""
+$anthropicApiKey = ""
+
+if ($aiChoice -eq "2" -or $aiChoice -eq "3") {
+    Write-Host "`nSelect Cloud AI Provider(s):" -ForegroundColor Cyan
+    Write-Host " 1) Google Gemini   👉 Free API key: https://aistudio.google.com/apikey" -ForegroundColor White
+    Write-Host " 2) OpenAI          👉 API key:      https://platform.openai.com/api-keys" -ForegroundColor White
+    Write-Host " 3) Anthropic       👉 API key:      https://console.anthropic.com/settings/keys" -ForegroundColor White
+    Write-Host " 4) Enter Multiple / All Keys" -ForegroundColor White
+    Write-Host " 5) Skip Cloud Keys (Enter in Web UI Settings later)" -ForegroundColor DarkGray
+    $cloudChoice = Read-Host "`n => Enter your choice (1-5) [Default: 1]"
+    if ([string]::IsNullOrWhiteSpace($cloudChoice)) { $cloudChoice = "1" }
+
+    switch ($cloudChoice) {
+        "1" {
+            Write-Host "`n👉 Google Gemini API Key (Free at https://aistudio.google.com/apikey):" -ForegroundColor Cyan
+            $geminiApiKey = Read-Host " Enter your Google Gemini API Key"
+        }
+        "2" {
+            Write-Host "`n👉 OpenAI API Key (Get at https://platform.openai.com/api-keys):" -ForegroundColor Cyan
+            $openaiApiKey = Read-Host " Enter your OpenAI API Key"
+        }
+        "3" {
+            Write-Host "`n👉 Anthropic Claude API Key (Get at https://console.anthropic.com/settings/keys):" -ForegroundColor Cyan
+            $anthropicApiKey = Read-Host " Enter your Anthropic Claude API Key"
+        }
+        "4" {
+            Write-Host "`n👉 Google Gemini API Key (Free at https://aistudio.google.com/apikey):" -ForegroundColor Cyan
+            $geminiApiKey = Read-Host " Enter Google Gemini Key (or press enter to skip)"
+            Write-Host "👉 OpenAI API Key (https://platform.openai.com/api-keys):" -ForegroundColor Cyan
+            $openaiApiKey = Read-Host " Enter OpenAI Key (or press enter to skip)"
+            Write-Host "👉 Anthropic Claude API Key (https://console.anthropic.com/settings/keys):" -ForegroundColor Cyan
+            $anthropicApiKey = Read-Host " Enter Anthropic Key (or press enter to skip)"
+        }
+        "5" {
+            Write-Host "⏭️ Skipping Cloud API Keys for now. You can enter them anytime in the chat UI via Settings > Provider Keys." -ForegroundColor Yellow
+        }
+        default {
+            Write-Host "`n👉 Google Gemini API Key (Free at https://aistudio.google.com/apikey):" -ForegroundColor Cyan
+            $geminiApiKey = Read-Host " Enter your Google Gemini API Key"
+        }
+    }
+}
 
 $models = @()
-$customModels = ""
 
-if ($aiChoice -eq "1") {
+if ($aiChoice -eq "1" -or $aiChoice -eq "3") {
     # Check if Ollama is installed; if not, attempt automatic installation
     if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
-        Write-Host "[cfg] Ollama is not installed. Attempting automatic installation..." -ForegroundColor Yellow
+        Write-Host "`n⚙️ Ollama is not installed. Attempting automatic installation..." -ForegroundColor Yellow
+        Write-Host "   (Official website: https://ollama.com)" -ForegroundColor Cyan
         $installed = $false
         if (Get-Command "winget" -ErrorAction SilentlyContinue) {
             Write-Host "Installing Ollama via winget..." -ForegroundColor Cyan
@@ -311,64 +374,80 @@ if ($aiChoice -eq "1") {
             Write-Warning "Ollama was installed or requires a terminal restart to be recognized in PATH."
             Write-Host "You can also manually launch Ollama from your Start Menu." -ForegroundColor Yellow
         } else {
-            Write-Host "[OK] Ollama is installed!" -ForegroundColor Green
+            Write-Host "✅ Ollama is installed!" -ForegroundColor Green
         }
     } else {
-        Write-Host "[OK] Found existing Ollama installation." -ForegroundColor Green
+        Write-Host "✅ Found existing Ollama installation." -ForegroundColor Green
     }
 
-    Write-Host "`n [?] Select local Ollama models based on your hardware / RAM:" -ForegroundColor Cyan
-    Write-Host "    -- Bundles based on System RAM --" -ForegroundColor DarkGray
-    Write-Host "    [1] Low-End (8GB RAM):          qwen2.5-coder:3b, llama3.2" -ForegroundColor White
-    Write-Host "    [2] Mid-Range (16GB RAM):       qwen2.5-coder:7b, llama3.1" -ForegroundColor White
-    Write-Host "    [3] High-End (32GB+ RAM):       qwen2.5-coder:14b, mistral-nemo" -ForegroundColor White
-    Write-Host "    -- Individual Models (8+ Options) --" -ForegroundColor DarkGray
-    Write-Host "    [4] qwen2.5-coder:1.5b          (Ultra-lightweight, runs on any machine ~1GB)" -ForegroundColor White
-    Write-Host "    [5] qwen2.5-coder:3b            (Fast & lightweight ~2GB)" -ForegroundColor White
-    Write-Host "    [6] llama3.2:3b                 (Meta versatile 3B model ~2.2GB)" -ForegroundColor White
-    Write-Host "    [7] qwen2.5-coder:7b            (Recommended for Terraform/DevOps ~4.5GB)" -ForegroundColor White
-    Write-Host "    [8] llama3.1:8b                 (Meta flagship open model ~4.7GB)" -ForegroundColor White
-    Write-Host "    [9] mistral-nemo:12b            (Mistral high precision ~7GB)" -ForegroundColor White
-    Write-Host "    [10] qwen2.5-coder:14b          (Advanced enterprise code generation ~9GB)" -ForegroundColor White
-    Write-Host "    [11] codellama:7b               (Meta dedicated code model ~4GB)" -ForegroundColor White
-    Write-Host "    [12] deepseek-coder:6.7b        (DeepSeek specialized code model ~4GB)" -ForegroundColor White
-    Write-Host "    [13] Custom                     (Enter comma-separated model names)" -ForegroundColor DarkGray
-    $modelChoice = Read-Host "`n => Enter your choice (1-13) [Default: 7]"
-    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "7" }
+    Ensure-OllamaRunning
 
-    switch ($modelChoice) {
-        "1"  { $customModels = "qwen2.5-coder:3b, llama3.2" }
-        "2"  { $customModels = "qwen2.5-coder:7b, llama3.1" }
-        "3"  { $customModels = "qwen2.5-coder:14b, mistral-nemo" }
-        "4"  { $customModels = "qwen2.5-coder:1.5b" }
-        "5"  { $customModels = "qwen2.5-coder:3b" }
-        "6"  { $customModels = "llama3.2" }
-        "7"  { $customModels = "qwen2.5-coder:7b" }
-        "8"  { $customModels = "llama3.1" }
-        "9"  { $customModels = "mistral-nemo" }
-        "10" { $customModels = "qwen2.5-coder:14b" }
-        "11" { $customModels = "codellama:7b" }
-        "12" { $customModels = "deepseek-coder:6.7b" }
-        "13" {
-            $customModels = Read-Host " Enter models to pull (comma-separated) [Default: qwen2.5-coder:7b]"
-            if ([string]::IsNullOrWhiteSpace($customModels)) { $customModels = "qwen2.5-coder:7b" }
+    Write-Host "`n======================================================================" -ForegroundColor Cyan
+    Write-Host "          Select Local Ollama Models (Categorized by RAM)            " -ForegroundColor Cyan
+    Write-Host "          Model Library: https://ollama.com/library                   " -ForegroundColor DarkGray
+    Write-Host "======================================================================" -ForegroundColor Cyan
+    Write-Host "  👉 TIP: You can choose multiple options separated by commas (e.g. 7,8 or 2,5)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  --- Recommended Hardware Bundles ---" -ForegroundColor DarkGray
+    Write-Host "  [1] Best / Heavy Tier   (32GB+ RAM)  👉 qwen2.5-coder:14b, mistral-nemo" -ForegroundColor White
+    Write-Host "  [2] High Tier           (16GB RAM)   👉 qwen2.5-coder:7b, llama3.1" -ForegroundColor White
+    Write-Host "  [3] Mid Tier            (12GB RAM)   👉 qwen2.5-coder:7b" -ForegroundColor White
+    Write-Host "  [4] Low Tier / Laptop   (8GB RAM)    👉 qwen2.5-coder:3b, llama3.2" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  --- Individual Model Options ---" -ForegroundColor DarkGray
+    Write-Host "  [5] qwen2.5-coder:1.5b  (Ultra-lightweight ~1GB RAM - runs on almost any PC)" -ForegroundColor White
+    Write-Host "  [6] qwen2.5-coder:3b    (Fast & lightweight coding ~2GB RAM)" -ForegroundColor White
+    Write-Host "  [7] llama3.2            (Meta fast 3B general & DevOps ~2.2GB RAM)" -ForegroundColor White
+    Write-Host "  [8] qwen2.5-coder:7b    (Recommended DevOps / Terraform specialist ~4.5GB RAM)" -ForegroundColor White
+    Write-Host "  [9] llama3.1            (Meta flagship 8B open model ~4.7GB RAM)" -ForegroundColor White
+    Write-Host "  [10] mistral-nemo       (Mistral 12B high precision reasoning ~7GB RAM)" -ForegroundColor White
+    Write-Host "  [11] qwen2.5-coder:14b  (Enterprise coding powerhouse ~9GB RAM)" -ForegroundColor White
+    Write-Host "  [12] codellama:7b       (Meta dedicated code model ~4GB RAM)" -ForegroundColor White
+    Write-Host "  [13] deepseek-coder:6.7b(DeepSeek dedicated code model ~4GB RAM)" -ForegroundColor White
+    Write-Host "  [14] Custom model name  (Enter exact model tag from ollama.com/library)" -ForegroundColor White
+    Write-Host "  [15] Skip pulling models now (I will run 'ollama pull <model>' later)" -ForegroundColor DarkGray
+    $modelChoice = Read-Host "`n => Enter choice(s) [Default: 8 (qwen2.5-coder:7b)]"
+    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "8" }
+
+    $selectedModels = [System.Collections.Generic.List[string]]::new()
+    $tokens = $modelChoice -split "[,;\s]+" | Where-Object { $_ -ne "" }
+    foreach ($token in $tokens) {
+        switch ($token) {
+            "1" { $selectedModels.Add("qwen2.5-coder:14b"); $selectedModels.Add("mistral-nemo") }
+            "2" { $selectedModels.Add("qwen2.5-coder:7b"); $selectedModels.Add("llama3.1") }
+            "3" { $selectedModels.Add("qwen2.5-coder:7b") }
+            "4" { $selectedModels.Add("qwen2.5-coder:3b"); $selectedModels.Add("llama3.2") }
+            "5" { $selectedModels.Add("qwen2.5-coder:1.5b") }
+            "6" { $selectedModels.Add("qwen2.5-coder:3b") }
+            "7" { $selectedModels.Add("llama3.2") }
+            "8" { $selectedModels.Add("qwen2.5-coder:7b") }
+            "9" { $selectedModels.Add("llama3.1") }
+            "10" { $selectedModels.Add("mistral-nemo") }
+            "11" { $selectedModels.Add("qwen2.5-coder:14b") }
+            "12" { $selectedModels.Add("codellama:7b") }
+            "13" { $selectedModels.Add("deepseek-coder:6.7b") }
+            "14" {
+                $customInput = Read-Host " Enter custom model name(s) (comma-separated, e.g. phi3:mini, starcoder2:7b)"
+                if (-not [string]::IsNullOrWhiteSpace($customInput)) {
+                    $customInput -split "[,;\s]+" | Where-Object { $_ -ne "" } | ForEach-Object { $selectedModels.Add($_) }
+                }
+            }
+            "15" { }
+            default {
+                if ($token -notmatch "^\d+$") {
+                    $selectedModels.Add($token)
+                }
+            }
         }
-        default { $customModels = "qwen2.5-coder:7b" }
     }
-
-    if (-not [string]::IsNullOrWhiteSpace($customModels)) {
-        $models = $customModels -split "," | ForEach-Object { $_.Trim() }
+    $models = @($selectedModels | Select-Object -Unique)
+    if ($models.Count -eq 0 -and $modelChoice -ne "15") {
+        $models = @("qwen2.5-coder:7b")
     }
-} elseif ($aiChoice -eq "3") {
-    Write-Host "`n[Skip] Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually." -ForegroundColor Yellow
+} elseif ($aiChoice -eq "4") {
+    Write-Host "`n⏭️ Skipping AI model setup for now. You can configure Ollama or Cloud keys anytime later." -ForegroundColor Yellow
 } else {
-    Write-Host "`n[Skip] Cloud AI mode selected (Google Gemini). Zero Ollama overhead." -ForegroundColor Green
-    if ([string]::IsNullOrWhiteSpace($apiKey)) {
-        Write-Host " [i] Notice: No Gemini API Key was entered." -ForegroundColor Yellow
-        Write-Host "     Terraform DevOps Expert runs on Google Gemini and needs an API key to chat." -ForegroundColor Yellow
-        Write-Host "     Get a free Gemini key in seconds at: https://aistudio.google.com/apikey" -ForegroundColor Cyan
-        Write-Host "     You can enter it in the chat UI via 'Set API Key' or Settings > Provider Keys." -ForegroundColor Cyan
-    }
+    Write-Host "`n☁️ Cloud AI mode selected. Local Ollama download skipped." -ForegroundColor Green
 }
 
 # 2. Dependency Checks
@@ -431,23 +510,33 @@ if ($models.Count -eq 0) {
     if ($aiChoice -eq "3") {
         Write-Host "[Skip] Skipping local AI models (Configuring Cloud mode for now; manual Ollama setup can be done later)." -ForegroundColor Yellow
     } else {
-        Write-Host "[Skip] Skipping local AI models as requested (Pure Cloud mode)." -ForegroundColor Green
+        Write-Host "[Skip] Skipping local AI models as requested." -ForegroundColor Green
     }
-    $env:AGENT_PROVIDER = "google"
-    $env:AGENT_MODEL = "gemini-3.5-flash-lite"
+    if (-not [string]::IsNullOrWhiteSpace($openaiApiKey)) {
+        $env:AGENT_PROVIDER = "openAI"
+        $env:AGENT_MODEL = "gpt-4o-mini"
+    } elseif (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+        $env:AGENT_PROVIDER = "anthropic"
+        $env:AGENT_MODEL = "claude-3-5-sonnet-20241022"
+    } else {
+        $env:AGENT_PROVIDER = "google"
+        $env:AGENT_MODEL = "gemini-3.5-flash-lite"
+    }
 } else {
-    $env:AGENT_PROVIDER = "custom"
+    $env:AGENT_PROVIDER = "Ollama"
     $env:AGENT_MODEL = $models[0]
 
     if (!(Get-Command "ollama" -ErrorAction SilentlyContinue)) {
         Write-Warning "Ollama command is not currently available in this terminal session. Local AI model pull will be skipped."
         Write-Host "To pull models manually later, run: ollama pull $($models[0])" -ForegroundColor Cyan
     } else {
-        Write-Host " Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
+        Ensure-OllamaRunning
+        Write-Host "`n📥 Pulling Local AI Models via Ollama..." -ForegroundColor Yellow
         foreach ($model in $models) {
             Write-Host "Pulling $model..." -ForegroundColor Cyan
             ollama pull $model
         }
+        Write-Host "✅ Local models ready!" -ForegroundColor Green
     }
 }
 
@@ -644,28 +733,32 @@ if (!(Test-Path "$lcPathFull\packages\api\dist\credentials.cjs") -or !(Test-Path
 # 9. Configure Environment Variables and Copy Files
 Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -ForegroundColor Yellow
 
-    $lcConfig = "$lcPathFull\terramind.yaml"
-    if (Test-Path $lcConfig) {
-        Write-Host "[cfg] Configuring terramind.yaml..." -ForegroundColor Yellow
-        $yamlContent = Get-Content $lcConfig -Raw
-        $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
-        $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
-        
-        if ($models.Count -gt 0) {
-            Write-Host "[cfg] Injecting Ollama endpoints and local models into terramind.yaml..." -ForegroundColor Cyan
-            
-            # Format model array for agents
-            $baseModels = @("gemini-3.5-flash-lite", "gemini-1.5-flash-latest")
-            $allAgentModels = $baseModels + $models
-            $modelsJson = ($allAgentModels | ForEach-Object { "`"$_`"" }) -join ", "
-            $ollamaModelsJson = ($models | ForEach-Object { "`"$_`"" }) -join ", "
+$lcConfig = "$lcPathFull\terramind.yaml"
+if (Test-Path $lcConfig) {
+    Write-Host "[cfg] Configuring terramind.yaml..." -ForegroundColor Yellow
+    $yamlContent = Get-Content $lcConfig -Raw
+    $yamlContent = $yamlContent.Replace("REPLACE_WITH_TF_WORKSPACE", $tfWorkspace.Replace("\", "\\"))
+    $yamlContent = $yamlContent.Replace("REPLACE_WITH_MCP_RUNNER_PATH", "$lcPathFull\mcp-tf-runner.js".Replace("\", "\\"))
+    
+    # Configure all available models in endpoints.agents.models
+    $baseModels = @("gemini-3.5-flash-lite", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet-20241022")
+    $allAgentModels = $baseModels + $models
+    $modelsJson = ($allAgentModels | ForEach-Object { "`"$_`"" }) -join ", "
+    $ollamaModelsJson = ($models | ForEach-Object { "`"$_`"" }) -join ", "
 
-            # Update agents models list
-            $yamlContent = $yamlContent -replace 'models:\s*\["gemini-3.5-flash-lite",\s*"gemini-1.5-flash-latest"\]', "models: [$modelsJson]"
-            
-            # Inject custom Ollama endpoint block if not already present
-            if ($yamlContent -notmatch "name:\s*`"Ollama`"") {
-                $ollamaBlock = @"
+    $yamlContent = $yamlContent -replace 'models:\s*\["gemini-3.5-flash-lite",\s*"gemini-1.5-flash-latest"\]', "models: [$modelsJson]"
+
+    if (![string]::IsNullOrWhiteSpace($openaiApiKey) -and $yamlContent -notmatch "openAI:") {
+        $yamlContent = $yamlContent -replace "  google:\s*\{\}", "  google: {}`r`n  openAI: {}"
+    }
+    if (![string]::IsNullOrWhiteSpace($anthropicApiKey) -and $yamlContent -notmatch "anthropic:") {
+        $yamlContent = $yamlContent -replace "  google:\s*\{\}", "  google: {}`r`n  anthropic: {}"
+    }
+
+    if ($models.Count -gt 0) {
+        Write-Host "[cfg] Injecting Ollama endpoints and local models into terramind.yaml..." -ForegroundColor Cyan
+        if ($yamlContent -notmatch "name:\s*`"Ollama`"") {
+            $ollamaBlock = @"
   custom:
     - name: "Ollama"
       apiKey: "ollama"
@@ -678,25 +771,22 @@ Write-Host "[cfg] Configuring Environment Variables and Copying Files..." -Foreg
       summarize: false
       displayInFilter: true
 "@
-                $yamlContent = $yamlContent -replace "  google:\s*\{\}", "  google: {}`r`n$ollamaBlock"
-            }
-        } else {
-            Write-Host "[cfg] Pure Cloud mode active. Zero Ollama endpoints injected into terramind.yaml." -ForegroundColor Green
+            $yamlContent = $yamlContent -replace "  google:\s*\{\}", "  google: {}`r`n$ollamaBlock"
         }
-        
-        Set-Content -Path $lcConfig -Value $yamlContent -Encoding UTF8
+    } else {
+        Write-Host "[cfg] Cloud / Manual mode active. Local Ollama endpoints will be configured on demand." -ForegroundColor Green
     }
+    
+    Set-Content -Path $lcConfig -Value $yamlContent -Encoding UTF8
+}
 
-    $envSource = Join-Path $lcPathFull ".env.example"
+$envSource = Join-Path $lcPathFull ".env.example"
 if (!(Test-Path $envSource) -and (Test-Path "$lcPathFull\.env.example")) {
     $envSource = "$lcPathFull\.env.example"
 }
 
 if (Test-Path $envSource) {
     $envContent = Get-Content $envSource -Raw
-    if ($apiKey -ne "") {
-        $envContent = $envContent -replace "REPLACE_WITH_YOUR_KEY", $apiKey
-    }
     
     if ($envContent -match "APP_TITLE=") {
         $envContent = $envContent -replace "APP_TITLE=.*", "APP_TITLE=TerraMind"
@@ -710,17 +800,52 @@ if (Test-Path $envSource) {
         $envContent += "`nCONFIG_PATH=`"terramind.yaml`""
     }
 
-    if (![string]::IsNullOrWhiteSpace($apiKey)) {
+    if ($envContent -match "AGENT_PROVIDER=") {
+        $envContent = $envContent -replace ".*AGENT_PROVIDER=.*", "AGENT_PROVIDER=`"$($env:AGENT_PROVIDER)`""
+    } else {
+        $envContent += "`nAGENT_PROVIDER=`"$($env:AGENT_PROVIDER)`""
+    }
+
+    if ($envContent -match "AGENT_MODEL=") {
+        $envContent = $envContent -replace ".*AGENT_MODEL=.*", "AGENT_MODEL=`"$($env:AGENT_MODEL)`""
+    } else {
+        $envContent += "`nAGENT_MODEL=`"$($env:AGENT_MODEL)`""
+    }
+
+    if (![string]::IsNullOrWhiteSpace($geminiApiKey)) {
         if ($envContent -match "GEMINI_API_KEY=") {
-            $envContent = $envContent -replace ".*GEMINI_API_KEY=.*", "GEMINI_API_KEY=`"$apiKey`""
+            $envContent = $envContent -replace ".*GEMINI_API_KEY=.*", "GEMINI_API_KEY=`"$geminiApiKey`""
         } else {
-            $envContent += "`nGEMINI_API_KEY=`"$apiKey`""
+            $envContent += "`nGEMINI_API_KEY=`"$geminiApiKey`""
         }
         if ($envContent -match "GOOGLE_KEY=") {
-            $envContent = $envContent -replace ".*GOOGLE_KEY=.*", "GOOGLE_KEY=`"$apiKey`""
+            $envContent = $envContent -replace ".*GOOGLE_KEY=.*", "GOOGLE_KEY=`"$geminiApiKey`""
         } else {
-            $envContent += "`nGOOGLE_KEY=`"$apiKey`""
+            $envContent += "`nGOOGLE_KEY=`"$geminiApiKey`""
         }
+    }
+
+    if (![string]::IsNullOrWhiteSpace($openaiApiKey)) {
+        if ($envContent -match "OPENAI_API_KEY=") {
+            $envContent = $envContent -replace ".*OPENAI_API_KEY=.*", "OPENAI_API_KEY=`"$openaiApiKey`""
+        } else {
+            $envContent += "`nOPENAI_API_KEY=`"$openaiApiKey`""
+        }
+    } else {
+        $envContent = $envContent -replace "(?m)^OPENAI_API_KEY=user_provided", "# OPENAI_API_KEY=user_provided"
+    }
+
+    if (![string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+        if ($envContent -match "ANTHROPIC_API_KEY=") {
+            $envContent = $envContent -replace ".*ANTHROPIC_API_KEY=.*", "ANTHROPIC_API_KEY=`"$anthropicApiKey`""
+        } else {
+            $envContent += "`nANTHROPIC_API_KEY=`"$anthropicApiKey`""
+        }
+    }
+
+    if ($models.Count -gt 0) {
+        $modelsJoined = $models -join " "
+        $envContent += "`nOLLAMA_MODELS=`"$modelsJoined`""
     }
 
     if ($envContent -match "MONGO_URI=") {
@@ -746,8 +871,6 @@ if (Test-Path $envSource) {
     } else {
         $envContent += "`nHELP_AND_FAQ_URL=https://www.google.com"
     }
-
-    $envContent = $envContent -replace "(?m)^OPENAI_API_KEY=user_provided", "# OPENAI_API_KEY=user_provided"
 
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
 } else {
@@ -815,7 +938,7 @@ Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
 $iconPath = Join-Path $lcPathFull "etc\favicon\favicon.ico"
 
 $batPath = Join-Path $basePath "TerraMind.bat"
-$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnet start MongoDB >nul 2>&1`r`nif exist seed-agent.js node seed-agent.js >nul 2>&1`r`nnpm run backend`r`npause"
+$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnet start MongoDB >nul 2>&1`r`nwhere ollama >nul 2>&1`r`nif %errorlevel% equ 0 (`r`n    curl -s http://127.0.0.1:11434/api/version >nul 2>&1`r`n    if errorlevel 1 start /b ollama serve >nul 2>&1`r`n)`r`nif exist seed-agent.js node seed-agent.js >nul 2>&1`r`nnpm run backend`r`npause"
 Set-Content -Path $batPath -Value $batContent -Encoding UTF8
 Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
 
@@ -916,7 +1039,7 @@ class Program {
         string mindDir = Path.Combine(baseDir, "Mind");
         ProcessStartInfo psi = new ProcessStartInfo();
         psi.FileName = "cmd.exe";
-        psi.Arguments = "/k title TerraMind AI Server && net start MongoDB >nul 2>&1 && if exist seed-agent.js node seed-agent.js >nul 2>&1 && npm run backend";
+        psi.Arguments = "/k title TerraMind AI Server && net start MongoDB >nul 2>&1 && (where ollama >nul 2>&1 && (curl -s http://127.0.0.1:11434/api/version >nul 2>&1 || start /b ollama serve >nul 2>&1)) && if exist seed-agent.js node seed-agent.js >nul 2>&1 && npm run backend";
         psi.WorkingDirectory = mindDir;
         psi.UseShellExecute = true;
         Process.Start(psi);

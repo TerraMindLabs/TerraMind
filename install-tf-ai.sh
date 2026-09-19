@@ -169,6 +169,35 @@ ensure_terraform() {
     exit 1
 }
 
+ensure_ollama_running() {
+    if ! command -v ollama &> /dev/null; then
+        return 1
+    fi
+
+    if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+        echo -e "${GREEN}✅ Ollama daemon is active and listening on port 11434.${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}⚙️ Ollama daemon is not running. Starting background server ('ollama serve')...${NC}"
+    if command -v systemctl &> /dev/null && systemctl is-active --quiet ollama 2>/dev/null; then
+        sudo systemctl start ollama 2>/dev/null || true
+    else
+        nohup ollama serve > /tmp/ollama_terramind.log 2>&1 &
+    fi
+
+    for i in {1..10}; do
+        if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+            echo -e "${GREEN}✅ Ollama daemon started successfully and is ready!${NC}"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo -e "${YELLOW}⚠️ Notice: Ollama background server initiated, continuing...${NC}"
+    return 0
+}
+
 echo ""
 echo -e "${WHITE}Welcome to TerraMind (TF-AI-Gen) Setup${NC}"
 echo ""
@@ -262,8 +291,6 @@ echo -e "${CYAN}🚀 Starting TerraMind (TF-AI-Gen) One-Shot Installation...${NC
 
 # 1. Prompt for Configuration
 currentDir=$(pwd)
-echo -e "${CYAN}Google Gemini API Key is free at: https://aistudio.google.com/apikey${NC}"
-read -p "Enter your Google Gemini API Key (or press enter to set later in web app): " apiKey
 
 read -p "Enter the base directory to install TerraMind into (e.g., /opt, /g) [Default: $currentDir]: " baseDir
 baseDir=${baseDir:-$currentDir}
@@ -281,18 +308,63 @@ fi
 tfWorkspace="$basePath/Terraform"
 lcPathFull="$basePath/Mind"
 
-echo -e "\n${CYAN}Select your AI Engine & Local Model Configuration:${NC}"
-echo " 1) Configure Local AI via Ollama (100% Offline / Private)"
-echo " 2) Use Cloud AI Only (Google Gemini) [Default]"
-echo " 3) Skip for now (I will download Ollama and configure manually later)"
-read -p "Enter your choice (1-3) [Default: 2]: " aiChoice
-aiChoice=${aiChoice:-2}
+echo -e "\n${CYAN}======================================================================${NC}"
+echo -e "${CYAN}                🤖 Select your AI Engine Setup                       ${NC}"
+echo -e "${CYAN}======================================================================${NC}"
+echo " 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]"
+echo " 2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)"
+echo " 3) Hybrid (Both Local Ollama + Cloud AI Models)"
+echo " 4) Skip for now (Configure models & keys manually later)"
+read -p "Enter your choice (1-4) [Default: 1]: " aiChoice
+aiChoice=${aiChoice:-1}
+
+geminiApiKey=""
+openaiApiKey=""
+anthropicApiKey=""
+
+if [ "$aiChoice" == "2" ] || [ "$aiChoice" == "3" ]; then
+    echo -e "\n${CYAN}Select Cloud AI Provider(s):${NC}"
+    echo " 1) Google Gemini   👉 Free API key: https://aistudio.google.com/apikey"
+    echo " 2) OpenAI          👉 API key:      https://platform.openai.com/api-keys"
+    echo " 3) Anthropic       👉 API key:      https://console.anthropic.com/settings/keys"
+    echo " 4) Enter Multiple / All Keys"
+    echo " 5) Skip Cloud Keys (Enter in Web UI Settings later)"
+    read -p "Enter your choice (1-5) [Default: 1]: " cloudChoice
+    cloudChoice=${cloudChoice:-1}
+
+    case $cloudChoice in
+        1)
+            echo -e "\n${CYAN}👉 Google Gemini API Key (Free at https://aistudio.google.com/apikey):${NC}"
+            read -p "Enter your Google Gemini API Key: " geminiApiKey
+            ;;
+        2)
+            echo -e "\n${CYAN}👉 OpenAI API Key (Get at https://platform.openai.com/api-keys):${NC}"
+            read -p "Enter your OpenAI API Key: " openaiApiKey
+            ;;
+        3)
+            echo -e "\n${CYAN}👉 Anthropic Claude API Key (Get at https://console.anthropic.com/settings/keys):${NC}"
+            read -p "Enter your Anthropic Claude API Key: " anthropicApiKey
+            ;;
+        4)
+            echo -e "\n${CYAN}👉 Google Gemini API Key (Free at https://aistudio.google.com/apikey):${NC}"
+            read -p "Enter Google Gemini Key (or press enter to skip): " geminiApiKey
+            echo -e "${CYAN}👉 OpenAI API Key (https://platform.openai.com/api-keys):${NC}"
+            read -p "Enter OpenAI Key (or press enter to skip): " openaiApiKey
+            echo -e "${CYAN}👉 Anthropic Claude API Key (https://console.anthropic.com/settings/keys):${NC}"
+            read -p "Enter Anthropic Key (or press enter to skip): " anthropicApiKey
+            ;;
+        5)
+            echo -e "${YELLOW}⏭️ Skipping Cloud API Keys for now. You can enter them anytime in the chat UI via Settings > Provider Keys.${NC}"
+            ;;
+    esac
+fi
 
 declare -a models=()
 
-if [ "$aiChoice" == "1" ]; then
+if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
     if ! command -v ollama &> /dev/null; then
-        echo -e "${YELLOW}⚙️ Ollama is not installed. Attempting automatic installation via official script...${NC}"
+        echo -e "\n${YELLOW}⚙️ Ollama is not installed. Attempting automatic installation via official script...${NC}"
+        echo -e "${CYAN}   (Official website: https://ollama.com)${NC}"
         curl -fsSL https://ollama.com/install.sh | sh
         if command -v ollama &> /dev/null; then
             echo -e "${GREEN}✅ Ollama installed successfully!${NC}"
@@ -300,60 +372,86 @@ if [ "$aiChoice" == "1" ]; then
             echo -e "${YELLOW}⚠️ Ollama installation may require restarting your terminal or manual setup from https://ollama.com.${NC}"
         fi
     else
-        echo -e "${GREEN}✅ Found existing Ollama installation.${NC}"
+        echo -e "\n${GREEN}✅ Found existing Ollama installation.${NC}"
     fi
+
+    ensure_ollama_running
 
     echo -e "\n${CYAN}Select local Ollama models based on your hardware / RAM:${NC}"
     echo -e "${WHITE} -- Bundles based on System RAM --${NC}"
-    echo "  1) Low-End (8GB RAM):          qwen2.5-coder:3b, llama3.2"
-    echo "  2) Mid-Range (16GB RAM):       qwen2.5-coder:7b, llama3.1"
-    echo "  3) High-End (32GB+ RAM):       qwen2.5-coder:14b, mistral-nemo"
-    echo -e "${WHITE} -- Individual Models (8+ Options) --${NC}"
-    echo "  4) qwen2.5-coder:1.5b          (Ultra-lightweight, runs on any machine ~1GB)"
-    echo "  5) qwen2.5-coder:3b            (Fast & lightweight ~2GB)"
-    echo "  6) llama3.2:3b                 (Meta versatile 3B model ~2.2GB)"
-    echo "  7) qwen2.5-coder:7b            (Recommended for Terraform/DevOps ~4.5GB)"
-    echo "  8) llama3.1:8b                 (Meta flagship open model ~4.7GB)"
-    echo "  9) mistral-nemo:12b            (Mistral high precision ~7GB)"
-    echo " 10) qwen2.5-coder:14b           (Advanced enterprise code generation ~9GB)"
-    echo " 11) codellama:7b                (Meta dedicated code model ~4GB)"
-    echo " 12) deepseek-coder:6.7b         (DeepSeek specialized code model ~4GB)"
-    echo " 13) Custom                      (Enter comma-separated model names)"
-    read -p "Enter your choice (1-13) [Default: 7]: " modelChoice
-    modelChoice=${modelChoice:-7}
+    echo "  1) Best / Flagship (32GB+ RAM):    qwen2.5-coder:14b, mistral-nemo (Enterprise IaC & 128k context)"
+    echo "  2) High-End (16GB RAM) [Default]:  qwen2.5-coder:7b, llama3.1 (⭐ Recommended for Terraform/DevOps)"
+    echo "  3) Mid-Range (12GB RAM):           qwen2.5-coder:3b, llama3.2 (Fast, lightweight coding)"
+    echo "  4) Low-End (8GB RAM):              qwen2.5-coder:1.5b, llama3.2:1b (Ultra-lightweight / Edge)"
+    echo -e "${WHITE} -- Individual Models (Select one or multiple, e.g. 7 or 7,8 or 2,5) --${NC}"
+    echo "  5) qwen2.5-coder:14b               (~9GB - Best Code Generation & Architecture)"
+    echo "  6) mistral-nemo:12b                (~7GB - High Precision 128k Context Reasoning)"
+    echo "  7) qwen2.5-coder:7b                (~4.5GB - ⭐ Recommended Default for Terraform/DevOps)"
+    echo "  8) llama3.1:8b                     (~4.7GB - Meta Flagship Open-Source Model)"
+    echo "  9) deepseek-coder:6.7b             (~4GB - Dedicated Code Model)"
+    echo " 10) codellama:7b                    (~4GB - Meta Dedicated Code Model)"
+    echo " 11) qwen2.5-coder:3b                (~2GB - Fast & Lightweight Coding)"
+    echo " 12) llama3.2:3b                     (~2.2GB - Meta Compact Reasoning)"
+    echo " 13) qwen2.5-coder:1.5b              (~1GB - Runs on any machine)"
+    echo " 14) llama3.2:1b                     (~1.3GB - Ultra-Compact Edge)"
+    echo " 15) Custom                          (Enter custom model names from https://ollama.com/library)"
+    read -p "Enter your choice (e.g. 7 or 7,8 or 2) [Default: 7]: " rawModelChoice
+    rawModelChoice=${rawModelChoice:-7}
 
-    case $modelChoice in
-        1) models=("qwen2.5-coder:3b" "llama3.2") ;;
-        2) models=("qwen2.5-coder:7b" "llama3.1") ;;
-        3) models=("qwen2.5-coder:14b" "mistral-nemo") ;;
-        4) models=("qwen2.5-coder:1.5b") ;;
-        5) models=("qwen2.5-coder:3b") ;;
-        6) models=("llama3.2") ;;
-        7) models=("qwen2.5-coder:7b") ;;
-        8) models=("llama3.1") ;;
-        9) models=("mistral-nemo") ;;
-        10) models=("qwen2.5-coder:14b") ;;
-        11) models=("codellama:7b") ;;
-        12) models=("deepseek-coder:6.7b") ;;
-        13)
-            read -p "Enter custom models (comma-separated): " customModels
-            if [ ! -z "$customModels" ]; then
-                IFS=',' read -ra models <<< "$customModels"
-                for i in "${!models[@]}"; do models[$i]=$(echo "${models[$i]}" | xargs); done
-            fi
-            ;;
-        *) models=("qwen2.5-coder:7b") ;;
-    esac
-elif [ "$aiChoice" == "3" ]; then
-    echo -e "${YELLOW}⏭️ Skipping Ollama setup for now. You can download Ollama later (https://ollama.com) and configure models manually.${NC}"
-else
-    echo -e "${GREEN}⏭️ Cloud AI mode selected (Google Gemini). Zero Ollama overhead.${NC}"
-    if [ -z "$apiKey" ]; then
-        echo -e "${YELLOW}ℹ️  Notice: No Gemini API Key was entered.${NC}"
-        echo -e "${YELLOW}   Terraform DevOps Expert runs on Google Gemini and needs an API key to chat.${NC}"
-        echo -e "${CYAN}   👉 Get a free Gemini key in seconds at: https://aistudio.google.com/apikey${NC}"
-        echo -e "${CYAN}   👉 You can enter it in the chat UI via 'Set API Key' or Settings > Provider Keys.${NC}"
+    IFS=',' read -ra choiceArray <<< "$rawModelChoice"
+    declare -a selectedModels=()
+
+    for choice in "${choiceArray[@]}"; do
+        choice=$(echo "$choice" | xargs)
+        case $choice in
+            1) selectedModels+=("qwen2.5-coder:14b" "mistral-nemo") ;;
+            2) selectedModels+=("qwen2.5-coder:7b" "llama3.1") ;;
+            3) selectedModels+=("qwen2.5-coder:3b" "llama3.2") ;;
+            4) selectedModels+=("qwen2.5-coder:1.5b" "llama3.2:1b") ;;
+            5) selectedModels+=("qwen2.5-coder:14b") ;;
+            6) selectedModels+=("mistral-nemo") ;;
+            7) selectedModels+=("qwen2.5-coder:7b") ;;
+            8) selectedModels+=("llama3.1") ;;
+            9) selectedModels+=("deepseek-coder:6.7b") ;;
+            10) selectedModels+=("codellama:7b") ;;
+            11) selectedModels+=("qwen2.5-coder:3b") ;;
+            12) selectedModels+=("llama3.2") ;;
+            13) selectedModels+=("qwen2.5-coder:1.5b") ;;
+            14) selectedModels+=("llama3.2:1b") ;;
+            15)
+                read -p "Enter custom model name(s) from https://ollama.com/library (comma-separated): " customInput
+                if [ -n "$customInput" ]; then
+                    IFS=',' read -ra customArr <<< "$customInput"
+                    for cm in "${customArr[@]}"; do
+                        cm=$(echo "$cm" | xargs)
+                        [ -n "$cm" ] && selectedModels+=("$cm")
+                    done
+                fi
+                ;;
+            *)
+                if [[ "$choice" =~ [a-zA-Z] ]]; then
+                    selectedModels+=("$choice")
+                fi
+                ;;
+        esac
+    done
+
+    if [ ${#selectedModels[@]} -eq 0 ]; then
+        selectedModels=("qwen2.5-coder:7b")
     fi
+
+    # Deduplicate models
+    declare -A seenModels=()
+    for m in "${selectedModels[@]}"; do
+        if [ -z "${seenModels[$m]}" ]; then
+            seenModels[$m]=1
+            models+=("$m")
+        fi
+    done
+
+    echo -e "\n${GREEN}Selected Local Model(s) (${#models[@]}):${NC} ${models[*]}"
+elif [ "$aiChoice" == "4" ]; then
+    echo -e "${YELLOW}⏭️ Skipping model configuration for now. You can download Ollama later (https://ollama.com) or enter cloud keys in Web UI Settings.${NC}"
 fi
 
 # 2. Dependency Checks
@@ -372,27 +470,46 @@ ensure_mongodb || true
 ensure_terraform
 
 # 3. Check for Ollama & Download Local AI Models
-if [ ${#models[@]} -eq 0 ]; then
-    if [ "$aiChoice" == "3" ]; then
-        echo -e "${YELLOW}⏭️ Skipping local AI models (Configuring Cloud mode for now; manual Ollama setup can be done later).${NC}"
-    else
-        echo -e "${GREEN}⏭️ Skipping local AI models as requested (Pure Cloud mode).${NC}"
-    fi
-    export AGENT_PROVIDER="google"
-    export AGENT_MODEL="gemini-3.5-flash-lite"
-else
-    export AGENT_PROVIDER="custom"
-    export AGENT_MODEL="${models[0]}"
+if [ ${#models[@]} -gt 0 ]; then
+    export AGENT_PROVIDER="Ollama"
+    defaultModel="${models[0]}"
+    for m in "${models[@]}"; do
+        if [[ "$m" == "qwen2.5-coder:7b"* ]]; then
+            defaultModel="$m"
+            break
+        fi
+    done
+    export AGENT_MODEL="$defaultModel"
+
     if ! command -v ollama &> /dev/null; then
-        echo -e "${YELLOW}⚠️ Ollama command is not currently available in this terminal. Local AI model pull will be skipped.${NC}"
+        echo -e "${YELLOW}⚠️ Ollama command is not currently available in this terminal. Model pull will be skipped.${NC}"
         echo -e "${CYAN}To pull models manually later, run: ollama pull ${models[0]}${NC}"
     else
-        echo -e "${YELLOW}📥 Pulling Local AI Models via Ollama...${NC}"
+        ensure_ollama_running
+        echo -e "\n${YELLOW}📥 Downloading / Verifying Local AI Models via Ollama...${NC}"
+        installedModels=$(ollama list 2>/dev/null || true)
         for model in "${models[@]}"; do
-            echo -e "${CYAN}Pulling $model...${NC}"
-            ollama pull "$model"
+            if echo "$installedModels" | grep -q "^${model}:\|^${model} "; then
+                echo -e "${GREEN}✅ Model $model is already downloaded!${NC}"
+            else
+                echo -e "${CYAN}📥 Pulling $model (this may take a few minutes depending on size)...${NC}"
+                ollama pull "$model"
+            fi
         done
+        echo -e "${GREEN}✅ Local AI models ready!${NC}"
     fi
+else
+    if [ -n "$openaiApiKey" ]; then
+        export AGENT_PROVIDER="openAI"
+        export AGENT_MODEL="gpt-4o-mini"
+    elif [ -n "$anthropicApiKey" ]; then
+        export AGENT_PROVIDER="anthropic"
+        export AGENT_MODEL="claude-3-5-sonnet-20241022"
+    else
+        export AGENT_PROVIDER="google"
+        export AGENT_MODEL="gemini-3.5-flash-lite"
+    fi
+    echo -e "${GREEN}⏭️ Cloud / Manual mode selected (Default Provider: $AGENT_PROVIDER, Model: $AGENT_MODEL).${NC}"
 fi
 
 # 4. Install MCP Servers globally
@@ -466,10 +583,10 @@ if [ -f "$lcPathFull/terramind.yaml" ]; then
     sed -i "s|REPLACE_WITH_TF_WORKSPACE|$tfWorkspace|g" "$lcPathFull/terramind.yaml"
     sed -i "s|REPLACE_WITH_MCP_RUNNER_PATH|$lcPathFull/mcp-tf-runner.js|g" "$lcPathFull/terramind.yaml"
     
+    # Configure all available models in endpoints.agents.models
+    baseModelsJson='"gemini-3.5-flash-lite", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet-20241022"'
+    localModelsJson=""
     if [ ${#models[@]} -gt 0 ]; then
-        echo -e "${CYAN}Injecting Ollama endpoints and local models into terramind.yaml...${NC}"
-        baseModelsJson='"gemini-3.5-flash-lite", "gemini-1.5-flash-latest"'
-        localModelsJson=""
         for m in "${models[@]}"; do
             if [ -z "$localModelsJson" ]; then
                 localModelsJson="\"$m\""
@@ -478,13 +595,28 @@ if [ -f "$lcPathFull/terramind.yaml" ]; then
             fi
         done
         allModelsJson="$baseModelsJson, $localModelsJson"
-        
-        sed -i "s|models: \[\"gemini-3.5-flash-lite\", \"gemini-1.5-flash-latest\"\]|models: [$allModelsJson]|g" "$lcPathFull/terramind.yaml"
-        
-        ollamaBlock="  custom:\n    - name: \"Ollama\"\n      apiKey: \"ollama\"\n      baseURL: \"http://127.0.0.1:11434/v1\"\n      models:\n        default: [$localModelsJson]\n        fetch: true\n      titleConvo: true\n      titleModel: \"current_model\"\n      summarize: false\n      displayInFilter: true"
-        sed -i "s|  google: {}|  google: {}\n$ollamaBlock|g" "$lcPathFull/terramind.yaml"
     else
-        echo -e "${GREEN}Pure Cloud mode active. Zero Ollama endpoints injected into terramind.yaml.${NC}"
+        allModelsJson="$baseModelsJson"
+    fi
+    
+    sed -i "s|models: \[\"gemini-3.5-flash-lite\", \"gemini-1.5-flash-latest\"\]|models: [$allModelsJson]|g" "$lcPathFull/terramind.yaml"
+    
+    # Ensure openAI and anthropic endpoints are present if keys are provided
+    if [ -n "$openaiApiKey" ] && ! grep -q "  openAI:" "$lcPathFull/terramind.yaml"; then
+        sed -i "s|  google: {}|  google: {}\n  openAI: {}|g" "$lcPathFull/terramind.yaml"
+    fi
+    if [ -n "$anthropicApiKey" ] && ! grep -q "  anthropic:" "$lcPathFull/terramind.yaml"; then
+        sed -i "s|  google: {}|  google: {}\n  anthropic: {}|g" "$lcPathFull/terramind.yaml"
+    fi
+
+    if [ ${#models[@]} -gt 0 ]; then
+        echo -e "${CYAN}Injecting Ollama endpoints and local models into terramind.yaml...${NC}"
+        ollamaBlock="  custom:\n    - name: \"Ollama\"\n      apiKey: \"ollama\"\n      baseURL: \"http://127.0.0.1:11434/v1\"\n      models:\n        default: [$localModelsJson]\n        fetch: true\n      titleConvo: true\n      titleModel: \"current_model\"\n      summarize: false\n      displayInFilter: true"
+        if ! grep -q 'name: "Ollama"' "$lcPathFull/terramind.yaml"; then
+            sed -i "s|  google: {}|  google: {}\n$ollamaBlock|g" "$lcPathFull/terramind.yaml"
+        fi
+    else
+        echo -e "${GREEN}Cloud / Manual mode active. Local Ollama endpoints will be configured on demand.${NC}"
     fi
 fi
 
@@ -494,10 +626,7 @@ envDest="$lcPathFull/.env"
 if [ -f "$envSource" ]; then
     cp "$envSource" "$envDest"
     
-    if [ ! -z "$apiKey" ]; then
-        sed -i "s/REPLACE_WITH_YOUR_KEY/$apiKey/g" "$envDest"
-    fi
-    
+    # Set APP_TITLE and CONFIG_PATH
     if grep -q "APP_TITLE=" "$envDest"; then
         sed -i "s/^APP_TITLE=.*/APP_TITLE=TerraMind/g" "$envDest"
     else
@@ -510,17 +639,53 @@ if [ -f "$envSource" ]; then
         echo 'CONFIG_PATH="terramind.yaml"' >> "$envDest"
     fi
 
-    if [ ! -z "$apiKey" ]; then
+    # Set AGENT_PROVIDER & AGENT_MODEL
+    if grep -q "AGENT_PROVIDER=" "$envDest"; then
+        sed -i "s|^AGENT_PROVIDER=.*|AGENT_PROVIDER=\"$AGENT_PROVIDER\"|g" "$envDest"
+    else
+        echo "AGENT_PROVIDER=\"$AGENT_PROVIDER\"" >> "$envDest"
+    fi
+
+    if grep -q "AGENT_MODEL=" "$envDest"; then
+        sed -i "s|^AGENT_MODEL=.*|AGENT_MODEL=\"$AGENT_MODEL\"|g" "$envDest"
+    else
+        echo "AGENT_MODEL=\"$AGENT_MODEL\"" >> "$envDest"
+    fi
+
+    # Set Cloud API keys if provided
+    if [ -n "$geminiApiKey" ]; then
         if grep -q "GEMINI_API_KEY=" "$envDest"; then
-            sed -i "s|.*GEMINI_API_KEY=.*|GEMINI_API_KEY=\"$apiKey\"|" "$envDest"
+            sed -i "s|.*GEMINI_API_KEY=.*|GEMINI_API_KEY=\"$geminiApiKey\"|" "$envDest"
         else
-            echo "GEMINI_API_KEY=\"$apiKey\"" >> "$envDest"
+            echo "GEMINI_API_KEY=\"$geminiApiKey\"" >> "$envDest"
         fi
         if grep -q "GOOGLE_KEY=" "$envDest"; then
-            sed -i "s|.*GOOGLE_KEY=.*|GOOGLE_KEY=\"$apiKey\"|" "$envDest"
+            sed -i "s|.*GOOGLE_KEY=.*|GOOGLE_KEY=\"$geminiApiKey\"|" "$envDest"
         else
-            echo "GOOGLE_KEY=\"$apiKey\"" >> "$envDest"
+            echo "GOOGLE_KEY=\"$geminiApiKey\"" >> "$envDest"
         fi
+    fi
+
+    if [ -n "$openaiApiKey" ]; then
+        if grep -q "OPENAI_API_KEY=" "$envDest"; then
+            sed -i "s|.*OPENAI_API_KEY=.*|OPENAI_API_KEY=\"$openaiApiKey\"|" "$envDest"
+        else
+            echo "OPENAI_API_KEY=\"$openaiApiKey\"" >> "$envDest"
+        fi
+    else
+        sed -i "s|^OPENAI_API_KEY=user_provided|# OPENAI_API_KEY=user_provided|g" "$envDest"
+    fi
+
+    if [ -n "$anthropicApiKey" ]; then
+        if grep -q "ANTHROPIC_API_KEY=" "$envDest"; then
+            sed -i "s|.*ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=\"$anthropicApiKey\"|" "$envDest"
+        else
+            echo "ANTHROPIC_API_KEY=\"$anthropicApiKey\"" >> "$envDest"
+        fi
+    fi
+
+    if [ ${#models[@]} -gt 0 ]; then
+        echo "OLLAMA_MODELS=\"${models[*]}\"" >> "$envDest"
     fi
 
     if grep -q "MONGO_URI=" "$envDest"; then
@@ -546,8 +711,6 @@ if [ -f "$envSource" ]; then
     else
         echo "HELP_AND_FAQ_URL=https://www.google.com" >> "$envDest"
     fi
-
-    sed -i "s|^OPENAI_API_KEY=user_provided|# OPENAI_API_KEY=user_provided|g" "$envDest"
 else
     echo -e "${YELLOW}⚠️ Could not find .env.example to create .env file.${NC}"
 fi
@@ -610,6 +773,11 @@ echo '#!/bin/bash' > "$launchScript"
 echo 'cd "$(dirname "$0")/Mind" || exit' >> "$launchScript"
 echo 'echo "Starting TerraMind AI Server..."' >> "$launchScript"
 echo 'sudo systemctl start mongod 2>/dev/null || true' >> "$launchScript"
+echo 'if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then' >> "$launchScript"
+echo '    echo "Starting Ollama background server..."' >> "$launchScript"
+echo '    nohup ollama serve >/dev/null 2>&1 &' >> "$launchScript"
+echo '    sleep 2' >> "$launchScript"
+echo 'fi' >> "$launchScript"
 echo 'if [ -f seed-agent.js ]; then node seed-agent.js >/dev/null 2>&1; fi' >> "$launchScript"
 echo 'npm run backend' >> "$launchScript"
 chmod +x "$launchScript"

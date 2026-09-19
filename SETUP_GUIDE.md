@@ -104,38 +104,47 @@ Enter choice (1 or 2) [Default: 1]:
 ---
 
 ### 3. AI Engine Configuration
-Select your primary AI model provider:
+Select your preferred AI engine setup during installation:
 
 ```text
-Choose Primary AI Engine:
-[1] Local Offline AI (Ollama)
-[2] Cloud AI (Google Gemini - Fast & No GPU required) [Default]
-[3] Skip for now (Configure manually later)
-Enter choice (1, 2, or 3) [Default: 2]:
+======================================================================
+                🤖 Select your AI Engine Setup                       
+======================================================================
+ 1) Local AI via Ollama (100% Offline / Private / Free) [Recommended]
+ 2) Cloud AI (Google Gemini, OpenAI, Anthropic Claude)
+ 3) Hybrid (Both Local Ollama + Cloud AI Models)
+ 4) Skip for now (Configure models & keys manually later)
+Enter your choice (1-4) [Default: 1]:
 ```
 
-#### Choice 2: Cloud AI (Google Gemini) [Default]
-* **Fast & Lightweight**: Zero local GPU or CPU load.
-* Requires a free or paid Google Gemini API key (from [Google AI Studio](https://aistudio.google.com/)).
-* Keeps your `chat/terramind.yaml` clean with **zero Ollama overhead**.
+#### Choice 1: Local AI via Ollama (100% Offline / Private / Free) [Recommended]
+* **Zero Cloud Dependency & Zero Cost**: Runs completely on your hardware without internet or cloud API fees.
+* **No Cloud API Keys Required**: You will **never** be forced or prompted to provide a Gemini, OpenAI, or Anthropic key.
+* **Automatic Installation & Background Management**: If Ollama is not installed, the installer downloads it automatically. In environments without systemd (e.g. WSL or bare Docker), TerraMind automatically launches and monitors `ollama serve` in the background.
+* **Categorized RAM Tiers & Multi-Model Selection**:
+  You can choose single models or enter comma-separated numbers (e.g. `7,8` or `2,5`) to pull multiple models in a single run:
 
-#### Choice 1: Local Offline AI (Ollama)
-* **100% Offline & Private**: Keeps all Terraform configurations and credentials strictly on your machine.
-* **Automated Ollama Check & Install**: If Ollama is not detected in your `PATH`, the installer automatically downloads and installs it for you (`winget` / `OllamaSetup.exe` on Windows; official install script on Linux).
-* **8+ Hardware-Tailored Model Options**:
-  1. `qwen2.5-coder:7b` - Recommended for DevOps & Terraform (Requires ~8 GB RAM / VRAM)
-  2. `deepseek-coder-v2:16b` - High performance coding model (~16 GB RAM)
-  3. `codellama:7b` - Specialized code synthesis model (~8 GB RAM)
-  4. `llama3.2:3b` - Ultra-lightweight model (Runs on 4 GB RAM / standard laptops)
-  5. `llama3.1:8b` - Balanced general reasoning and DevOps (~8 GB RAM)
-  6. `mistral:7b` - Fast instruction follower (~8 GB RAM)
-  7. `qwen2.5-coder:14b` - Precision architecture & complex infrastructure (~16 GB RAM)
-  8. `llama3.1:70b` - Enterprise-grade reasoning (Requires 48 GB+ VRAM / Multi-GPU)
-  9. `Hardware Bundles`: Automated batch pulling for Pro DevOps, Lightweight, or Ultimate multi-model stacks.
-  10. `Custom Model`: Enter any model name available on the Ollama Library.
+| Tier / Category | Target Hardware | Included Models | Model Library Link |
+| :--- | :--- | :--- | :--- |
+| **Best / Heavy Tier** | 32 GB+ RAM / GPU | `qwen2.5-coder:14b`, `mistral-nemo` | [Ollama Library](https://ollama.com/library) |
+| **High Tier** | 16 GB RAM | `qwen2.5-coder:7b`, `llama3.1` | [Ollama Library](https://ollama.com/library) |
+| **Mid Tier** | 12 GB RAM | `qwen2.5-coder:7b` | [Ollama Library](https://ollama.com/library) |
+| **Low Tier / Laptop** | 8 GB RAM | `qwen2.5-coder:3b`, `llama3.2` | [Ollama Library](https://ollama.com/library) |
+| **Ultra-Lightweight** | 4-8 GB RAM | `qwen2.5-coder:1.5b` (~1GB VRAM) | [Ollama Library](https://ollama.com/library) |
 
-#### Choice 3: Skip for now
-* Skips model pulling and local configuration, allowing you to manually install Ollama and configure custom endpoints at a later time.
+#### Choice 2: Cloud AI (Google Gemini, OpenAI, Anthropic Claude)
+* **High Reasoning & Zero Local GPU Burden**: Offloads heavy model computation to cloud inference APIs.
+* **Direct Links to Generate API Keys**:
+  * **Google Gemini** (Free Tier available): [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+  * **OpenAI**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+  * **Anthropic Claude**: [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+* **Flexible Selection**: Pick only the provider you have (or skip entering keys during setup to add them in the Web UI later under **Settings > Provider Keys**).
+
+#### Choice 3: Hybrid (Both Local Ollama + Cloud AI Models)
+* Combines the best of both worlds: local privacy for code editing and cloud inference for high-level architecture planning.
+
+#### Choice 4: Skip for now
+* Skips model pulling and API key entry. You can configure models and keys anytime later.
 
 ---
 

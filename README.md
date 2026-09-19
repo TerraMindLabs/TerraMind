@@ -42,6 +42,20 @@ TerraMind automatically injects production-grade architecture blueprints and SOP
 10. `vault-secrets-cloud-integration`: Zero-secret Terraform patterns with AWS Secrets Manager and External Secrets Operator (ESO).
 11. `cloud-disaster-recovery-runbook`: Multi-region failover tiers, cross-region state replication, and Velero cluster backup automation.
 
+## 🤖 Flexible AI Engines & Direct Key Generation Links
+
+TerraMind gives you full freedom over your AI models. Choose between 100% offline local models, premier cloud models, or a hybrid setup:
+
+| Provider | Type | Direct API Key / Model Link | Notes |
+| :--- | :--- | :--- | :--- |
+| **Local Ollama** | 100% Offline / Private | [https://ollama.com/library](https://ollama.com/library) | Free, zero cloud fees, private. Auto-installed by setup script. |
+| **Google Gemini** | Cloud AI | [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Generous free tier, fast inference, 1M+ context window. |
+| **OpenAI** | Cloud AI | [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys) | GPT-4o, GPT-4o-mini support. |
+| **Anthropic Claude** | Cloud AI | [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Claude 3.5 Sonnet, Claude 3.7 Sonnet reasoning. |
+
+> [!TIP]
+> **No Forced Keys:** If you select Local Ollama during installation, TerraMind will **never** prompt or force you to enter a Gemini or cloud API key. You can also run purely offline or enter cloud keys later via **Settings > Provider Keys** in the web interface.
+
 ## ⚡ Quick Start (One-Liner Installation)
 You do not need to clone this repository manually. Run the single command below in your terminal, and TerraMind will install directly into your chosen directory with zero dead weight:
 
