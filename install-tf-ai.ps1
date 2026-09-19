@@ -867,10 +867,43 @@ if (Test-Path $envSource) {
     }
 
     if ($envContent -match "HELP_AND_FAQ_URL=") {
-        $envContent = $envContent -replace "HELP_AND_FAQ_URL=.*", "HELP_AND_FAQ_URL=https://www.google.com"
+        $envContent = $envContent -replace "HELP_AND_FAQ_URL=.*", "HELP_AND_FAQ_URL=https://github.com/TerraMindLabs/TerraMind"
     } else {
-        $envContent += "`nHELP_AND_FAQ_URL=https://www.google.com"
+        $envContent += "`nHELP_AND_FAQ_URL=https://github.com/TerraMindLabs/TerraMind"
     }
+
+    # Auto-generate secure random JWT secrets and CREDS keys if not already set
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $jwtBytes = New-Object byte[] 32; $rng.GetBytes($jwtBytes)
+    $jwtSecret = [Convert]::ToBase64String($jwtBytes)
+    $jwtRefBytes = New-Object byte[] 32; $rng.GetBytes($jwtRefBytes)
+    $jwtRefreshSecret = [Convert]::ToBase64String($jwtRefBytes)
+    $credsKeyBytes = New-Object byte[] 32; $rng.GetBytes($credsKeyBytes)
+    $credsKey = [BitConverter]::ToString($credsKeyBytes).Replace('-','').ToLower()
+    $credsIvBytes = New-Object byte[] 16; $rng.GetBytes($credsIvBytes)
+    $credsIv = [BitConverter]::ToString($credsIvBytes).Replace('-','').ToLower()
+
+    if ($envContent -match "^JWT_SECRET=\s*$" -or $envContent -match "^JWT_SECRET=$") {
+        $envContent = $envContent -replace "(?m)^JWT_SECRET=\s*$", "JWT_SECRET=$jwtSecret"
+    } elseif ($envContent -notmatch "JWT_SECRET=") {
+        $envContent += "`nJWT_SECRET=$jwtSecret"
+    }
+    if ($envContent -match "^JWT_REFRESH_SECRET=\s*$" -or $envContent -match "^JWT_REFRESH_SECRET=$") {
+        $envContent = $envContent -replace "(?m)^JWT_REFRESH_SECRET=\s*$", "JWT_REFRESH_SECRET=$jwtRefreshSecret"
+    } elseif ($envContent -notmatch "JWT_REFRESH_SECRET=") {
+        $envContent += "`nJWT_REFRESH_SECRET=$jwtRefreshSecret"
+    }
+    if ($envContent -match "^CREDS_KEY=\s*$" -or $envContent -match "^CREDS_KEY=$") {
+        $envContent = $envContent -replace "(?m)^CREDS_KEY=\s*$", "CREDS_KEY=$credsKey"
+    } elseif ($envContent -notmatch "CREDS_KEY=") {
+        $envContent += "`nCREDS_KEY=$credsKey"
+    }
+    if ($envContent -match "^CREDS_IV=\s*$" -or $envContent -match "^CREDS_IV=$") {
+        $envContent = $envContent -replace "(?m)^CREDS_IV=\s*$", "CREDS_IV=$credsIv"
+    } elseif ($envContent -notmatch "CREDS_IV=") {
+        $envContent += "`nCREDS_IV=$credsIv"
+    }
+    Write-Host "[OK] Generated secure JWT and CREDS secrets for this installation." -ForegroundColor Green
 
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
 } else {
@@ -937,88 +970,7 @@ Write-Host "`n Creating Launch & Uninstall Shortcuts..." -ForegroundColor Yellow
 
 $iconPath = Join-Path $lcPathFull "etc\favicon\favicon.ico"
 
-$batPath = Join-Path $basePath "TerraMind.bat"
-$batContent = "@echo off`r`ntitle TerraMind AI Server`r`ncd /d `"%~dp0Mind`"`r`ncls`r`necho Starting TerraMind AI Server...`r`necho Please leave this window open to keep the server running.`r`necho.`r`nnet start MongoDB >nul 2>&1`r`nwhere ollama >nul 2>&1`r`nif %errorlevel% equ 0 (`r`n    curl -s http://127.0.0.1:11434/api/version >nul 2>&1`r`n    if errorlevel 1 start /b ollama serve >nul 2>&1`r`n)`r`nif exist seed-agent.js node seed-agent.js >nul 2>&1`r`nnpm run backend`r`npause"
-Set-Content -Path $batPath -Value $batContent -Encoding UTF8
-Write-Host "[OK] Created launch script: $batPath" -ForegroundColor Green
 
-$uninstallerPath = Join-Path $basePath "Uninstall_TerraMind.bat"
-$uninstallerContent = @"
-@echo off
-title TerraMind Uninstaller
-cd /d "%~dp0"
-cls
-echo ===========================================================
-echo            TerraMind (TF-AI-Gen) Uninstaller
-echo ===========================================================
-echo.
-echo [!] WARNING: This will completely remove TerraMind and its workspaces.
-set /p confirm="Are you sure you want to uninstall TerraMind? (y/N): "
-if /i not "%confirm%"=="y" (
-    echo Uninstallation cancelled.
-    pause
-    exit /b
-)
-
-set /p removeNpm="Uninstall global MCP packages (@modelcontextprotocol/server-filesystem, terraform-mcp-server)? (y/N): "
-set /p removeModels="Remove local Ollama models? (y/N): "
-
-echo.
-echo [*] Force-stopping running Node.js servers...
-taskkill /f /im node.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-
-if exist "%~dp0Mind" (
-    echo [*] Removing TerraMind server files (Mind)...
-    rmdir /s /q "%~dp0Mind" >nul 2>&1
-)
-
-if exist "%~dp0Terraform" (
-    echo [*] Removing Terraform workspace...
-    rmdir /s /q "%~dp0Terraform" >nul 2>&1
-)
-
-if /i "%removeNpm%"=="y" (
-    where npm >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [*] Uninstalling global MCP packages...
-        call npm uninstall -g @modelcontextprotocol/server-filesystem terraform-mcp-server
-    )
-)
-
-if /i "%removeModels%"=="y" (
-    where ollama >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [*] Removing local Ollama models...
-        call ollama rm llama3.2 >nul 2>&1
-        call ollama rm qwen2.5-coder:3b >nul 2>&1
-        call ollama rm llama3.1 >nul 2>&1
-        call ollama rm qwen2.5-coder:7b >nul 2>&1
-        call ollama rm mistral-nemo >nul 2>&1
-        call ollama rm qwen2.5-coder:14b >nul 2>&1
-    )
-)
-
-set "desktopDir=%USERPROFILE%\Desktop"
-if exist "%desktopDir%\TerraMind.lnk" del /f /q "%desktopDir%\TerraMind.lnk" >nul 2>&1
-if exist "%~dp0TerraMind.bat" del /f /q "%~dp0TerraMind.bat" >nul 2>&1
-if exist "%~dp0TerraMind.exe" del /f /q "%~dp0TerraMind.exe" >nul 2>&1
-if exist "%~dp0Start-TerraMind.bat" del /f /q "%~dp0Start-TerraMind.bat" >nul 2>&1
-if exist "%~dp0Start-TerraMind.exe" del /f /q "%~dp0Start-TerraMind.exe" >nul 2>&1
-if exist "%~dp0Uninstall_TerraMind.bat" del /f /q "%~dp0Uninstall_TerraMind.bat" >nul 2>&1
-if exist "%~dp0Uninstall_TerraMind.exe" del /f /q "%~dp0Uninstall_TerraMind.exe" >nul 2>&1
-if exist "%~dp0Uninstall-TerraMind.bat" del /f /q "%~dp0Uninstall-TerraMind.bat" >nul 2>&1
-if exist "%~dp0Uninstall-TerraMind.exe" del /f /q "%~dp0Uninstall-TerraMind.exe" >nul 2>&1
-
-echo.
-echo ===========================================================
-echo [OK] TerraMind has been successfully uninstalled!
-echo ===========================================================
-echo You may now delete this folder if desired.
-pause
-"@
-Set-Content -Path $uninstallerPath -Value $uninstallerContent -Encoding UTF8
-Write-Host "[OK] Created uninstaller script: $uninstallerPath" -ForegroundColor Green
 
 # Native C# Compilation for TerraMind.exe & Uninstall_TerraMind.exe with TerraMind Logo
 $cscPath = Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
@@ -1026,65 +978,144 @@ if (!(Test-Path $cscPath)) {
     $cscPath = Join-Path $env:windir "Microsoft.NET\Framework\v4.0.30319\csc.exe"
 }
 
-if ((Test-Path $cscPath) -and (Test-Path $iconPath)) {
+if (Test-Path $cscPath) {
     try {
+        # TerraMind.exe: Starts the backend server and opens the browser
         $csStart = @"
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 
 class Program {
     static void Main() {
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
         string mindDir = Path.Combine(baseDir, "Mind");
-        ProcessStartInfo psi = new ProcessStartInfo();
-        psi.FileName = "cmd.exe";
-        psi.Arguments = "/k title TerraMind AI Server && net start MongoDB >nul 2>&1 && (where ollama >nul 2>&1 && (curl -s http://127.0.0.1:11434/api/version >nul 2>&1 || start /b ollama serve >nul 2>&1)) && if exist seed-agent.js node seed-agent.js >nul 2>&1 && npm run backend";
-        psi.WorkingDirectory = mindDir;
-        psi.UseShellExecute = true;
-        Process.Start(psi);
+
+        // 1. Start MongoDB
+        Process.Start(new ProcessStartInfo {
+            FileName = "cmd.exe",
+            Arguments = "/c net start MongoDB",
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = mindDir
+        });
+
+        // 2. Start Ollama if installed
+        Process.Start(new ProcessStartInfo {
+            FileName = "cmd.exe",
+            Arguments = "/c where ollama && curl -s http://127.0.0.1:11434/api/version || start /b ollama serve",
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = mindDir
+        });
+
+        // 3. Start Node backend server in a visible console
+        ProcessStartInfo serverPsi = new ProcessStartInfo();
+        serverPsi.FileName = "cmd.exe";
+        serverPsi.Arguments = @"/k title TerraMind AI Server && echo Starting TerraMind... && echo. && npm run backend";
+        serverPsi.WorkingDirectory = mindDir;
+        serverPsi.UseShellExecute = true;
+        serverPsi.WindowStyle = ProcessWindowStyle.Normal;
+        Process.Start(serverPsi);
+
+        // 4. Wait for server to start (5 seconds) then open browser
+        Thread.Sleep(5000);
+        Process.Start(new ProcessStartInfo {
+            FileName = "http://localhost:3080",
+            UseShellExecute = true
+        });
     }
 }
 "@
         $tempCs = Join-Path $env:TEMP "TerraMind.cs"
         Set-Content -Path $tempCs -Value $csStart -Encoding UTF8
         $startExePath = Join-Path $basePath "TerraMind.exe"
-        & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$startExePath" "$tempCs" 2>&1 | Out-Null
+        $iconArg = if (Test-Path $iconPath) { "/win32icon:`"$iconPath`"" } else { "" }
+        if ($iconArg) {
+            & $cscPath /nologo /target:winexe $iconArg /out:"$startExePath" "$tempCs" 2>&1 | Out-Null
+        } else {
+            & $cscPath /nologo /target:winexe /out:"$startExePath" "$tempCs" 2>&1 | Out-Null
+        }
         Remove-Item $tempCs -Force -ErrorAction SilentlyContinue
 
         if (Test-Path $startExePath) {
-            Write-Host "[OK] Compiled native launcher with TerraMind logo: $startExePath" -ForegroundColor Green
+            Write-Host "[OK] Compiled TerraMind.exe launcher: $startExePath" -ForegroundColor Green
         }
 
+        # Uninstall_TerraMind.exe: Fully self-contained, no .bat dependency, cleans up everything including itself
         $csUninstall = @"
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Windows.Forms;
 
 class Program {
+    [STAThread]
     static void Main() {
+        var result = MessageBox.Show(
+            "This will completely uninstall TerraMind and delete all its files.\n\nAre you sure you want to proceed?",
+            "TerraMind Uninstaller",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning
+        );
+        if (result != DialogResult.Yes) { return; }
+
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        string batPath = Path.Combine(baseDir, "Uninstall_TerraMind.bat");
-        ProcessStartInfo psi = new ProcessStartInfo();
-        psi.FileName = "cmd.exe";
-        psi.Arguments = "/c \"" + batPath + "\"";
-        psi.WorkingDirectory = baseDir;
-        psi.UseShellExecute = true;
-        Process.Start(psi);
+        string mindDir = Path.Combine(baseDir, "Mind");
+        string tfDir = Path.Combine(baseDir, "Terraform");
+        string binDir = Path.Combine(baseDir, "bin");
+
+        // Kill all Node processes
+        try { Process.Start(new ProcessStartInfo { FileName = "taskkill", Arguments = "/f /im node.exe", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden, CreateNoWindow = true }).WaitForExit(5000); } catch {}
+
+        // Build a self-deleting cleanup script and run it deferred so the exe can exit first
+        string cleanupScript = Path.Combine(Path.GetTempPath(), "terramind_uninstall.bat");
+        string ownExe = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        string launcherExe = Path.Combine(baseDir, "TerraMind.exe");
+        string desktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "TerraMind.lnk");
+
+        File.WriteAllText(cleanupScript,
+            "@echo off\r\n" +
+            "timeout /t 2 /nobreak >nul\r\n" +
+            "if exist \"" + mindDir + "\" rmdir /s /q \"" + mindDir + "\"\r\n" +
+            "if exist \"" + tfDir + "\" rmdir /s /q \"" + tfDir + "\"\r\n" +
+            "if exist \"" + binDir + "\" rmdir /s /q \"" + binDir + "\"\r\n" +
+            "if exist \"" + desktopLnk + "\" del /f /q \"" + desktopLnk + "\"\r\n" +
+            "if exist \"" + launcherExe + "\" del /f /q \"" + launcherExe + "\"\r\n" +
+            "if exist \"" + ownExe + "\" del /f /q \"" + ownExe + "\"\r\n" +
+            // Try to delete the parent folder itself if empty
+            "timeout /t 1 /nobreak >nul\r\n" +
+            "rmdir \"" + baseDir.TrimEnd('\\') + "\" 2>nul\r\n" +
+            "del /f /q \"%~f0\"\r\n"
+        );
+
+        MessageBox.Show("TerraMind has been uninstalled successfully.", "TerraMind Uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        Process.Start(new ProcessStartInfo {
+            FileName = "cmd.exe",
+            Arguments = "/c \"" + cleanupScript + "\"",
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden
+        });
     }
 }
 "@
         $tempCsUn = Join-Path $env:TEMP "Uninstall_TerraMind.cs"
         Set-Content -Path $tempCsUn -Value $csUninstall -Encoding UTF8
         $unExePath = Join-Path $basePath "Uninstall_TerraMind.exe"
-        & $cscPath /nologo /target:winexe /win32icon:"$iconPath" /out:"$unExePath" "$tempCsUn" 2>&1 | Out-Null
+        if ($iconArg) {
+            & $cscPath /nologo /target:winexe /reference:System.Windows.Forms.dll $iconArg /out:"$unExePath" "$tempCsUn" 2>&1 | Out-Null
+        } else {
+            & $cscPath /nologo /target:winexe /reference:System.Windows.Forms.dll /out:"$unExePath" "$tempCsUn" 2>&1 | Out-Null
+        }
         Remove-Item $tempCsUn -Force -ErrorAction SilentlyContinue
 
         if (Test-Path $unExePath) {
-            Write-Host "[OK] Compiled native uninstaller with TerraMind logo: $unExePath" -ForegroundColor Green
+            Write-Host "[OK] Compiled Uninstall_TerraMind.exe: $unExePath" -ForegroundColor Green
         }
     } catch {
-        # Fallback to .bat scripts if compilation is restricted
+        Write-Warning "Could not compile native exe launchers: $_"
     }
 }
 
@@ -1094,11 +1125,7 @@ try {
     if ($desktopPath -and (Test-Path $desktopPath)) {
         $wsh = New-Object -ComObject WScript.Shell
         $lnk = $wsh.CreateShortcut((Join-Path $desktopPath "TerraMind.lnk"))
-        if (Test-Path (Join-Path $basePath "TerraMind.exe")) {
-            $lnk.TargetPath = Join-Path $basePath "TerraMind.exe"
-        } else {
-            $lnk.TargetPath = Join-Path $basePath "TerraMind.bat"
-        }
+        $lnk.TargetPath = Join-Path $basePath "TerraMind.exe"
         $lnk.WorkingDirectory = Join-Path $basePath "Mind"
         if (Test-Path $iconPath) {
             $lnk.IconLocation = "$iconPath,0"
@@ -1140,6 +1167,6 @@ if ($LASTEXITCODE -eq 1) {
     npm run backend
 } else {
     Write-Host "`n[>] To start TerraMind later, double-click TerraMind.exe (or the Desktop shortcut)!" -ForegroundColor Cyan
-    Write-Host "[>] To uninstall TerraMind, simply run Uninstall_TerraMind.exe (or Uninstall_TerraMind.bat)!" -ForegroundColor Yellow
+    Write-Host "[>] To uninstall TerraMind, simply run Uninstall_TerraMind.exe!" -ForegroundColor Yellow
     Pause
 }
