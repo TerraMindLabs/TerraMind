@@ -169,7 +169,10 @@ ensure_terraform() {
     exit 1
 }
 
+export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+
 ensure_ollama_running() {
+    export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
     if ! command -v ollama &> /dev/null; then
         return 1
     fi
@@ -180,21 +183,36 @@ ensure_ollama_running() {
     fi
 
     echo -e "${YELLOW}⚙️ Ollama daemon is not running. Starting background server ('ollama serve')...${NC}"
-    if command -v systemctl &> /dev/null && systemctl is-active --quiet ollama 2>/dev/null; then
+    
+    # 1. If systemd is running, attempt systemctl start ollama
+    if [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
         sudo systemctl start ollama 2>/dev/null || true
-    else
-        nohup ollama serve > /tmp/ollama_terramind.log 2>&1 &
     fi
 
-    for i in {1..10}; do
+    # 2. Check if active now
+    if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+        echo -e "${GREEN}✅ Ollama daemon started successfully via systemd!${NC}"
+        return 0
+    fi
+
+    # 3. Direct background launch for WSL / Docker / non-systemd environments
+    local ollamaBin=$(command -v ollama || echo "/usr/local/bin/ollama")
+    nohup "$ollamaBin" serve > /tmp/ollama_terramind.log 2>&1 &
+    local ollamaPid=$!
+
+    for i in {1..15}; do
         if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
-            echo -e "${GREEN}✅ Ollama daemon started successfully and is ready!${NC}"
+            echo -e "${GREEN}✅ Ollama daemon started successfully (PID: $ollamaPid) and is ready!${NC}"
             return 0
         fi
         sleep 1
     done
 
-    echo -e "${YELLOW}⚠️ Notice: Ollama background server initiated, continuing...${NC}"
+    echo -e "${YELLOW}⚠️ Notice: Ollama background server initiated.${NC}"
+    if [ -f /tmp/ollama_terramind.log ]; then
+        echo -e "${YELLOW}   Recent log entries (/tmp/ollama_terramind.log):${NC}"
+        tail -n 5 /tmp/ollama_terramind.log 2>/dev/null || true
+    fi
     return 0
 }
 
@@ -487,16 +505,30 @@ if [ ${#models[@]} -gt 0 ]; then
     else
         ensure_ollama_running
         echo -e "\n${YELLOW}📥 Downloading / Verifying Local AI Models via Ollama...${NC}"
-        installedModels=$(ollama list 2>/dev/null || true)
+        allSuccess=true
         for model in "${models[@]}"; do
+            installedModels=$(ollama list 2>/dev/null || true)
             if echo "$installedModels" | grep -q "^${model}:\|^${model} "; then
                 echo -e "${GREEN}✅ Model $model is already downloaded!${NC}"
             else
                 echo -e "${CYAN}📥 Pulling $model (this may take a few minutes depending on size)...${NC}"
-                ollama pull "$model"
+                if ! ollama pull "$model"; then
+                    echo -e "${YELLOW}⚠️ Connection failed. Retrying Ollama daemon start and pulling again...${NC}"
+                    ensure_ollama_running
+                    sleep 2
+                    if ! ollama pull "$model"; then
+                        echo -e "${RED}❌ Could not pull $model automatically.${NC}"
+                        echo -e "${YELLOW}   Run 'ollama serve' in a separate terminal and then run: ollama pull $model${NC}"
+                        allSuccess=false
+                    fi
+                fi
             fi
         done
-        echo -e "${GREEN}✅ Local AI models ready!${NC}"
+        if [ "$allSuccess" = true ]; then
+            echo -e "${GREEN}✅ Local AI models ready!${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Some models could not be pulled. You can pull them anytime later via: ollama pull <model>${NC}"
+        fi
     fi
 else
     if [ -n "$openaiApiKey" ]; then
@@ -771,12 +803,13 @@ echo -e "${YELLOW}📜 Creating Launch & Uninstall Shortcuts...${NC}"
 launchScript="$basePath/start-terramind.sh"
 echo '#!/bin/bash' > "$launchScript"
 echo 'cd "$(dirname "$0")/Mind" || exit' >> "$launchScript"
+echo 'export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"' >> "$launchScript"
 echo 'echo "Starting TerraMind AI Server..."' >> "$launchScript"
 echo 'sudo systemctl start mongod 2>/dev/null || true' >> "$launchScript"
 echo 'if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then' >> "$launchScript"
 echo '    echo "Starting Ollama background server..."' >> "$launchScript"
-echo '    nohup ollama serve >/dev/null 2>&1 &' >> "$launchScript"
-echo '    sleep 2' >> "$launchScript"
+echo '    if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then sudo systemctl start ollama 2>/dev/null || true; fi' >> "$launchScript"
+echo '    if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then nohup ollama serve >/dev/null 2>&1 & sleep 2; fi' >> "$launchScript"
 echo 'fi' >> "$launchScript"
 echo 'if [ -f seed-agent.js ]; then node seed-agent.js >/dev/null 2>&1; fi' >> "$launchScript"
 echo 'npm run backend' >> "$launchScript"
