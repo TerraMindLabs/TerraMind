@@ -842,10 +842,23 @@ fi
 read -p "Uninstall global MCP NPM packages? (y/N): " removeNpm
 read -p "Remove locally downloaded Ollama models? (y/N): " removeModels
 
-echo -e "${YELLOW}🗑️ Forcefully stopping running Node.js servers...${NC}"
-pkill -f node || true
-killall node 2>/dev/null || true
-sleep 2
+echo -e "${YELLOW}🗑️ Stopping TerraMind server (port 3080)...${NC}"
+# Only kill the specific node process bound to TerraMind's port (3080)
+# Never use 'pkill -f node' or 'killall node' — it kills Codespace/VS Code server too
+TM_PID=$(lsof -ti tcp:3080 2>/dev/null || fuser 3080/tcp 2>/dev/null | tr -d ' ')
+if [ -n "$TM_PID" ]; then
+    kill -TERM $TM_PID 2>/dev/null || true
+    sleep 2
+    kill -9 $TM_PID 2>/dev/null || true
+    echo -e "${GREEN}✅ TerraMind server stopped.${NC}"
+else
+    # Fallback: try npm stop-backend script if available
+    if [ -f "$BASE_DIR/Mind/package.json" ]; then
+        (cd "$BASE_DIR/Mind" && node config/stop-backend.js 2>/dev/null) || true
+    fi
+    echo -e "${YELLOW}⚠️ No TerraMind process found on port 3080 (may already be stopped).${NC}"
+fi
+sleep 1
 
 if [ -d "$BASE_DIR/Mind" ]; then
     echo -e "${YELLOW}🗑️ Deleting TerraMind installation at $BASE_DIR/Mind...${NC}"
