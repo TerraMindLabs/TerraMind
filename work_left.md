@@ -1,13 +1,3 @@
-I selceted the hybrod that has both API and Local, but  I odn tsee the option to switch betewen them,
+![alt text](image.png)
 
-
-I am getting the below response ?
-
-hi
-
-{
-"name": "skill",
-"arguments": {
-"skillName": "hello-world"
-}
-}
+can we give option ucder teh chatbox so user can switch between Local and APi key Ai for the agent ?

@@ -67,6 +67,7 @@ import TokenUsage from './TokenUsage';
 import StopButton from './StopButton';
 import SendButton from './SendButton';
 import EditBadges from './EditBadges';
+import AISourceToggle from './AISourceToggle';
 import BadgeRow from './BadgeRow';
 import Mention from './Mention';
 import store from '~/store';
@@ -921,6 +922,12 @@ const ChatForm = memo(function ChatForm({
               </div>
               {TextToSpeech && automaticPlayback && <AutoPlayAudio index={index} />}
             </div>
+            {/* AI Source toggle — shown only on the primary composer */}
+            {index === 0 && (
+              <div className="flex justify-center pt-2 pb-0.5">
+                <AISourceToggle index={index} isSubmitting={isSubmitting} />
+              </div>
+            )}
           </div>
         </div>
       </div>
