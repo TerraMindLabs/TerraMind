@@ -880,19 +880,11 @@ echo -e "${GREEN}✅ Created uninstaller script: $uninstallScript${NC}"
 # Create Linux Desktop Shortcut if Desktop environment exists
 if [ -d "$HOME/Desktop" ]; then
     desktopFile="$HOME/Desktop/TerraMind.desktop"
-    cat << EOF > "$desktopFile"
-[Desktop Entry]
-Name=TerraMind
-Comment=TerraMind AI Cloud Architect
-Exec=bash -c "$launchScript; read -p 'Press Enter to close...'"
-Icon=$lcPathFull/client/public/assets/terramind-logo.png
-Terminal=true
-Type=Application
-Categories=Development;
-EOF
+    printf '[Desktop Entry]\nName=TerraMind\nComment=TerraMind AI Cloud Architect\nExec=bash -c "%s; read -p Press Enter to close..."\nIcon=%s/client/public/assets/terramind-logo.png\nTerminal=true\nType=Application\nCategories=Development;\n' "$launchScript" "$lcPathFull" > "$desktopFile"
     chmod +x "$desktopFile" 2>/dev/null || true
     echo -e "${GREEN}✅ Created Desktop shortcut: $desktopFile${NC}"
 fi
+
 
 # Clean up any leftover zip archives across installation folders to free up disk space
 rm -f "$lcPathFull"/*.zip 2>/dev/null || true
