@@ -1,0 +1,32 @@
+{
+  "name": "terramind",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @terramind/server\" \"npm run dev -w @terramind/web\"",
+    "build": "npm run build --workspaces",
+    "backend": "npm run start -w @terramind/server",
+    "frontend": "npm run build -w @terramind/web",
+    "start": "npm run backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "description": "Welcome to **AutoDevOps AI**, your dedicated, self-correcting AI Cloud Architect. This package installs a private, containerized AI agent that writes, formats, secures, and automatically validates Terraform code against your cloud infrastructure.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TerraMindLabs/TerraMind.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/TerraMindLabs/TerraMind/issues"
+  },
+  "homepage": "https://github.com/TerraMindLabs/TerraMind#readme"
+}

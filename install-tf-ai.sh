@@ -579,8 +579,9 @@ if [ ! -d "$lcPathFull" ]; then
         echo -e "${CYAN}[git] Downloading TerraMind application codebase from GitHub...${NC}"
         tempClone="/tmp/terramind_src_$RANDOM"
         git clone --depth 1 https://github.com/TerraMindLabs/TerraMind.git "$tempClone"
-        if [ -d "$tempClone/chat" ]; then
-            mv "$tempClone/chat" "$lcPathFull"
+        if [ -d "$tempClone" ]; then
+            mkdir -p "$lcPathFull"
+            cp -r "$tempClone"/* "$lcPathFull"/
             rm -rf "$tempClone"
             echo -e "${GREEN}✅ TerraMind application codebase deployed successfully to $lcPathFull!${NC}"
         else
@@ -603,14 +604,8 @@ fi
 
 # 8. Install NPM Dependencies
 echo -e "\n${YELLOW}📦 Installing Node dependencies via npm...${NC}"
-run_with_spinner "Installing Node dependencies" "npm install --no-audit --no-fund --prefer-offline" "$lcPathFull"
-run_with_spinner "Finalizing package setup and CLI utilities" "npm install cross-env --no-save --silent" "$lcPathFull"
+run_with_spinner "Installing Node dependencies" "npm install --prefer-offline" "$lcPathFull"
 
-# Verify that internal monorepo package dist files exist; compile if missing
-if [ ! -f "$lcPathFull/packages/api/dist/credentials.cjs" ] || [ ! -f "$lcPathFull/packages/data-schemas/dist/index.cjs" ]; then
-    echo -e "${YELLOW}⚙️ Building internal package modules (@librechat/api, data-schemas)...${NC}"
-    run_with_spinner "Compiling package modules" "npm run build:packages" "$lcPathFull"
-fi
 
 # 9. Configure Environment Variables and Copy Files
 echo -e "${YELLOW}⚙️ Configuring Environment Variables and Copying Files...${NC}"
@@ -778,46 +773,21 @@ fi
 echo -e "${GREEN}✅ Deployed TerraMind branding logos to client assets.${NC}"
 
 # 10. Build Frontend
-if [ -d "$lcPathFull/client/dist" ] && [ -f "$lcPathFull/client/dist/index.html" ]; then
-    echo -e "${GREEN}⚡ Found pre-built frontend (client/dist). Skipping build for faster setup!${NC}"
-else
-    echo -e "${YELLOW}🏗️ Compiling frontend assets (Vite / React)...${NC}"
-    echo -e "   (Note: standard chunk size & eval notices during minification are normal)"
-    run_with_spinner "Building frontend production bundle" "npm run frontend" "$lcPathFull"
-fi
+echo -e "${YELLOW}🏗️ Compiling frontend assets (Vite / React)...${NC}"
+run_with_spinner "Building frontend production bundle" "npm run frontend" "$lcPathFull"
 
-# 11. Seed Default Agents
-echo -e "${YELLOW}🌱 Seeding TerraMind AI Agents into MongoDB...${NC}"
-cd "$lcPathFull" || exit
-if [ ! -d "$lcPathFull/node_modules/mongodb" ]; then
-    npm install mongodb --no-save --silent
-fi
-
-if [ ! -f "$lcPathFull/seed-agent.js" ] && [ -f "$BUNDLED_CHAT_PATH/seed-agent.js" ]; then
-    cp "$BUNDLED_CHAT_PATH/seed-agent.js" "$lcPathFull/"
-fi
-
-if [ -f "$lcPathFull/seed-agent.js" ]; then
-    ensure_mongodb || true
-    node seed-agent.js
-else
-    echo -e "${YELLOW}⚠️ Could not find seed-agent.js. Skipping Agent database seeding.${NC}"
-fi
-
-# 12. Create Launch & Uninstall Scripts
+# 11. Create Launch & Uninstall Scripts
 echo -e "${YELLOW}📜 Creating Launch & Uninstall Shortcuts...${NC}"
 launchScript="$basePath/start-terramind.sh"
 echo '#!/bin/bash' > "$launchScript"
 echo 'cd "$(dirname "$0")/Mind" || exit' >> "$launchScript"
 echo 'export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"' >> "$launchScript"
 echo 'echo "Starting TerraMind AI Server..."' >> "$launchScript"
-echo 'sudo systemctl start mongod 2>/dev/null || true' >> "$launchScript"
 echo 'if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then' >> "$launchScript"
 echo '    echo "Starting Ollama background server..."' >> "$launchScript"
 echo '    if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then sudo systemctl start ollama 2>/dev/null || true; fi' >> "$launchScript"
 echo '    if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then nohup ollama serve >/dev/null 2>&1 & sleep 2; fi' >> "$launchScript"
 echo 'fi' >> "$launchScript"
-echo 'if [ -f seed-agent.js ]; then node seed-agent.js >/dev/null 2>&1; fi' >> "$launchScript"
 echo 'npm run backend' >> "$launchScript"
 chmod +x "$launchScript"
 echo -e "${GREEN}✅ Created launch script: $launchScript${NC}"
@@ -917,7 +887,6 @@ fi
 echo -e "${NC}==========================================================="
 echo -e "${GREEN}✅ Installation Complete! TerraMind is ready to run.${NC}"
 echo -e "${WHITE}🌐 Application URL: http://localhost:3080${NC}"
-echo -e "${YELLOW}⚠️ NOTE: Make sure MongoDB Community Edition is running locally!${NC}"
 echo -e "${NC}===========================================================\n"
 
 read -t 10 -p " 🚀 Auto-starting TerraMind server in 10 seconds... Start now? (Y/n): " startApp
