@@ -745,7 +745,31 @@ if [ -f "$envSource" ]; then
         echo "HELP_AND_FAQ_URL=https://www.google.com" >> "$envDest"
     fi
 else
-    echo -e "${YELLOW}⚠️ Could not find .env.example to create .env file.${NC}"
+    echo -e "${YELLOW}⚠️ .env.example not found. Generating default .env file...${NC}"
+    cat << ENV_EOF > "$envDest"
+APP_TITLE=TerraMind
+CONFIG_PATH="terramind.yaml"
+AGENT_PROVIDER="${AGENT_PROVIDER}"
+AGENT_MODEL="${AGENT_MODEL}"
+MONGO_URI=mongodb://127.0.0.1:27017/TerraMind
+SCHEDULES_SINGLE_PROCESS=true
+ALLOW_PASSWORD_RESET=true
+HELP_AND_FAQ_URL=https://github.com/TerraMindLabs/TerraMind
+ENV_EOF
+    if [ -n "$geminiApiKey" ]; then
+        echo "GEMINI_API_KEY=\"$geminiApiKey\"" >> "$envDest"
+        echo "GOOGLE_KEY=\"$geminiApiKey\"" >> "$envDest"
+    fi
+    if [ -n "$openaiApiKey" ]; then
+        echo "OPENAI_API_KEY=\"$openaiApiKey\"" >> "$envDest"
+    fi
+    if [ -n "$anthropicApiKey" ]; then
+        echo "ANTHROPIC_API_KEY=\"$anthropicApiKey\"" >> "$envDest"
+    fi
+    if [ ${#models[@]} -gt 0 ]; then
+        echo "OLLAMA_MODELS=\"${models[*]}\"" >> "$envDest"
+    fi
+    echo -e "${GREEN}✅ Generated default .env file successfully.${NC}"
 fi
 
 htmlPath="$lcPathFull/client/index.html"
@@ -894,7 +918,11 @@ startApp=${startApp:-y}
 
 if [[ ! "$startApp" =~ ^[nN]$ ]]; then
     echo -e "\n${CYAN} Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)${NC}"
-    npm run backend
+    if [ -f "$launchScript" ]; then
+        exec "$launchScript"
+    else
+        cd "$lcPathFull" && npm run backend
+    fi
 else
     echo -e "\n${CYAN}▶️ To start it later, simply run ./start-terramind.sh in your installation folder!${NC}"
     echo -e "${YELLOW}▶️ To uninstall it later, simply run ./uninstall-terramind.sh in your installation folder!${NC}"
