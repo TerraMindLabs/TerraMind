@@ -907,7 +907,32 @@ if (Test-Path $envSource) {
 
     Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
 } else {
-    Write-Warning "Could not find .env.example to create .env file."
+    Write-Host " [cfg] .env.example not found. Generating default .env file..." -ForegroundColor Yellow
+    $envContent = @"
+APP_TITLE=TerraMind
+CONFIG_PATH="terramind.yaml"
+AGENT_PROVIDER="$($env:AGENT_PROVIDER)"
+AGENT_MODEL="$($env:AGENT_MODEL)"
+MONGO_URI=mongodb://127.0.0.1:27017/TerraMind
+SCHEDULES_SINGLE_PROCESS=true
+ALLOW_PASSWORD_RESET=true
+HELP_AND_FAQ_URL=https://github.com/TerraMindLabs/TerraMind
+"@
+    if (![string]::IsNullOrWhiteSpace($geminiApiKey)) {
+        $envContent += "`nGEMINI_API_KEY=`"$geminiApiKey`"`nGOOGLE_KEY=`"$geminiApiKey`""
+    }
+    if (![string]::IsNullOrWhiteSpace($openaiApiKey)) {
+        $envContent += "`nOPENAI_API_KEY=`"$openaiApiKey`""
+    }
+    if (![string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+        $envContent += "`nANTHROPIC_API_KEY=`"$anthropicApiKey`""
+    }
+    if ($models.Count -gt 0) {
+        $modelsJoined = $models -join " "
+        $envContent += "`nOLLAMA_MODELS=`"$modelsJoined`""
+    }
+    Set-Content -Path "$lcPathFull\.env" -Value $envContent -Encoding UTF8
+    Write-Host "[OK] Created default .env configuration." -ForegroundColor Green
 }
 
 $htmlPath = "$lcPathFull\client\index.html"
@@ -1119,6 +1144,20 @@ class Program {
     }
 }
 
+# Create companion .bat launcher (always available as fallback)
+$batLauncherPath = Join-Path $basePath "TerraMind.bat"
+$batContent = @"
+@echo off
+cd /d "%~dp0\Mind"
+title TerraMind AI Server
+echo Starting TerraMind AI Server on port 3080...
+where ollama >nul 2>nul && curl -s http://127.0.0.1:11434/api/version >nul 2>nul || start /b ollama serve >nul 2>nul
+npm run backend
+pause
+"@
+Set-Content -Path $batLauncherPath -Value $batContent -Encoding ASCII
+Write-Host "[OK] Created TerraMind.bat launcher: $batLauncherPath" -ForegroundColor Green
+
 # Create Desktop Shortcut with TerraMind Logo
 try {
     $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
@@ -1164,9 +1203,10 @@ choice.exe /C YN /T 10 /D Y /M " [?] Auto-starting TerraMind server in 10 second
 
 if ($LASTEXITCODE -eq 1) {
     Write-Host "`n Starting TerraMind Server on port 3080... (Press Ctrl+C to stop)" -ForegroundColor Cyan
+    Set-Location -Path $lcPathFull
     npm run backend
 } else {
-    Write-Host "`n[>] To start TerraMind later, double-click TerraMind.exe (or the Desktop shortcut)!" -ForegroundColor Cyan
+    Write-Host "`n[>] To start TerraMind later, double-click TerraMind.exe (or the Desktop shortcut / TerraMind.bat)!" -ForegroundColor Cyan
     Write-Host "[>] To uninstall TerraMind, simply run Uninstall_TerraMind.exe!" -ForegroundColor Yellow
     Pause
 }
