@@ -77089,6 +77089,8 @@ var require_lib4 = __commonJS({
 // src/services/ollama.ts
 var ollama_exports = {};
 __export(ollama_exports, {
+  installOllama: () => installOllama,
+  isOllamaInstalled: () => isOllamaInstalled,
   isOllamaRunning: () => isOllamaRunning,
   startOllamaDaemon: () => startOllamaDaemon
 });
@@ -77103,33 +77105,157 @@ async function isOllamaRunning() {
     return false;
   }
 }
+async function isOllamaInstalled() {
+  try {
+    const isWin = process.platform === "win32";
+    const cmd = isWin ? "where ollama" : "command -v ollama || which ollama";
+    const { stdout } = await execAsync(cmd);
+    const ollamaPath = stdout.trim().split("\n")[0].trim();
+    if (ollamaPath) {
+      try {
+        const { stdout: verOut } = await execAsync(`"${ollamaPath}" --version`);
+        return { installed: true, version: verOut.trim(), path: ollamaPath };
+      } catch {
+        return { installed: true, path: ollamaPath };
+      }
+    }
+    return { installed: false };
+  } catch {
+    return { installed: false };
+  }
+}
 function startOllamaDaemon() {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
+    if (await isOllamaRunning()) {
+      return resolve({ success: true, running: true });
+    }
     try {
-      const child = (0, import_child_process2.spawn)("ollama", ["serve"], {
-        detached: true,
-        stdio: "ignore",
-        shell: true
-      });
-      child.unref();
+      let stderrOutput = "";
+      const isWin = process.platform === "win32";
+      if (isWin) {
+        const child = (0, import_child_process2.spawn)("ollama", ["serve"], {
+          detached: true,
+          stdio: ["ignore", "ignore", "pipe"],
+          shell: true
+        });
+        child.stderr?.on("data", (d) => {
+          stderrOutput += d.toString();
+        });
+        child.on("error", (err) => {
+          stderrOutput += ` ${err.message}`;
+        });
+        child.unref();
+      } else {
+        const child = (0, import_child_process2.spawn)(
+          "sh",
+          ["-c", "nohup ollama serve > /tmp/ollama.log 2>&1 &"],
+          { detached: true, stdio: "ignore" }
+        );
+        child.unref();
+      }
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
         const running = await isOllamaRunning();
-        if (running || attempts >= 10) {
+        if (running) {
           clearInterval(interval);
-          resolve(running);
+          return resolve({ success: true, running: true });
+        }
+        if (attempts >= 12) {
+          clearInterval(interval);
+          return resolve({
+            success: false,
+            running: false,
+            error: stderrOutput.trim() || 'Ollama process launched but port 11434 did not respond within 6 seconds. Try running "Download & Install Ollama".'
+          });
         }
       }, 500);
-    } catch {
-      resolve(false);
+    } catch (err) {
+      resolve({ success: false, running: false, error: err.message || "Failed to spawn ollama process" });
     }
   });
 }
-var import_child_process2;
+function installOllama(onLog) {
+  return new Promise((resolve) => {
+    const isWin = process.platform === "win32";
+    let cmd = "";
+    let args = [];
+    if (isWin) {
+      cmd = "powershell.exe";
+      args = [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        'Write-Host ">>> Attempting winget install for Ollama..."; winget install Ollama.Ollama --accept-source-agreements --accept-package-agreements; if ($LASTEXITCODE -ne 0) { Write-Host ">>> Winget failed or not available. Downloading official Ollama installer..."; Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\\OllamaSetup.exe"; Start-Process -Wait "$env:TEMP\\OllamaSetup.exe" /SILENT; Write-Host ">>> Installer completed." }'
+      ];
+    } else {
+      cmd = "sh";
+      args = [
+        "-c",
+        'echo ">>> Checking operating system environment..." && if command -v apk >/dev/null 2>&1; then   echo ">>> Alpine Linux detected. Installing glibc compatibility and curl..." &&   (sudo apk add --no-cache curl gcompat libc6-compat 2>/dev/null || apk add --no-cache curl gcompat libc6-compat 2>/dev/null || true); elif command -v apt-get >/dev/null 2>&1; then   echo ">>> Debian/Ubuntu detected. Installing dependencies..." &&   (sudo apt-get update && sudo apt-get install -y curl zstd 2>/dev/null || true); fi && echo ">>> Downloading and executing official Ollama install script..." && (curl -fsSL https://ollama.com/install.sh | sudo sh 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh) && echo ">>> Starting Ollama background daemon on port 11434..." && nohup ollama serve > /tmp/ollama.log 2>&1 &'
+      ];
+    }
+    try {
+      const child = (0, import_child_process2.spawn)(cmd, args, { shell: true });
+      let outputBuffer = "";
+      child.stdout?.on("data", (d) => {
+        const text = d.toString();
+        outputBuffer += text;
+        onLog(text);
+      });
+      child.stderr?.on("data", (d) => {
+        const text = d.toString();
+        outputBuffer += text;
+        onLog(text);
+      });
+      child.on("close", async (code) => {
+        onLog(`
+>>> Installation process exited with code ${code}.
+>>> Verifying Ollama daemon health on port 11434...
+`);
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts++;
+          const running = await isOllamaRunning();
+          if (running) {
+            clearInterval(interval);
+            onLog(">>> \u2713 Ollama service is active and responsive on port 11434!\n");
+            return resolve({ success: true });
+          }
+          if (attempts >= 10) {
+            clearInterval(interval);
+            await startOllamaDaemon();
+            const finalCheck = await isOllamaRunning();
+            if (finalCheck) {
+              onLog(">>> \u2713 Ollama daemon started successfully!\n");
+              return resolve({ success: true });
+            }
+            return resolve({
+              success: false,
+              error: `Installation completed (exit code ${code}) but Ollama service is not responding on 127.0.0.1:11434. Log: ${outputBuffer.slice(-300)}`
+            });
+          }
+        }, 1200);
+      });
+      child.on("error", (err) => {
+        onLog(`>>> Process execution error: ${err.message}
+`);
+        resolve({ success: false, error: err.message });
+      });
+    } catch (err) {
+      onLog(`>>> Unexpected error: ${err.message}
+`);
+      resolve({ success: false, error: err.message });
+    }
+  });
+}
+var import_child_process2, import_util2, execAsync;
 var init_ollama = __esm({
   "src/services/ollama.ts"() {
     import_child_process2 = require("child_process");
+    import_util2 = require("util");
+    execAsync = (0, import_util2.promisify)(import_child_process2.exec);
   }
 });
 
@@ -79322,13 +79448,56 @@ async function workspaceRoutes(fastify2) {
       return reply.status(500).send({ error: "Failed to save workspace file" });
     }
   });
-  fastify2.post("/api/ollama/start", async (request, reply) => {
+  fastify2.get("/api/ollama/status", async (request, reply) => {
     try {
-      const started = await startOllamaDaemon();
-      return { online: started };
+      const running = await isOllamaRunning();
+      const info = await isOllamaInstalled();
+      return {
+        running,
+        installed: info.installed,
+        version: info.version,
+        path: info.path,
+        platform: process.platform
+      };
     } catch (err) {
       fastify2.log.error(err);
-      return reply.status(500).send({ error: "Failed to start Ollama server" });
+      return reply.status(500).send({ error: "Failed to query Ollama status" });
+    }
+  });
+  fastify2.post("/api/ollama/start", async (request, reply) => {
+    try {
+      const res = await startOllamaDaemon();
+      return { online: res.running, ...res };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ online: false, success: false, error: err.message || "Failed to start Ollama server" });
+    }
+  });
+  fastify2.post("/api/ollama/install", async (request, reply) => {
+    reply.hijack();
+    reply.raw.setHeader("Content-Type", "text/event-stream");
+    reply.raw.setHeader("Cache-Control", "no-cache");
+    reply.raw.setHeader("Connection", "keep-alive");
+    const sendEvent = (data) => {
+      reply.raw.write(`data: ${JSON.stringify(data)}
+
+`);
+    };
+    sendEvent({ status: "Starting Ollama automated installation...", log: "Initializing installer...\n" });
+    try {
+      const result = await installOllama((chunk) => {
+        sendEvent({ log: chunk });
+      });
+      if (result.success) {
+        sendEvent({ success: true, status: "Ollama installed and active on port 11434!" });
+      } else {
+        sendEvent({ error: result.error || "Failed to install Ollama" });
+      }
+    } catch (err) {
+      sendEvent({ error: err.message || "Error executing Ollama installer" });
+    } finally {
+      reply.raw.write("data: [DONE]\n\n");
+      reply.raw.end();
     }
   });
 }

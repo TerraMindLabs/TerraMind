@@ -38,7 +38,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysSaved, setKeysSaved] = useState(false);
 
-  // Ollama Models state
+  // Ollama Models & Service state
   const [ollamaOnline, setOllamaOnline] = useState(false);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -47,6 +47,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [pullStatus, setPullStatus] = useState<string | null>(null);
   const [pullProgress, setPullProgress] = useState<PullProgressState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Ollama Service Installation & Control State
+  const [ollamaStatus, setOllamaStatus] = useState<{
+    installed?: boolean;
+    running?: boolean;
+    version?: string;
+    path?: string;
+    platform?: string;
+  } | null>(null);
+  const [startingOllama, setStartingOllama] = useState(false);
+  const [installingOllama, setInstallingOllama] = useState(false);
+  const [installLogs, setInstallLogs] = useState('');
+  const [showInstallTerminal, setShowInstallTerminal] = useState(false);
+  const [serviceMessage, setServiceMessage] = useState<string | null>(null);
 
   // Load Settings & Models on open
   const loadData = () => {
@@ -73,6 +87,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       })
       .catch(console.error)
       .finally(() => setModelsLoading(false));
+
+    // 3. Inspect Ollama service health & binary installation
+    fetch('/api/ollama/status')
+      .then((r) => r.json())
+      .then((data) => {
+        setOllamaStatus(data);
+        if (data.running) setOllamaOnline(true);
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -264,6 +287,103 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
     } catch (e: any) {
       setActionError(e.message || 'Error removing model.');
+    }
+  };
+
+  // Start local Ollama daemon service
+  const handleStartOllama = async () => {
+    setStartingOllama(true);
+    setActionError(null);
+    setServiceMessage('Attempting to start local Ollama background service...');
+
+    try {
+      const res = await fetch('/api/ollama/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.online || data.running || data.success) {
+        setOllamaOnline(true);
+        setServiceMessage('✓ Ollama service is active and responsive on port 11434!');
+        loadData();
+        if (onSave) onSave();
+        setTimeout(() => setServiceMessage(null), 4000);
+      } else {
+        setActionError(data.error || 'Failed to start Ollama. If Ollama is not installed, click "Install Ollama" below.');
+        setServiceMessage(null);
+      }
+    } catch (e: any) {
+      setActionError(e.message || 'Network error attempting to start Ollama service.');
+      setServiceMessage(null);
+    } finally {
+      setStartingOllama(false);
+    }
+  };
+
+  // Automated one-click download & installation of Ollama
+  const handleInstallOllama = async () => {
+    if (!window.confirm('Download and install the official Ollama package on this system? This will run the installer and start the background daemon.')) {
+      return;
+    }
+
+    setInstallingOllama(true);
+    setShowInstallTerminal(true);
+    setInstallLogs('>>> Initializing automated Ollama installation...\n');
+    setActionError(null);
+    setServiceMessage('Downloading & setting up Ollama...');
+
+    try {
+      const res = await fetch('/api/ollama/install', { method: 'POST' });
+      if (!res.ok || !res.body) {
+        throw new Error(`Server returned error (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let isDone = false;
+      let sseBuffer = '';
+
+      while (!isDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const dataStr = trimmed.replace(/^data:\s*/, '');
+          if (dataStr === '[DONE]') {
+            isDone = true;
+            break;
+          }
+
+          try {
+            const eventData = JSON.parse(dataStr);
+            if (eventData.log) {
+              setInstallLogs((prev) => prev + eventData.log);
+            }
+            if (eventData.status) {
+              setServiceMessage(eventData.status);
+            }
+            if (eventData.error) {
+              setActionError(eventData.error);
+              isDone = true;
+              break;
+            }
+            if (eventData.success) {
+              setOllamaOnline(true);
+              setServiceMessage('✓ Ollama successfully installed and online!');
+              loadData();
+              if (onSave) onSave();
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Ollama installation failed.');
+    } finally {
+      setInstallingOllama(false);
+      loadData();
     }
   };
 
@@ -553,33 +673,149 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
+                padding: '10px 14px',
                 borderRadius: '8px',
                 background: 'var(--hover)',
-                marginBottom: '14px'
+                marginBottom: '12px',
+                border: '1px solid var(--border)'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span
                   style={{
-                    width: '8px',
-                    height: '8px',
+                    width: '9px',
+                    height: '9px',
                     borderRadius: '50%',
-                    background: ollamaOnline ? '#22c55e' : '#94a3b8'
+                    background: ollamaOnline ? '#22c55e' : '#94a3b8',
+                    boxShadow: ollamaOnline ? '0 0 8px rgba(34, 197, 94, 0.6)' : 'none'
                   }}
                 />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
-                  Ollama Service {ollamaOnline ? 'Active (Port 11434)' : 'Offline / Not Detected'}
-                </span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
+                    Ollama Service {ollamaOnline ? 'Active (Port 11434)' : 'Offline / Not Detected'}
+                  </div>
+                  {ollamaStatus?.version && (
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                      {ollamaStatus.version} • {ollamaStatus.platform || 'daemon'}
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={loadData}
-                style={{ fontSize: '11.5px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                ↻ Refresh
-              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {!ollamaOnline && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleStartOllama}
+                      disabled={startingOllama || installingOllama}
+                      className="submit-btn"
+                      style={{
+                        width: 'auto',
+                        marginTop: 0,
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        borderRadius: '6px'
+                      }}
+                      title="Attempt to launch local 'ollama serve' daemon"
+                    >
+                      {startingOllama ? <span className="spinner" style={{ width: '10px', height: '10px' }} /> : '▶'}
+                      <span>{startingOllama ? 'Starting...' : 'Start Service'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleInstallOllama}
+                      disabled={startingOllama || installingOllama}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                        color: 'var(--text)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontWeight: 600
+                      }}
+                      title="Download and install Ollama automatically on this system"
+                    >
+                      {installingOllama ? <span className="spinner" style={{ width: '10px', height: '10px' }} /> : '📥'}
+                      <span>{installingOllama ? 'Installing...' : 'Install Ollama'}</span>
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={loadData}
+                  style={{ fontSize: '11.5px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                  title="Refresh Ollama status"
+                >
+                  ↻ Refresh
+                </button>
+              </div>
             </div>
+
+            {/* Service status message */}
+            {serviceMessage && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: serviceMessage.startsWith('✓') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                  border: serviceMessage.startsWith('✓') ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)',
+                  color: serviceMessage.startsWith('✓') ? '#10b981' : '#3b82f6',
+                  fontSize: '12.5px',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {serviceMessage}
+              </div>
+            )}
+
+            {/* Install logs terminal output */}
+            {showInstallTerminal && (
+              <div
+                style={{
+                  marginBottom: '14px',
+                  borderRadius: '8px',
+                  background: '#090d16',
+                  color: '#e2e8f0',
+                  padding: '10px 12px',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  border: '1px solid var(--border)',
+                  maxHeight: '160px',
+                  overflowY: 'auto'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', color: 'var(--muted)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontWeight: 600 }}>Installer Terminal</span>
+                    {installingOllama && <span className="spinner" style={{ width: '9px', height: '9px', display: 'inline-block' }} />}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallTerminal(false)}
+                    style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '11px' }}
+                  >
+                    Hide
+                  </button>
+                </div>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.4 }}>
+                  {installLogs}
+                </pre>
+              </div>
+            )}
 
             {/* Download Loading Progress Bar */}
             {pullProgress && (

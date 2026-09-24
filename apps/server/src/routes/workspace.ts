@@ -5,7 +5,7 @@ import {
   writeWorkspaceFile,
   runTerraformCommand
 } from '../services/terraform';
-import { isOllamaRunning, startOllamaDaemon } from '../services/ollama';
+import { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, installOllama } from '../services/ollama';
 
 export default async function workspaceRoutes(fastify: FastifyInstance) {
   // 1. Get workspace status and file list
@@ -56,14 +56,63 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 4. Start local Ollama daemon
-  fastify.post('/api/ollama/start', async (request, reply) => {
+  // 4. Query Ollama status (installed vs running)
+  fastify.get('/api/ollama/status', async (request, reply) => {
     try {
-      const started = await startOllamaDaemon();
-      return { online: started };
+      const running = await isOllamaRunning();
+      const info = await isOllamaInstalled();
+      return {
+        running,
+        installed: info.installed,
+        version: info.version,
+        path: info.path,
+        platform: process.platform
+      };
     } catch (err: any) {
       fastify.log.error(err);
-      return reply.status(500).send({ error: 'Failed to start Ollama server' });
+      return reply.status(500).send({ error: 'Failed to query Ollama status' });
+    }
+  });
+
+  // 5. Start local Ollama daemon
+  fastify.post('/api/ollama/start', async (request, reply) => {
+    try {
+      const res = await startOllamaDaemon();
+      return { online: res.running, ...res };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ online: false, success: false, error: err.message || 'Failed to start Ollama server' });
+    }
+  });
+
+  // 6. Download & Install Ollama (SSE Streaming)
+  fastify.post('/api/ollama/install', async (request, reply) => {
+    reply.hijack();
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+
+    const sendEvent = (data: any) => {
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    sendEvent({ status: 'Starting Ollama automated installation...', log: 'Initializing installer...\n' });
+
+    try {
+      const result = await installOllama((chunk) => {
+        sendEvent({ log: chunk });
+      });
+
+      if (result.success) {
+        sendEvent({ success: true, status: 'Ollama installed and active on port 11434!' });
+      } else {
+        sendEvent({ error: result.error || 'Failed to install Ollama' });
+      }
+    } catch (err: any) {
+      sendEvent({ error: err.message || 'Error executing Ollama installer' });
+    } finally {
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
     }
   });
 }
