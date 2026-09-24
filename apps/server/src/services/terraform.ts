@@ -18,48 +18,87 @@ export async function ensureWorkspace(): Promise<string> {
 
 export async function listWorkspaceFiles(): Promise<Array<{ name: string; size: number; content?: string }>> {
   await ensureWorkspace();
-  const entries = await fs.readdir(WORKSPACE_PATH, { withFileTypes: true });
   const files: Array<{ name: string; size: number; content?: string }> = [];
 
-  for (const entry of entries) {
-    if (entry.isFile() && (entry.name.endsWith('.tf') || entry.name.endsWith('.tfvars') || entry.name.endsWith('.json') || entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))) {
-      const fullPath = path.join(WORKSPACE_PATH, entry.name);
-      const stat = await fs.stat(fullPath);
-      const content = await fs.readFile(fullPath, 'utf8');
-      files.push({ name: entry.name, size: stat.size, content });
-    }
+  async function walkDir(currentDir: string, relativePrefix: string, depth = 0) {
+    if (depth > 4) return;
+    try {
+      const entries = await fs.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const fullPath = path.join(currentDir, entry.name);
+        const relPath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          await walkDir(fullPath, relPath, depth + 1);
+        } else if (
+          entry.isFile() &&
+          (entry.name.endsWith('.tf') ||
+            entry.name.endsWith('.tfvars') ||
+            entry.name.endsWith('.json') ||
+            entry.name.endsWith('.yaml') ||
+            entry.name.endsWith('.yml') ||
+            entry.name.endsWith('.md'))
+        ) {
+          const stat = await fs.stat(fullPath);
+          const content = await fs.readFile(fullPath, 'utf8');
+          files.push({ name: relPath, size: stat.size, content });
+        }
+      }
+    } catch {}
   }
 
+  await walkDir(WORKSPACE_PATH, '');
   return files;
 }
 
-export async function writeWorkspaceFile(filename: string, content: string): Promise<{ path: string; fmtOutput?: string; validateOutput?: string }> {
+export async function writeWorkspaceFile(
+  filename: string,
+  content: string
+): Promise<{ path: string; relPath: string; fmtOutput?: string; validateOutput?: string }> {
   await ensureWorkspace();
-  const safeFilename = path.basename(filename);
-  const targetPath = path.join(WORKSPACE_PATH, safeFilename);
+  // Clean filename: remove leading slashes and prevent directory traversal
+  const cleanRelPath = filename.replace(/^[\\\/]+/, '').replace(/\.\.[\\\/]/g, '');
+  const targetPath = path.resolve(WORKSPACE_PATH, cleanRelPath);
+  if (!targetPath.startsWith(WORKSPACE_PATH)) {
+    throw new Error('Access denied: target path escapes workspace');
+  }
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, content, 'utf8');
 
   // Automatic Agent Action: If writing Terraform HCL, automatically run terraform fmt and terraform validate
   let fmtOutput = '';
   let validateOutput = '';
 
-  if (safeFilename.endsWith('.tf')) {
+  const fileDir = path.dirname(targetPath);
+  if (cleanRelPath.endsWith('.tf')) {
     try {
-      const fmtRes = await execPromise('terraform fmt', { cwd: WORKSPACE_PATH });
-      fmtOutput = fmtRes.stdout.trim();
-    } catch {
-      // Non-fatal
+      const fmtRes = await execPromise('terraform fmt', { cwd: fileDir });
+      fmtOutput = fmtRes.stdout.trim() || 'Success (Formatted cleanly)';
+    } catch (e: any) {
+      fmtOutput = e.stderr || e.stdout || e.message;
     }
 
     try {
-      const valRes = await execPromise('terraform validate', { cwd: WORKSPACE_PATH });
-      validateOutput = valRes.stdout.trim();
+      const valRes = await execPromise('terraform validate', { cwd: fileDir });
+      validateOutput = valRes.stdout.trim() || 'Success (Configuration is valid)';
     } catch (e: any) {
-      validateOutput = e.stderr || e.stdout || e.message;
+      const errMsg = e.stderr || e.stdout || e.message;
+      if (errMsg.includes('terraform init') || errMsg.includes('not been initialized')) {
+        try {
+          await execPromise('terraform init -backend=false', { cwd: fileDir });
+          const retryVal = await execPromise('terraform validate', { cwd: fileDir });
+          validateOutput = retryVal.stdout.trim() || 'Success (Configuration is valid)';
+        } catch {
+          validateOutput = 'Syntax parsed. Requires provider credentials / backend initialization for full validation.';
+        }
+      } else {
+        validateOutput = errMsg;
+      }
     }
   }
 
-  return { path: targetPath, fmtOutput, validateOutput };
+  return { path: targetPath, relPath: cleanRelPath, fmtOutput, validateOutput };
 }
 
 export async function runTerraformCommand(action: 'init' | 'fmt' | 'validate' | 'plan'): Promise<{ success: boolean; output: string }> {

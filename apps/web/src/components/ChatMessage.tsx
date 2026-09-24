@@ -183,7 +183,11 @@ const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, c
     setSaveStatus(null);
     try {
       let filename = 'main.tf';
-      if (code.includes('required_providers') || code.includes('provider "aws"') || code.includes('provider "google"')) {
+      const firstLine = code.trim().split('\n')[0].trim();
+      const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
+      if (fileMatch) {
+        filename = fileMatch[1].trim();
+      } else if (code.includes('required_providers') || code.includes('provider "aws"') || code.includes('provider "google"')) {
         filename = 'providers.tf';
       } else if (code.includes('variable "')) {
         filename = 'variables.tf';

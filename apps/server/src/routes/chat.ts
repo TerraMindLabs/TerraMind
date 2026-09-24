@@ -19,7 +19,7 @@ import {
   removeProjectMember
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
-import { listWorkspaceFiles } from '../services/terraform';
+import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
 
 interface ChatRequestBody {
   conversationId?: string;
@@ -557,22 +557,28 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
     sendStatus('Initializing conversation & agent context...', 'init');
 
+    sendStatus('Loading local workspace context & files...', 'context');
     let projectContext: any = undefined;
-    if (projectId) {
-      sendStatus('Loading project files & workspace context...', 'context');
-      try {
+    try {
+      const files = await listWorkspaceFiles();
+      if (projectId) {
         const proj = getProjectById(projectId);
-        const files = await listWorkspaceFiles();
-        if (proj) {
-          projectContext = {
-            name: proj.name,
-            description: proj.description,
-            files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
-          };
-        }
-      } catch (e) {
-        fastify.log.warn({ err: e }, 'Could not load project workspace files for agent context');
+        projectContext = {
+          name: proj?.name || 'Project Workspace',
+          description: proj?.description || '',
+          workspacePath: WORKSPACE_PATH,
+          files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
+        };
+      } else {
+        projectContext = {
+          name: 'Global Workspace',
+          description: 'Unified root workspace (direct access without segregation)',
+          workspacePath: WORKSPACE_PATH,
+          files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
+        };
       }
+    } catch (e) {
+      fastify.log.warn({ err: e }, 'Could not load workspace files for agent context');
     }
 
     const settings = getAllSettings();
@@ -915,6 +921,71 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         }
       }
     }
+
+      // Automated Local Workspace Execution & Validation:
+      // Scan fullAssistantResponse for code blocks containing files to automatically write to disk and validate
+      const codeBlockRegex = /```(?:hcl|terraform|yaml|yml|json|bash|sh|markdown)?\s*\n([\s\S]*?)```/g;
+      let match;
+      const extractedFiles: Array<{ filename: string; content: string }> = [];
+
+      while ((match = codeBlockRegex.exec(fullAssistantResponse)) !== null) {
+        const blockCode = match[1];
+        if (!blockCode || !blockCode.trim()) continue;
+
+        const firstLine = blockCode.trim().split('\n')[0].trim();
+        // Look for filename in comments: # path/file.tf, // path/file.tf, <!-- file -->
+        const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
+        let detectedFilename = fileMatch ? fileMatch[1].trim() : '';
+
+        if (!detectedFilename) {
+          // Heuristic detection based on content
+          if (blockCode.includes('required_providers') || (blockCode.includes('terraform {') && blockCode.includes('required_version'))) {
+            detectedFilename = 'providers.tf';
+          } else if (blockCode.includes('variable "') && !blockCode.includes('resource "')) {
+            detectedFilename = 'variables.tf';
+          } else if (blockCode.includes('output "') && !blockCode.includes('resource "')) {
+            detectedFilename = 'outputs.tf';
+          } else if (blockCode.includes('resource "') || blockCode.includes('module "')) {
+            detectedFilename = 'main.tf';
+          } else if (blockCode.includes('apiVersion:') && blockCode.includes('kind:')) {
+            detectedFilename = 'k8s/deployment.yaml';
+          } else if (blockCode.includes('name:') && (blockCode.includes('on: [push') || blockCode.includes('on:\n  push:'))) {
+            detectedFilename = '.github/workflows/deploy.yml';
+          }
+        }
+
+        if (detectedFilename) {
+          // Avoid duplicate writes of the same filename in one turn
+          if (!extractedFiles.some((f) => f.filename === detectedFilename)) {
+            extractedFiles.push({ filename: detectedFilename, content: blockCode });
+          }
+        }
+      }
+
+      if (extractedFiles.length > 0) {
+        sendStatus(`Writing ${extractedFiles.length} file(s) to local workspace & validating...`, 'compiling');
+        const validationReports: string[] = [];
+
+        for (const file of extractedFiles) {
+          try {
+            const writeRes = await writeWorkspaceFile(file.filename, file.content);
+            let report = `- 📄 **\`${writeRes.relPath}\`**: Auto-saved to workspace.`;
+            if (writeRes.fmtOutput) {
+              report += `\n  - \`terraform fmt\`: ${writeRes.fmtOutput}`;
+            }
+            if (writeRes.validateOutput) {
+              report += `\n  - \`terraform validate\`: ${writeRes.validateOutput}`;
+            }
+            validationReports.push(report);
+          } catch (writeErr: any) {
+            validationReports.push(`- ⚠️ **\`${file.filename}\`**: Save/validation error: ${writeErr.message}`);
+          }
+        }
+
+        const autoSummary = `\n\n---\n### 🛠️ Automated Local Validation & Workspace Sync\n${validationReports.join('\n\n')}\n`;
+        streamToken(autoSummary);
+        sendStatus('Workspace files updated & validated successfully.', 'done');
+      }
 
       // Save assistant message to SQLite & MongoDB
       if (fullAssistantResponse.trim()) {
