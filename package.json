@@ -12,6 +12,9 @@
     "frontend": "npm run build -w @terramind/web",
     "start": "npm run backend"
   },
+  "dependencies": {
+    "tsx": "^4.19.2"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   },

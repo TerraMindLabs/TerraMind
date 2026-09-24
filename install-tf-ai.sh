@@ -471,7 +471,12 @@ fi
 
 # 4. Install NPM Dependencies across workspaces
 echo -e "\n${YELLOW}📦 Installing project dependencies via npm workspaces...${NC}"
-run_with_spinner "Installing dependencies" "npm install" "$basePath"
+run_with_spinner "Installing dependencies" "NODE_ENV=development npm install --include=dev" "$basePath"
+
+# Ensure tsx runner is guaranteed to exist
+if [ ! -f "$basePath/node_modules/.bin/tsx" ] && [ ! -f "$basePath/apps/server/node_modules/.bin/tsx" ]; then
+    (cd "$basePath" && npm install tsx --save) >/dev/null 2>&1 || true
+fi
 
 # 5. Build Web Frontend
 echo -e "\n${YELLOW}🏗️ Building frontend production bundle (Vite / React)...${NC}"
@@ -504,7 +509,7 @@ cat << 'EOF' > "$launchScript"
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR" || exit 1
-export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+export PATH="$DIR/node_modules/.bin:$DIR/apps/server/node_modules/.bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
 echo "==========================================================="
 echo "   TerraMind - AI Cloud & Infrastructure Architect        "

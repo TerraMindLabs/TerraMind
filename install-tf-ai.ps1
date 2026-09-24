@@ -304,7 +304,7 @@ if (-not $isLocalRepo) {
 
 # 4. Install NPM Dependencies across workspaces
 Write-Host "`n [npm] Installing project dependencies via npm workspaces..." -ForegroundColor Cyan
-Invoke-CommandWithSpinner -Message "Installing project dependencies" -CommandString "npm install" -WorkingDir $basePath
+Invoke-CommandWithSpinner -Message "Installing project dependencies" -CommandString "npm install --include=dev" -WorkingDir $basePath
 
 # 5. Build Web Frontend
 Write-Host "`n [bld] Building web production bundle (Vite / React)..." -ForegroundColor Cyan
@@ -331,6 +331,7 @@ $batContent = @"
 @echo off
 title TerraMind - AI Cloud Architect
 cd /d "%~dp0"
+set PATH=%~dp0node_modules\.bin;%~dp0apps\server\node_modules\.bin;%PATH%
 echo ===========================================================
 echo    TerraMind - AI Cloud ^& Infrastructure Architect
 echo ===========================================================
