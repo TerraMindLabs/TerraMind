@@ -18,9 +18,18 @@ server.get('/health', async (request, reply) => {
   return { status: 'ok' };
 });
 
-// Serve compiled web frontend if built
-const webDistPath = path.resolve(__dirname, '../../web/dist');
-if (fs.existsSync(webDistPath)) {
+// Resolve compiled web frontend
+const possibleDistPaths = [
+  path.resolve(process.cwd(), 'apps/web/dist'),
+  path.resolve(__dirname, '../../web/dist'),
+  path.resolve(__dirname, '../../../apps/web/dist'),
+  path.resolve(__dirname, '../web/dist'),
+  path.resolve(process.cwd(), 'dist')
+];
+
+const webDistPath = possibleDistPaths.find((p) => fs.existsSync(path.join(p, 'index.html')));
+
+if (webDistPath) {
   server.register(fastifyStatic, {
     root: webDistPath,
     prefix: '/'
@@ -32,6 +41,23 @@ if (fs.existsSync(webDistPath)) {
     } else {
       reply.sendFile('index.html');
     }
+  });
+} else {
+  server.get('/', async (request, reply) => {
+    reply.type('text/html').send(`
+      <!DOCTYPE html>
+      <html>
+        <head><title>TerraMind - Starting...</title></head>
+        <body style="background:#0b0f19;color:#e2e8f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+          <div style="text-align:center;padding:2rem;background:#1e293b;border-radius:12px;border:1px solid #334155;max-width:500px;">
+            <h2 style="color:#38bdf8;">🧠 TerraMind Server is Running!</h2>
+            <p>Frontend assets are building. Please run:</p>
+            <code style="background:#0f172a;padding:8px 16px;border-radius:6px;display:inline-block;color:#4ade80;">npm run build</code>
+            <p style="margin-top:16px;"><a href="/" style="color:#60a5fa;">Refresh Page</a></p>
+          </div>
+        </body>
+      </html>
+    `);
   });
 }
 

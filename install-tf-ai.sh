@@ -535,6 +535,11 @@ if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version
     fi
 fi
 
+if [ ! -f "$DIR/apps/web/dist/index.html" ]; then
+    echo " Building web frontend assets..."
+    (cd "$DIR" && npm run build) >/dev/null 2>&1 || true
+fi
+
 if [ -f "$DIR/apps/server/dist/server.js" ]; then
     node "$DIR/apps/server/dist/server.js"
 else
