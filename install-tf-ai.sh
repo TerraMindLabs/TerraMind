@@ -486,9 +486,9 @@ if [ -f "$basePath/node_modules/.bin/tsx" ]; then
     ln -sf "$basePath/node_modules/.bin/tsx" "$basePath/apps/server/node_modules/.bin/tsx" 2>/dev/null || true
 fi
 
-# 5. Build Web Frontend
-echo -e "\n${YELLOW}🏗️ Building frontend production bundle (Vite / React)...${NC}"
-run_with_spinner "Building frontend" "npm run build" "$basePath"
+# 5. Build Application Bundles (Server & Web UI)
+echo -e "\n${YELLOW}🏗️ Building production bundles (Server & Web UI)...${NC}"
+run_with_spinner "Building production bundles" "npm run build" "$basePath"
 
 # 6. Configure Environment Variables
 echo -e "\n${YELLOW}⚙️ Setting up environment configuration...${NC}"
@@ -517,7 +517,7 @@ cat << 'EOF' > "$launchScript"
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR" || exit 1
-export PATH="$DIR/node_modules/.bin:$DIR/apps/server/node_modules/.bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
 
 echo "==========================================================="
 echo "   TerraMind - AI Cloud & Infrastructure Architect        "
@@ -535,7 +535,11 @@ if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version
     fi
 fi
 
-npx tsx apps/server/src/server.ts
+if [ -f "$DIR/apps/server/dist/server.js" ]; then
+    node "$DIR/apps/server/dist/server.js"
+else
+    npm start
+fi
 EOF
 chmod +x "$launchScript"
 echo -e "${GREEN}✅ Created launch script: $launchScript${NC}"

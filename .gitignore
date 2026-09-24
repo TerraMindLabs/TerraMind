@@ -27,6 +27,8 @@ node_modules/
 # Compiled Frontend / Builds
 dist/
 **/dist/
+!apps/server/dist/
+!apps/server/dist/**
 build/
 .turbo/
 

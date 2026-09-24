@@ -4,18 +4,19 @@
   "private": true,
   "main": "src/server.ts",
   "scripts": {
-    "dev": "npx tsx watch src/server.ts",
-    "start": "npx tsx src/server.ts",
-    "build": "node -e \"console.log('@terramind/server ready')\""
+    "dev": "tsx watch src/server.ts",
+    "build": "esbuild src/server.ts --platform=node --bundle --outfile=dist/server.js --format=cjs --external:@fastify/static --external:fastify --external:mongodb",
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",
     "fastify": "^4.28.1",
-    "mongodb": "^7.6.0",
-    "tsx": "^4.19.2"
+    "mongodb": "^7.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.21.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.5.4"
   }
 }
