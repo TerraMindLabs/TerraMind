@@ -5,7 +5,7 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "esbuild src/server.ts --platform=node --bundle --outfile=dist/server.js --format=cjs --external:@fastify/static --external:fastify --external:mongodb",
+    "build": "esbuild src/server.ts --platform=node --bundle --outfile=dist/server.js --format=cjs",
     "start": "node dist/server.js"
   },
   "dependencies": {
