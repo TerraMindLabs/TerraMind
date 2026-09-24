@@ -8,6 +8,7 @@ export interface ChatMessageData {
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
 
   const loadConversation = useCallback(async (id: string) => {
@@ -29,6 +30,7 @@ export function useChatStream() {
   const startNewChat = useCallback(() => {
     setConversationId(undefined);
     setMessages([]);
+    setGenerationStatus(null);
   }, []);
 
   const sendMessage = async (
@@ -45,6 +47,7 @@ export function useChatStream() {
     const updatedMessages = [...messages, newMsg];
     setMessages(updatedMessages);
     setIsGenerating(true);
+    setGenerationStatus('Connecting to agent...');
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -77,11 +80,13 @@ export function useChatStream() {
         } catch {}
         setMessages((prev) => [...prev, { role: 'assistant', content: `> ⚠️ **Error:** ${errMessage}` }]);
         setIsGenerating(false);
+        setGenerationStatus(null);
         return;
       }
 
       if (!res.body) {
         setIsGenerating(false);
+        setGenerationStatus(null);
         return;
       }
 
@@ -117,7 +122,14 @@ export function useChatStream() {
               if (onConvoCreated && resolvedConvoId) onConvoCreated(resolvedConvoId);
             }
 
+            // Update real-time backend status if received
+            if (parsed.status) {
+              setGenerationStatus(parsed.status);
+            }
+
             if (parsed.content) {
+              // Clear the preliminary status message once actual text begins streaming
+              setGenerationStatus(null);
               setMessages((prev) => {
                 const copy = [...prev];
                 const last = copy[copy.length - 1];
@@ -137,6 +149,7 @@ export function useChatStream() {
       setMessages((prev) => [...prev, { role: 'assistant', content: `> ⚠️ **Connection Error:** ${err?.message || 'Failed to communicate with server'}` }]);
     } finally {
       setIsGenerating(false);
+      setGenerationStatus(null);
     }
   };
 
@@ -144,6 +157,7 @@ export function useChatStream() {
     messages,
     sendMessage,
     isGenerating,
+    generationStatus,
     conversationId,
     loadConversation,
     startNewChat

@@ -545,8 +545,15 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}\n\n`);
     };
 
+    const sendStatus = (status: string, phase = 'processing') => {
+      reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}\n\n`);
+    };
+
+    sendStatus('Initializing conversation & agent context...', 'init');
+
     let projectContext: any = undefined;
     if (projectId) {
+      sendStatus('Loading project files & workspace context...', 'context');
       try {
         const proj = getProjectById(projectId);
         const files = await listWorkspaceFiles();
@@ -573,8 +580,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     let activeProvider = provider;
 
     // CASE 1: Local Ollama
-    // CASE 1: Local Ollama
     if (activeProvider === 'ollama') {
+      sendStatus('Connecting to Ollama daemon (port 11434)...', 'connecting');
       let ollamaActive = false;
       try {
         const controller = new AbortController();
@@ -587,6 +594,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
 
       if (!ollamaActive) {
+        sendStatus('Attempting to launch local Ollama background service...', 'starting');
         // Attempt to start local Ollama daemon
         try {
           const { startOllamaDaemon, isOllamaRunning } = await import('../services/ollama');
@@ -609,6 +617,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
       // Automatically resolve target model to match installed local models
       let targetModel = model;
+      sendStatus('Verifying local model availability...', 'resolving');
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 2000);
@@ -630,6 +639,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       if (!targetModel) {
         targetModel = 'qwen2.5-coder:1.5b';
       }
+
+      sendStatus(`Processing prompt with '${targetModel}'...`, 'generating');
 
       try {
         const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
@@ -703,9 +714,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           `> 🔑 **Anthropic API Key Missing**\n\nPlease add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
         );
       } else if (isGemini && geminiKey) {
+        sendStatus(`Connecting to Google Gemini (${targetModel})...`, 'connecting');
         // Stream Gemini Generate Content with automatic fallback for 503 / 429 / 404
         const streamGemini = async (modelToUse: string, isFallback = false): Promise<boolean> => {
           try {
+            sendStatus(`Generating response with Google Gemini (${modelToUse})...`, 'generating');
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
             const contents = messages.map((m) => ({
               role: m.role === 'assistant' ? 'model' : 'user',
@@ -768,6 +781,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
         await streamGemini(targetModel);
       } else if (isOpenAI && openaiKey) {
+        sendStatus(`Generating response with OpenAI (${targetModel})...`, 'generating');
         // Stream OpenAI Chat Completion
         try {
           const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -816,6 +830,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           streamToken(`> ⚠️ **OpenAI request failed:** ${e.message}`);
         }
       } else if (isAnthropic && anthropicKey) {
+        sendStatus(`Generating response with Anthropic (${targetModel})...`, 'generating');
         // Stream Anthropic Messages
         try {
           const res = await fetch('https://api.anthropic.com/v1/messages', {

@@ -6,6 +6,7 @@ interface ChatMessageProps {
   agentEmoji?: string;
   agentIcon?: string;
   isStreaming?: boolean;
+  generationStatus?: string | null;
   onRegenerate?: () => void;
 }
 
@@ -15,6 +16,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   agentEmoji = 'AI',
   agentIcon,
   isStreaming = false,
+  generationStatus,
   onRegenerate
 }) => {
   const [copied, setCopied] = useState(false);
@@ -56,11 +58,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       <div>
         <div className="body">
           {isEmptyOrWaiting ? (
-            <span className="dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
+            <div className="status-badge-generating">
+              <span className="spinner" />
+              <span>{generationStatus || 'Processing prompt & generating response...'}</span>
+            </div>
           ) : (
             renderFormattedContent(content)
           )}

@@ -179,6 +179,7 @@ function App() {
     messages,
     sendMessage,
     isGenerating,
+    generationStatus,
     conversationId,
     loadConversation,
     startNewChat
@@ -901,6 +902,7 @@ function App() {
                   agentEmoji={currentAgent.emoji}
                   agentIcon={getAgentIcon(currentAgent, theme)}
                   isStreaming={isGenerating && idx === messages.length - 1 && m.role === 'assistant'}
+                  generationStatus={isGenerating && idx === messages.length - 1 && m.role === 'assistant' ? generationStatus : undefined}
                   onRegenerate={() => {
                     const lastUserMsg = [...messages].reverse().find((msg) => msg.role === 'user');
                     if (lastUserMsg) {
@@ -916,6 +918,26 @@ function App() {
 
         {/* Composer - Featuring Local Model / API Selector inside input section */}
         <div className="comp">
+          {isGenerating && generationStatus && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                color: 'var(--text)',
+                background: 'var(--hover)',
+                border: '1px solid var(--border)',
+                borderRadius: '20px',
+                margin: '0 auto 8px auto',
+                width: 'fit-content'
+              }}
+            >
+              <span className="spinner" style={{ width: '12px', height: '12px', flexShrink: 0 }} />
+              <span style={{ fontWeight: 500 }}>{generationStatus}</span>
+            </div>
+          )}
           <div className="box">
             <textarea
               ref={textareaRef}
