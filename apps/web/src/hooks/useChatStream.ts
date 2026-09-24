@@ -36,6 +36,7 @@ export function useChatStream() {
     provider: 'ollama' | 'cloud',
     model: string,
     agentId: string,
+    projectId?: string,
     onConvoCreated?: (newId: string) => void
   ) => {
     if (!content.trim() || isGenerating) return;
@@ -54,7 +55,8 @@ export function useChatStream() {
           messages: updatedMessages,
           provider,
           model,
-          agentId
+          agentId,
+          projectId
         })
       });
 

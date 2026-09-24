@@ -60,33 +60,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.2rem' }}>⚙️</span>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Cloud Provider API Keys
-            </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '18px' }}>⚙️</span>
+            <strong style={{ fontSize: '15px' }}>Provider API Keys</strong>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
         </div>
 
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.5' }}>
-          Configure cloud model API keys securely. Keys are stored locally in your SQLite database and are never shared.
+        <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+          Configure cloud model API keys securely. Keys are saved locally in your database and used only for your queries.
         </p>
 
         <form onSubmit={handleSave} className="modal-form">
-          {saved && <div className="modal-success">✅ API Keys saved successfully!</div>}
+          {saved && <div className="modal-success">✓ API Keys saved successfully!</div>}
 
           <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>Google Gemini API Key</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ margin: 0 }}>Google Gemini API Key</label>
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
-                style={{ fontSize: '0.75rem', color: 'var(--primary)', textDecoration: 'none' }}
+                style={{ fontSize: '12px', color: 'var(--blue)', textDecoration: 'none' }}
               >
                 Get Key ↗
               </a>
@@ -100,13 +100,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
 
           <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>OpenAI API Key</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ margin: 0 }}>OpenAI API Key</label>
               <a
                 href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noreferrer"
-                style={{ fontSize: '0.75rem', color: 'var(--primary)', textDecoration: 'none' }}
+                style={{ fontSize: '12px', color: 'var(--blue)', textDecoration: 'none' }}
               >
                 Get Key ↗
               </a>
@@ -120,13 +120,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
 
           <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>Anthropic Claude API Key</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ margin: 0 }}>Anthropic Claude API Key</label>
               <a
                 href="https://console.anthropic.com/settings/keys"
                 target="_blank"
                 rel="noreferrer"
-                style={{ fontSize: '0.75rem', color: 'var(--primary)', textDecoration: 'none' }}
+                style={{ fontSize: '12px', color: 'var(--blue)', textDecoration: 'none' }}
               >
                 Get Key ↗
               </a>
@@ -139,11 +139,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
             <button type="button" className="cancel-btn" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="submit-btn" disabled={loading} style={{ width: 'auto', padding: '0.5rem 1.25rem' }}>
+            <button type="submit" className="submit-btn" style={{ width: 'auto', marginTop: 0 }} disabled={loading}>
               {loading ? 'Saving...' : 'Save Keys'}
             </button>
           </div>

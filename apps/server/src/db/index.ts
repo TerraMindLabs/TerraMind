@@ -22,11 +22,20 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon TEXT DEFAULT '📁',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT,
     provider TEXT,
     model TEXT,
+    project_id TEXT DEFAULT 'proj-aws',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   
@@ -40,11 +49,38 @@ db.exec(`
   );
 `);
 
+// Ensure project_id column exists if table existed previously without it
+try {
+  db.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT 'proj-aws';`);
+} catch {
+  // Column already exists
+}
+
+// Seed default projects if none exist
+const projectCountStmt = db.prepare('SELECT COUNT(*) as count FROM projects');
+const countRow = projectCountStmt.get() as { count: number };
+if (!countRow || countRow.count === 0) {
+  const insertProj = db.prepare(`INSERT INTO projects (id, name, description, icon) VALUES (?, ?, ?, ?)`);
+  insertProj.run('proj-aws', 'AWS Production Cloud', 'VPC, EKS, RDS, S3 multi-region setup', '☁️');
+  insertProj.run('proj-k8s', 'Kubernetes Platform', 'GitOps, ArgoCD, Ingress & microservices', '☸️');
+  insertProj.run('proj-finops', 'FinOps Cost Optimizer', 'Multi-cloud pricing, Spot & Graviton audit', '💰');
+  insertProj.run('proj-cicd', 'CI/CD & DevSecOps', 'GitHub Actions, OIDC keyless & tfsec', '🔄');
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
   provider: string;
   model: string;
+  project_id?: string;
   created_at: string;
 }
 
@@ -106,17 +142,41 @@ export function setSetting(key: string, value: string): void {
   stmt.run(key, value);
 }
 
+// Project Helpers
+export function getProjects(): Project[] {
+  const stmt = db.prepare('SELECT * FROM projects ORDER BY created_at ASC');
+  return stmt.all() as unknown as Project[];
+}
+
+export function createProject(id: string, name: string, description: string, icon = '📁'): Project {
+  const stmt = db.prepare('INSERT INTO projects (id, name, description, icon) VALUES (?, ?, ?, ?)');
+  stmt.run(id, name, description, icon);
+  const getStmt = db.prepare('SELECT * FROM projects WHERE id = ?');
+  return getStmt.get(id) as unknown as Project;
+}
+
+export function deleteProject(id: string): void {
+  const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
+  stmt.run(id);
+}
+
 // Conversation Helpers
-export function createConversation(id: string, title: string, provider: string, model: string): Conversation {
+export function createConversation(id: string, title: string, provider: string, model: string, projectId = 'proj-aws'): Conversation {
   const stmt = db.prepare(`
-    INSERT INTO conversations (id, title, provider, model)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO conversations (id, title, provider, model, project_id)
+    VALUES (?, ?, ?, ?, ?)
   `);
-  stmt.run(id, title, provider, model);
+  stmt.run(id, title, provider, model, projectId);
   return getConversation(id)!;
 }
 
-export function getConversations(): Conversation[] {
+export function getConversations(projectId?: string): Conversation[] {
+  if (projectId) {
+    const stmt = db.prepare(`
+      SELECT * FROM conversations WHERE project_id = ? ORDER BY created_at DESC
+    `);
+    return stmt.all(projectId) as unknown as Conversation[];
+  }
   const stmt = db.prepare(`
     SELECT * FROM conversations ORDER BY created_at DESC
   `);

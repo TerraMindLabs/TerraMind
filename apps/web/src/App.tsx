@@ -1,11 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useChatStream } from './hooks/useChatStream';
-import { Sidebar, Conversation } from './components/Sidebar';
-import { AgentSelector, TERRAMIND_AGENTS } from './components/AgentSelector';
-import { AISourceToggle } from './components/AISourceToggle';
+import { Sidebar, Conversation, Project, WorkspaceFile } from './components/Sidebar';
+import { TERRAMIND_AGENTS } from './components/AgentSelector';
 import { ChatMessage } from './components/ChatMessage';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
+
+const AGENT_CHIPS: Record<string, string[]> = {
+  'agent_tf-devops-expert': [
+    'Build an AWS VPC with subnets and NAT gateway',
+    'Generate an encrypted S3 bucket with lifecycle rules',
+    'Create an AWS RDS PostgreSQL multi-AZ database',
+    'Set up an AWS EKS cluster with managed node groups'
+  ],
+  'agent_finops-cost-optimizer': [
+    'Compare monthly costs for Kubernetes on AWS vs GCP vs Azure',
+    'Audit Terraform code for Graviton3 & Spot savings',
+    'Recommend compute rightsizing and idle resource cleanup',
+    'Analyze egress transfer and storage tiering savings'
+  ],
+  'agent_k8s-gitops-architect': [
+    'Create production Deployment with HPA and probes',
+    'Design ArgoCD ApplicationSet for multi-cluster sync',
+    'Generate secure Ingress with TLS and rate limiting',
+    'Set up NetworkPolicies for microservice isolation'
+  ],
+  'agent_cicd-pipeline-engineer': [
+    'Create GitHub Actions workflow with AWS OIDC & tfsec',
+    'Build GitLab CI pipeline with speculative terraform plan',
+    'Set up automated semantic release & changelog pipeline',
+    'Configure automated drift detection with Slack alerts'
+  ]
+};
 
 function App() {
   const {
@@ -18,8 +44,18 @@ function App() {
   } = useChatStream();
 
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState('agent_tf-devops-expert');
+  const [selectedProjectId, setSelectedProjectId] = useState('proj-aws');
+  const [projects, setProjects] = useState<Project[]>([
+    { id: 'proj-aws', name: 'AWS Production Cloud', description: 'VPC, EKS, RDS, S3 multi-region setup', icon: '☁️' },
+    { id: 'proj-k8s', name: 'Kubernetes Platform', description: 'GitOps, ArgoCD, Ingress & microservices', icon: '☸️' },
+    { id: 'proj-finops', name: 'FinOps Cost Optimizer', description: 'Multi-cloud pricing, Spot & Graviton audit', icon: '💰' },
+    { id: 'proj-cicd', name: 'CI/CD & DevSecOps', description: 'GitHub Actions, OIDC keyless & tfsec', icon: '🔄' }
+  ]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
+
   const [provider, setProvider] = useState<'ollama' | 'cloud'>('ollama');
   const [model, setModel] = useState('');
 
@@ -46,10 +82,62 @@ function App() {
     }
   });
 
+  // Theme state
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('tm_theme') as 'light' | 'dark') || 'light';
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch conversations and models on mount
+  // Sync theme
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('tm_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  // Close model menu on outside click
+  useEffect(() => {
+    const handleDocClick = () => setMenuOpen(false);
+    document.addEventListener('click', handleDocClick);
+    return () => document.removeEventListener('click', handleDocClick);
+  }, []);
+
+  // Fetch projects
+  const refreshProjects = async () => {
+    try {
+      const res = await fetch('/api/projects');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.projects && data.projects.length > 0) {
+          setProjects(data.projects);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching projects:', e);
+    }
+  };
+
+  // Fetch workspace files
+  const refreshWorkspaceFiles = async () => {
+    try {
+      const res = await fetch('/api/workspace');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.files) {
+          setWorkspaceFiles(data.files);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching workspace files:', e);
+    }
+  };
+
+  // Fetch conversations
   const refreshConversations = async () => {
     try {
       const res = await fetch('/api/conversations');
@@ -77,11 +165,12 @@ function App() {
         if (provider === 'ollama') {
           if (data.localModels && data.localModels.length > 0) {
             setModel(data.localModels[0]);
-          } else {
-            setModel('');
+          } else if (data.cloudModels && data.cloudModels.length > 0) {
+            setProvider('cloud');
+            setModel(data.cloudModels[0]);
           }
         } else if (!model) {
-          setModel(data.cloudModels?.[0] || 'gpt-4o');
+          setModel(data.cloudModels?.[0] || 'gemini-2.5-flash');
         }
       }
     } catch (e) {
@@ -90,13 +179,14 @@ function App() {
   };
 
   useEffect(() => {
+    refreshProjects();
+    refreshWorkspaceFiles();
     refreshConversations();
     fetchModels();
 
-    // Check if auth is required on setup
     fetch('/api/auth/status')
-      .then(r => r.json())
-      .then(data => {
+      .then((r) => r.json())
+      .then((data) => {
         if (data.requiresSetup && !currentUser) {
           setAuthOpen(true);
         }
@@ -107,17 +197,30 @@ function App() {
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isGenerating]);
 
-  const handleSend = () => {
-    if (!input.trim() || isGenerating) return;
-    sendMessage(input, provider, model, selectedAgentId, () => {
-      refreshConversations();
-    });
-    setInput('');
+  const fitTextarea = () => {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = 'auto';
+    textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 180) + 'px';
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleSend = (textToSend?: string) => {
+    const text = textToSend || input;
+    if (!text.trim() || isGenerating) return;
+
+    sendMessage(text, provider, model, selectedAgentId, selectedProjectId, () => {
+      refreshConversations();
+      refreshWorkspaceFiles();
+    });
+
+    setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -136,25 +239,113 @@ function App() {
     }
   };
 
-  const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
-
-  const handleSuggestionClick = (prompt: string) => {
-    setInput(prompt);
-    textareaRef.current?.focus();
+  const handleSelectAgent = (agentId: string) => {
+    setSelectedAgentId(agentId);
+    startNewChat();
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
   };
 
+  const handleSelectProject = (projId: string) => {
+    setSelectedProjectId(projId);
+    startNewChat();
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const handleCreateProject = async (name: string, description: string, icon: string) => {
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, icon })
+      });
+      if (res.ok) {
+        const newProj = await res.json();
+        setProjects((prev) => [...prev, newProj]);
+        setSelectedProjectId(newProj.id);
+        startNewChat();
+      }
+    } catch (e) {
+      console.error('Failed to create project:', e);
+    }
+  };
+
+  const handleSelectModel = (newProvider: 'ollama' | 'cloud', newModel: string) => {
+    setProvider(newProvider);
+    setModel(newModel);
+    setMenuOpen(false);
+  };
+
+  const handleToggleProvider = () => {
+    if (provider === 'ollama') {
+      setProvider('cloud');
+      if (!model || localModels.includes(model)) {
+        setModel(cloudModels[0] || 'gemini-2.5-flash');
+      }
+    } else {
+      setProvider('ollama');
+      if (localModels.length > 0) {
+        setModel(localModels[0]);
+      }
+    }
+  };
+
+  const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
+  const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+
+  const currentChips = AGENT_CHIPS[selectedAgentId] || [
+    'Explain a concept simply',
+    'Write a professional email',
+    'Debug my code',
+    'Plan a weekend trip'
+  ];
+
+  const modelDisplayName = model
+    ? model.replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-').replace('claude-', 'Claude ')
+    : provider === 'ollama'
+    ? 'Local Ollama'
+    : 'Select Model';
+
   return (
-    <div className="app-container">
+    <div className={`app ${sidebarOpen ? '' : 'closed'}`} id="app">
       {/* Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         conversations={conversations}
         activeId={conversationId}
-        onSelect={(id) => loadConversation(id)}
-        onNewChat={startNewChat}
+        onSelect={(id) => {
+          loadConversation(id);
+          if (window.innerWidth <= 768) setSidebarOpen(false);
+        }}
+        onNewChat={() => {
+          startNewChat();
+          if (window.innerWidth <= 768) setSidebarOpen(false);
+          textareaRef.current?.focus();
+        }}
         onDelete={handleDeleteConversation}
-        ollamaOnline={ollamaOnline}
+        // Agents
+        selectedAgentId={selectedAgentId}
+        onSelectAgent={handleSelectAgent}
+        // Projects
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={handleSelectProject}
+        onCreateProject={handleCreateProject}
+        // Files
+        workspaceFiles={workspaceFiles}
+        onSelectFile={(filename) => {
+          setInput((prev) => (prev ? `${prev}\nReview file: ${filename}` : `Review and explain file: ${filename}`));
+          textareaRef.current?.focus();
+        }}
+        // Templates
+        onSelectTemplate={(prompt) => {
+          handleSend(prompt);
+          if (window.innerWidth <= 768) setSidebarOpen(false);
+        }}
         onOpenSettings={() => setSettingsOpen(true)}
         currentUser={currentUser}
         onOpenAuth={() => setAuthOpen(true)}
@@ -162,183 +353,264 @@ function App() {
           localStorage.removeItem('tm_user');
           setCurrentUser(null);
         }}
+        toggleTheme={toggleTheme}
       />
 
-      {/* Main Chat Area */}
-      <div className="main-chat-container">
-        {/* Top Header & Agent Selector */}
-        <header className="chat-header">
-          <div className="header-left">
+      {/* Scrim for mobile */}
+      <div className="scrim" id="scrim" onClick={() => setSidebarOpen(false)}></div>
+
+      {/* Main chat window */}
+      <main className="main">
+        {/* Top bar */}
+        <div className="bar">
+          <div className="bar-left">
             {!sidebarOpen && (
               <button
-                className="sidebar-toggle-btn"
+                className="icon"
+                id="open"
+                aria-label="Open sidebar"
                 onClick={() => setSidebarOpen(true)}
-                title="Open Sidebar"
+                title="Open sidebar"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="3" y1="12" x2="21" y2="12"></line>
-                  <line x1="3" y1="6" x2="21" y2="6"></line>
-                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="16" rx="3" />
+                  <path d="M9 4v16" />
                 </svg>
               </button>
             )}
-            <AgentSelector
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={setSelectedAgentId}
-            />
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <button
-              className="top-settings-btn"
-              onClick={() => setSettingsOpen(true)}
-              title="Cloud Provider API Keys"
+              className="model"
+              id="mbtn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+              }}
+              title="Change model"
             >
-              ⚙️ Keys
+              <span>{modelDisplayName}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
             </button>
-          </div>
-        </header>
 
-        {/* Message Stream */}
-        <div className="messages-container">
-          {messages.length === 0 ? (
-            <div className="welcome-screen">
-              <div className="welcome-icon">{currentAgent.emoji}</div>
-              <h2 className="welcome-title">{currentAgent.name}</h2>
-              <p className="welcome-desc">{currentAgent.description}</p>
+            {/* Model selection dropdown menu */}
+            <div className={`menu ${menuOpen ? 'open' : ''}`} id="menu" onClick={(e) => e.stopPropagation()}>
+              <div className="menu-section-title">Local Models (Ollama)</div>
+              {localModels.length === 0 ? (
+                <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--muted)' }}>
+                  {ollamaOnline ? 'No local models downloaded (`ollama pull <model>`)' : 'Ollama daemon is offline'}
+                </div>
+              ) : (
+                localModels.map((lm) => (
+                  <button
+                    key={lm}
+                    className={provider === 'ollama' && model === lm ? 'active-model' : ''}
+                    onClick={() => handleSelectModel('ollama', lm)}
+                  >
+                    {lm}
+                    <small>Local model • private & offline</small>
+                  </button>
+                ))
+              )}
 
-              <div className="prompt-suggestions">
-                {selectedAgentId === 'agent_tf-devops-expert' && (
-                  <>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Build an AWS VPC with 3 public and private subnets, NAT gateway, and tags')}
-                    >
-                      <h4>AWS VPC Architecture</h4>
-                      <p>Generate multi-AZ VPC with subnets and internet gateways.</p>
-                    </div>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Generate an S3 bucket with AES256 encryption, versioning, and lifecycle policy')}
-                    >
-                      <h4>Secure S3 Storage</h4>
-                      <p>Create encrypted bucket with automated expiration rules.</p>
-                    </div>
-                  </>
-                )}
+              <div className="menu-section-title" style={{ marginTop: '6px' }}>Cloud AI Models</div>
+              {cloudModels.map((cm) => (
+                <button
+                  key={cm}
+                  className={provider === 'cloud' && model === cm ? 'active-model' : ''}
+                  onClick={() => handleSelectModel('cloud', cm)}
+                >
+                  {cm.replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-').replace('claude-', 'Claude ')}
+                  <small>
+                    {cm.includes('flash') || cm.includes('mini') ? 'Fast, everyday responses' : 'Advanced reasoning'}
+                  </small>
+                </button>
+              ))}
 
-                {selectedAgentId === 'agent_finops-cost-optimizer' && (
-                  <>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Compare monthly costs for running 4-node Kubernetes cluster on AWS vs GCP vs Azure')}
-                    >
-                      <h4>Multi-Cloud Cost Comparison</h4>
-                      <p>Analyze EKS vs GKE vs AKS pricing and recommend spot instances.</p>
-                    </div>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Audit my Terraform code for unused resources and Graviton3 savings')}
-                    >
-                      <h4>FinOps IaC Audit</h4>
-                      <p>Pinpoint overprovisioned compute and recommend reserved instances.</p>
-                    </div>
-                  </>
-                )}
-
-                {selectedAgentId === 'agent_k8s-gitops-architect' && (
-                  <>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Create a production Deployment with HPA, securityContext non-root, and liveness probes')}
-                    >
-                      <h4>Hardened K8s Manifest</h4>
-                      <p>Generate production-grade microservice manifest with probes.</p>
-                    </div>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Design an ArgoCD ApplicationSet layout for multi-environment Kubernetes cluster')}
-                    >
-                      <h4>GitOps ApplicationSet</h4>
-                      <p>Multi-cluster ArgoCD configuration with automatic sync.</p>
-                    </div>
-                  </>
-                )}
-
-                {selectedAgentId === 'agent_cicd-pipeline-engineer' && (
-                  <>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Create a GitHub Actions workflow with AWS OIDC, terraform fmt, and tfsec scans')}
-                    >
-                      <h4>Keyless GitHub Actions</h4>
-                      <p>Zero static credentials pipeline with automated PR comments.</p>
-                    </div>
-                    <div
-                      className="suggestion-card"
-                      onClick={() => handleSuggestionClick('Generate a GitLab CI pipeline for automated Terraform plan and approval gate')}
-                    >
-                      <h4>GitLab CI Approval Pipeline</h4>
-                      <p>Speculative plan artifact with manual production promotion.</p>
-                    </div>
-                  </>
-                )}
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setSettingsOpen(true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--muted)' }}
+                >
+                  <span>⚙️</span> Manage API Keys
+                </button>
               </div>
             </div>
-          ) : (
-            messages.map((m, idx) => (
-              <ChatMessage
-                key={idx}
-                role={m.role}
-                content={m.content}
-                agentEmoji={currentAgent.emoji}
-                isStreaming={isGenerating && idx === messages.length - 1 && m.role === 'assistant'}
-              />
-            ))
-          )}
-          <div ref={messagesEndRef} />
+          </div>
+
+          {/* Right badges: Active Project, Active Agent, and Ollama status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 8px',
+                borderRadius: '12px',
+                background: 'var(--user)',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--text)'
+              }}
+              title={`Active Project: ${currentProject?.name}`}
+            >
+              <span>{currentProject?.icon || '📁'}</span>
+              <span style={{ maxWidth: '140px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {currentProject?.name}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 8px',
+                borderRadius: '12px',
+                background: 'var(--user)',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--text)'
+              }}
+              title={`Active Agent: ${currentAgent.name}`}
+            >
+              <span>{currentAgent.emoji}</span>
+              <span style={{ display: window.innerWidth > 600 ? 'inline' : 'none' }}>{currentAgent.name}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Input Bar with Local vs Cloud Model Toggle */}
-        <div className="chat-input-wrapper">
-          <div className="input-box-container">
+        {/* Scrollable messages container */}
+        <div className="scroll" id="scroll">
+          <div className="col" id="msgs">
+            {messages.length === 0 ? (
+              <div className="empty">
+                <h1>What can I help with?</h1>
+                <div className="chips">
+                  {currentChips.map((chipText) => (
+                    <button key={chipText} onClick={() => handleSend(chipText)}>
+                      {chipText}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((m, idx) => (
+                <ChatMessage
+                  key={idx}
+                  role={m.role}
+                  content={m.content}
+                  agentEmoji={currentAgent.emoji}
+                  isStreaming={isGenerating && idx === messages.length - 1 && m.role === 'assistant'}
+                  onRegenerate={() => {
+                    const lastUserMsg = [...messages].reverse().find((msg) => msg.role === 'user');
+                    if (lastUserMsg) {
+                      handleSend(lastUserMsg.content);
+                    }
+                  }}
+                />
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Composer - Featuring Local Model / API Selector inside input section */}
+        <div className="comp">
+          <div className="box">
             <textarea
               ref={textareaRef}
-              className="chat-textarea"
-              placeholder={`Ask ${currentAgent.name} (e.g., 'Generate an AWS VPC with subnets')...`}
+              id="in"
               rows={1}
+              placeholder={`Message ${currentAgent.name} in ${currentProject?.name}...`}
+              aria-label="Message"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                fitTextarea();
+              }}
               onKeyDown={handleKeyDown}
             />
 
-            <div className="input-action-row">
-              <AISourceToggle
-                provider={provider}
-                model={model}
-                onProviderChange={setProvider}
-                onModelChange={setModel}
-                localModels={localModels}
-                cloudModels={cloudModels}
-                ollamaOnline={ollamaOnline}
-                onOpenSettings={() => setSettingsOpen(true)}
-              />
+            {/* Bottom action row inside the input section */}
+            <div className="box-bottom-bar">
+              <div className="composer-left-actions">
+                {/* Model Selector Pill inside the input box */}
+                <button
+                  type="button"
+                  className="composer-pill-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(!menuOpen);
+                  }}
+                  title="Select AI Model"
+                >
+                  <span>{provider === 'ollama' ? '🖥️ Local' : '☁️ Cloud'}</span>
+                  <span style={{ opacity: 0.5 }}>•</span>
+                  <span>{modelDisplayName}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
 
+                {/* Quick Toggle between Local and Cloud */}
+                <button
+                  type="button"
+                  className="composer-pill-btn"
+                  onClick={handleToggleProvider}
+                  title="Switch between Local Ollama and Cloud AI"
+                >
+                  {provider === 'ollama' ? 'Use Cloud ☁️' : 'Use Ollama 🖥️'}
+                </button>
+
+                {/* Status Dot */}
+                <div
+                  title={ollamaOnline ? 'Ollama: Online (11434)' : 'Ollama: Offline'}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--muted)', marginLeft: '2px' }}
+                >
+                  <span
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: ollamaOnline ? 'var(--green)' : 'var(--muted)'
+                    }}
+                  />
+                </div>
+
+                {/* Keys button */}
+                <button
+                  type="button"
+                  className="composer-pill-btn"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Configure Cloud API Keys"
+                  style={{ padding: '3px 7px' }}
+                >
+                  ⚙️
+                </button>
+              </div>
+
+              {/* Circular Send Button */}
               <button
-                className="send-btn"
-                onClick={handleSend}
+                className="send"
+                id="send"
                 disabled={!input.trim() || isGenerating}
-                title="Send Message (Enter)"
+                onClick={() => handleSend()}
+                aria-label="Send message"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
                 </svg>
               </button>
             </div>
           </div>
+          <div className="note">AI can make mistakes. Check important information.</div>
         </div>
-      </div>
+      </main>
 
       {/* Settings Modal */}
       <SettingsModal

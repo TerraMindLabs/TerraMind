@@ -8,11 +8,16 @@ import {
   addMessage,
   deleteConversation,
   updateConversationTitle,
-  getAllSettings
+  getAllSettings,
+  getProjects,
+  createProject,
+  deleteProject
 } from '../db';
+import { buildSystemPrompt } from './agent-prompts';
 
 interface ChatRequestBody {
   conversationId?: string;
+  projectId?: string;
   messages: Array<{ role: string; content: string }>;
   provider?: string;
   model?: string;
@@ -20,10 +25,48 @@ interface ChatRequestBody {
 }
 
 export default async function chatRoutes(fastify: FastifyInstance) {
-  // 1. List conversations
+  // 1. Projects API
+  fastify.get('/api/projects', async (request, reply) => {
+    try {
+      const projects = getProjects();
+      return { projects };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch projects' });
+    }
+  });
+
+  fastify.post('/api/projects', async (request, reply) => {
+    try {
+      const { name, description, icon } = request.body as any;
+      if (!name) {
+        return reply.status(400).send({ error: 'Project name is required' });
+      }
+      const id = 'proj-' + Date.now();
+      const proj = createProject(id, name, description || '', icon || '📁');
+      return proj;
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to create project' });
+    }
+  });
+
+  fastify.delete('/api/projects/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      deleteProject(id);
+      return { success: true };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to delete project' });
+    }
+  });
+
+  // 2. List conversations (optionally filtered by projectId)
   fastify.get('/api/conversations', async (request, reply) => {
     try {
-      const convos = getConversations();
+      const { projectId } = request.query as { projectId?: string };
+      const convos = getConversations(projectId);
       return { conversations: convos };
     } catch (err: any) {
       fastify.log.error(err);
@@ -31,15 +74,16 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 2. Create conversation
+  // 3. Create conversation
   fastify.post('/api/conversations', async (request, reply) => {
     try {
-      const body = request.body as any || {};
+      const body = (request.body as any) || {};
       const id = body.id || randomUUID();
       const title = body.title || 'New Infrastructure Chat';
       const provider = body.provider || 'ollama';
       const model = body.model || '';
-      const convo = createConversation(id, title, provider, model);
+      const projectId = body.projectId || 'proj-aws';
+      const convo = createConversation(id, title, provider, model, projectId);
       return convo;
     } catch (err: any) {
       fastify.log.error(err);
@@ -47,7 +91,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 3. Get messages for a conversation
+  // 4. Get messages for a conversation
   fastify.get('/api/conversations/:id/messages', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
@@ -59,7 +103,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 4. Delete a conversation
+  // 5. Delete a conversation
   fastify.delete('/api/conversations/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
@@ -71,7 +115,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 5. Query available models & local Ollama detection
+  // 6. Query available models & local Ollama detection
   fastify.get('/api/models', async (request, reply) => {
     let ollamaOnline = false;
     let localModels: string[] = [];
@@ -82,9 +126,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       const res = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
       clearTimeout(timeout);
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         ollamaOnline = true;
-        // Only return models the user has actually downloaded locally
         localModels = (data.models || []).map((m: any) => m.name);
       }
     } catch {
@@ -114,10 +157,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // 6. SSE Streaming Chat Endpoint
+  // 7. SSE Streaming Chat Endpoint
   fastify.post('/api/chat', async (request, reply) => {
     const {
       conversationId: incomingConvoId,
+      projectId = 'proj-aws',
       messages,
       provider = 'ollama',
       model = '',
@@ -136,12 +180,12 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     if (!conversationId) {
       conversationId = randomUUID();
       const titlePrompt = latestUserMsg?.content?.slice(0, 32) || 'Terraform Project';
-      createConversation(conversationId, titlePrompt, provider, model);
+      createConversation(conversationId, titlePrompt, provider, model, projectId);
     } else {
       const existing = getConversation(conversationId);
       if (!existing && latestUserMsg) {
         const titlePrompt = latestUserMsg?.content?.slice(0, 32) || 'Terraform Project';
-        createConversation(conversationId, titlePrompt, provider, model);
+        createConversation(conversationId, titlePrompt, provider, model, projectId);
       }
     }
 
@@ -158,7 +202,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     };
 
     const settings = getAllSettings();
-    const systemPrompt = getAgentSystemPrompt(agentId);
+    const systemPrompt = buildSystemPrompt(agentId);
 
     // CASE 1: Local Ollama
     if (provider === 'ollama') {
@@ -174,16 +218,17 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
 
       if (!ollamaActive) {
-        streamToken(`> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
-          `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
-          `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
-          `Or switch to **Cloud AI** under the prompt box if you have configured an API key.`);
+        streamToken(
+          `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
+            `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
+            `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
+            `Or switch to **Cloud AI** under the prompt box if you have configured an API key.`
+        );
         reply.raw.write(`data: [DONE]\n\n`);
         reply.raw.end();
         return;
       }
 
-      // Check if user requested a model
       const targetModel = model || 'qwen2.5-coder:7b';
 
       try {
@@ -192,17 +237,16 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: targetModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...messages
-            ],
+            messages: [{ role: 'system', content: systemPrompt }, ...messages],
             stream: true
           })
         });
 
         if (!ollamaRes.ok) {
           const errText = await ollamaRes.text();
-          streamToken(`> ⚠️ **Ollama Error (${ollamaRes.status}):**\n\n${errText}\n\nMake sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel}\`.`);
+          streamToken(
+            `> ⚠️ **Ollama Error (${ollamaRes.status}):**\n\n${errText}\n\nMake sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel}\`.`
+          );
         } else if (ollamaRes.body) {
           const reader = ollamaRes.body.getReader();
           const decoder = new TextDecoder();
@@ -217,9 +261,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
                 if (data.message?.content) {
                   streamToken(data.message.content);
                 }
-              } catch {
-                // Ignore partial JSON
-              }
+              } catch {}
             }
           }
         }
@@ -228,9 +270,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // CASE 2: Cloud AI Providers (OpenAI, Gemini, Anthropic)
+    // CASE 2: Cloud AI Providers (Gemini, OpenAI, Anthropic)
     else if (provider === 'cloud') {
-      const targetModel = model || 'gpt-4o';
+      const targetModel = model || 'gemini-2.5-flash';
       const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
       const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
       const anthropicKey = settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY;
@@ -240,60 +282,22 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       const isOpenAI = targetModel.startsWith('gpt');
 
       if (isGemini && !geminiKey) {
-        streamToken(`> 🔑 **Gemini API Key Missing**\n\nPlease add your Google Gemini API key in **Settings > API Keys** (gear icon in sidebar) to enable cloud generation with \`${targetModel}\`.`);
+        streamToken(
+          `> 🔑 **Gemini API Key Missing**\n\nPlease add your Google Gemini API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+        );
       } else if (isOpenAI && !openaiKey) {
-        streamToken(`> 🔑 **OpenAI API Key Missing**\n\nPlease add your OpenAI API key in **Settings > API Keys** (gear icon in sidebar) to enable cloud generation with \`${targetModel}\`.`);
+        streamToken(
+          `> 🔑 **OpenAI API Key Missing**\n\nPlease add your OpenAI API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+        );
       } else if (isAnthropic && !anthropicKey) {
-        streamToken(`> 🔑 **Anthropic API Key Missing**\n\nPlease add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar) to enable cloud generation with \`${targetModel}\`.`);
-      } else if (isOpenAI && openaiKey) {
-        // Stream OpenAI Chat Completion
-        try {
-          const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiKey}`
-            },
-            body: JSON.stringify({
-              model: targetModel,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                ...messages
-              ],
-              stream: true
-            })
-          });
-
-          if (!res.ok) {
-            const err = await res.text();
-            streamToken(`> ⚠️ **OpenAI Error (${res.status}):** ${err}`);
-          } else if (res.body) {
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
-              for (const line of lines) {
-                const raw = line.replace('data: ', '').trim();
-                if (raw === '[DONE]') break;
-                try {
-                  const data = JSON.parse(raw);
-                  const token = data.choices?.[0]?.delta?.content;
-                  if (token) streamToken(token);
-                } catch {}
-              }
-            }
-          }
-        } catch (e: any) {
-          streamToken(`> ⚠️ **OpenAI request failed:** ${e.message}`);
-        }
+        streamToken(
+          `> 🔑 **Anthropic API Key Missing**\n\nPlease add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+        );
       } else if (isGemini && geminiKey) {
         // Stream Gemini Generate Content
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-          const contents = messages.map(m => ({
+          const contents = messages.map((m) => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
           }));
@@ -331,6 +335,94 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         } catch (e: any) {
           streamToken(`> ⚠️ **Gemini request failed:** ${e.message}`);
         }
+      } else if (isOpenAI && openaiKey) {
+        // Stream OpenAI Chat Completion
+        try {
+          const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openaiKey}`
+            },
+            body: JSON.stringify({
+              model: targetModel,
+              messages: [{ role: 'system', content: systemPrompt }, ...messages],
+              stream: true
+            })
+          });
+
+          if (!res.ok) {
+            const err = await res.text();
+            streamToken(`> ⚠️ **OpenAI Error (${res.status}):** ${err}`);
+          } else if (res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
+              for (const line of lines) {
+                const raw = line.replace('data: ', '').trim();
+                if (raw === '[DONE]') break;
+                try {
+                  const data = JSON.parse(raw);
+                  const token = data.choices?.[0]?.delta?.content;
+                  if (token) streamToken(token);
+                } catch {}
+              }
+            }
+          }
+        } catch (e: any) {
+          streamToken(`> ⚠️ **OpenAI request failed:** ${e.message}`);
+        }
+      } else if (isAnthropic && anthropicKey) {
+        // Stream Anthropic Messages
+        try {
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': anthropicKey,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: targetModel,
+              system: systemPrompt,
+              messages: messages.map((m) => ({
+                role: m.role === 'assistant' ? 'assistant' : 'user',
+                content: m.content
+              })),
+              max_tokens: 4096,
+              stream: true
+            })
+          });
+
+          if (!res.ok) {
+            const err = await res.text();
+            streamToken(`> ⚠️ **Anthropic Error (${res.status}):** ${err}`);
+          } else if (res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
+              for (const line of lines) {
+                const raw = line.replace('data: ', '').trim();
+                try {
+                  const data = JSON.parse(raw);
+                  if (data.type === 'content_block_delta' && data.delta?.text) {
+                    streamToken(data.delta.text);
+                  }
+                } catch {}
+              }
+            }
+          }
+        } catch (e: any) {
+          streamToken(`> ⚠️ **Anthropic request failed:** ${e.message}`);
+        }
       }
     }
 
@@ -342,10 +434,4 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.write(`data: [DONE]\n\n`);
     reply.raw.end();
   });
-}
-
-import { buildSystemPrompt } from './agent-prompts';
-
-function getAgentSystemPrompt(agentId: string): string {
-  return buildSystemPrompt(agentId);
 }
