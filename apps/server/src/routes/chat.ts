@@ -202,7 +202,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     if (geminiKey) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+        const timeout = setTimeout(() => controller.abort(), 3500);
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}`, {
           signal: controller.signal
         });
@@ -210,47 +210,81 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         if (res.ok) {
           const data = (await res.json()) as any;
           if (Array.isArray(data.models)) {
+            // Strictly verify that the model supports conversational text chat and generateContent
+            const unsupportedKeywords = [
+              'tts',
+              'image',
+              'imagen',
+              'audio',
+              'realtime',
+              'embedding',
+              'embed',
+              'aqa',
+              'retrieval',
+              'computer-use',
+              'whisper',
+              'transcribe'
+            ];
+
             const fetched = data.models
-              .filter((m: any) =>
-                m.name &&
-                Array.isArray(m.supportedGenerationMethods) &&
-                m.supportedGenerationMethods.includes('generateContent') &&
-                !m.name.includes('embedding') &&
-                !m.name.includes('aqa') &&
-                !m.name.includes('imagen')
-              )
+              .filter((m: any) => {
+                if (!m || !m.name) return false;
+                const name = String(m.name).replace(/^models\//, '').toLowerCase();
+
+                // 1. Must be a Gemini chat model (excludes raw gemma weights or unrelated models)
+                if (!name.startsWith('gemini-')) return false;
+
+                // 2. Must support generateContent
+                if (!Array.isArray(m.supportedGenerationMethods) || !m.supportedGenerationMethods.includes('generateContent')) {
+                  return false;
+                }
+
+                // 3. Exclude unsupported modalities (TTS audio, image generation, etc.)
+                if (unsupportedKeywords.some((k) => name.includes(k))) {
+                  return false;
+                }
+
+                return true;
+              })
               .map((m: any) => m.name.replace(/^models\//, ''));
 
-            // Sort prioritizing latest flash and pro
+            // Sort prioritizing latest flash, pro, and stable versions
             fetched.sort((a: string, b: string) => {
               const score = (name: string) => {
-                if (name.includes('2.5-flash')) return 100;
-                if (name.includes('2.0-flash')) return 90;
-                if (name.includes('1.5-flash')) return 80;
-                if (name.includes('1.5-pro')) return 70;
+                if (name === 'gemini-2.5-flash') return 100;
+                if (name === 'gemini-2.5-pro') return 95;
+                if (name === 'gemini-2.0-flash') return 90;
+                if (name === 'gemini-flash-latest') return 88;
+                if (name === 'gemini-1.5-pro') return 85;
+                if (name === 'gemini-1.5-flash') return 80;
+                if (name === 'gemini-2.5-flash-lite') return 75;
+                if (name === 'gemini-flash-lite-latest') return 70;
+                if (name.includes('2.5')) return 65;
+                if (name.includes('2.0')) return 60;
+                if (name.includes('1.5')) return 55;
                 return 10;
               };
               return score(b) - score(a);
             });
 
             if (fetched.length > 0) {
-              cloudModels.push(...fetched.slice(0, 10));
+              cloudModels.push(...fetched.slice(0, 15));
             }
           }
         }
       } catch (err) {
         console.error('Failed to fetch dynamic Gemini models:', err);
       }
-      // If fetching fails or times out, but geminiKey was configured, supply default models
+      // If fetching fails or times out, but geminiKey was configured, supply verified default models
       if (!cloudModels.some((m) => m.startsWith('gemini'))) {
-        cloudModels.push('gemini-2.5-flash', 'gemini-1.5-pro');
+        cloudModels.push('gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro');
       }
     }
 
     if (openaiKey) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+        const timeout = setTimeout(() => controller.abort(), 3500);
         const res = await fetch('https://api.openai.com/v1/models', {
           headers: { Authorization: `Bearer ${openaiKey}` },
           signal: controller.signal
@@ -259,17 +293,40 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         if (res.ok) {
           const data = (await res.json()) as any;
           if (Array.isArray(data.data)) {
+            const unsupported = [
+              'realtime',
+              'audio',
+              'transcribe',
+              'tts',
+              'image',
+              'dall-e',
+              'embedding',
+              'moderation',
+              'search',
+              'preview-audio'
+            ];
+
             const fetched = data.data
               .map((m: any) => m.id)
               .filter(
-                (id: string) =>
-                  (id.startsWith('gpt-4') || id.startsWith('o1') || id.startsWith('o3')) &&
-                  !id.includes('realtime') &&
-                  !id.includes('audio')
+                (id: string) => {
+                  if (!id) return false;
+                  const lower = id.toLowerCase();
+                  if (
+                    !lower.startsWith('gpt-4') &&
+                    !lower.startsWith('gpt-3.5') &&
+                    !lower.startsWith('o1') &&
+                    !lower.startsWith('o3') &&
+                    !lower.startsWith('chatgpt-')
+                  ) {
+                    return false;
+                  }
+                  return !unsupported.some((u) => lower.includes(u));
+                }
               )
               .sort();
             if (fetched.length > 0) {
-              cloudModels.push(...fetched.slice(0, 6));
+              cloudModels.push(...fetched.slice(0, 10));
             }
           }
         }
@@ -284,7 +341,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     if (anthropicKey) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+        const timeout = setTimeout(() => controller.abort(), 3500);
         const res = await fetch('https://api.anthropic.com/v1/models', {
           headers: {
             'x-api-key': anthropicKey,
@@ -296,9 +353,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         if (res.ok) {
           const data = (await res.json()) as any;
           if (Array.isArray(data.data)) {
-            const fetched = data.data.map((m: any) => m.id);
+            const fetched = data.data
+              .map((m: any) => m.id)
+              .filter((id: string) => id && id.startsWith('claude-'));
             if (fetched.length > 0) {
-              cloudModels.push(...fetched.slice(0, 5));
+              cloudModels.push(...fetched.slice(0, 8));
             }
           }
         }

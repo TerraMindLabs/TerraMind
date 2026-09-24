@@ -6,6 +6,7 @@ interface SettingsModalProps {
   onSave?: () => void;
   theme?: 'light' | 'dark';
   toggleTheme?: () => void;
+  initialTab?: TabType;
 }
 
 type TabType = 'keys' | 'ollama' | 'general';
@@ -15,9 +16,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSave,
   theme = 'light',
-  toggleTheme
+  toggleTheme,
+  initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('keys');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab || 'keys');
 
   // API Keys state
   const [openaiKey, setOpenaiKey] = useState('');
@@ -67,11 +69,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
       loadData();
       setActionError(null);
       setPullStatus(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 

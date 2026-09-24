@@ -501,41 +501,258 @@ button:focus-visible, input:focus-visible {
   left: 14px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 6px;
-  width: 290px;
+  border-radius: 14px;
+  padding: 8px;
+  width: 320px;
+  max-width: calc(100vw - 28px);
   z-index: 100;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
   display: none;
+  backdrop-filter: blur(12px);
 }
 
 .menu.open {
   display: block;
 }
 
-.menu button {
-  display: block;
+/* Tabs Header for Separating Ollama and Cloud Models */
+.menu-tabs-header {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--user);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+}
+
+.menu-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.menu-tab-btn:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.menu-tab-btn.active {
+  color: var(--text);
+  background: var(--bg);
+  font-weight: 700;
+  border-color: var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tab-count-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.menu-tab-btn.active .tab-count-badge {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+/* Scrollable Container for Models List */
+.menu-models-scroll {
+  max-height: 290px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.menu-models-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.menu-models-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.menu-models-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.menu-models-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.menu-item-btn {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   text-align: left;
   padding: 8px 10px;
   border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.menu-item-btn:hover {
+  background: var(--hover);
+}
+
+.menu-item-btn.active-model {
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.menu-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 6px;
+}
+
+.menu-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-item-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.menu-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.menu-badge.fast {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.menu-badge.pro {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.menu-badge.local {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--muted);
+}
+
+.menu-badge.verified {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  font-size: 9px;
+}
+
+.menu-item-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-empty-state {
+  padding: 16px 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-empty-title {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
 }
 
-.menu button:hover {
-  background: var(--hover);
-}
-
-.menu button.active-model {
-  background: var(--hover);
-  font-weight: 600;
-}
-
-.menu small {
-  display: block;
+.menu-empty-desc {
+  font-size: 11.5px;
   color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.menu-empty-btn {
+  margin-top: 6px;
+  padding: 6px 12px;
   font-size: 12px;
-  margin-top: 2px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.menu-empty-btn:hover {
+  background: var(--border);
+}
+
+.menu-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.menu-footer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.menu-footer-btn:hover {
+  background: var(--hover);
 }
 
 .menu-section-title {
@@ -543,7 +760,10 @@ button:focus-visible, input:focus-visible {
   font-weight: 700;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 6px 10px 2px;
+  padding: 4px 6px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* Chat Scrollable Container */

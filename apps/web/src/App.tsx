@@ -138,6 +138,36 @@ const AGENT_CARDS: Record<string, SuggestionCard[]> = {
   ]
 };
 
+function formatModelName(modelName: string): string {
+  if (!modelName) return '';
+  return modelName
+    .replace('gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite')
+    .replace('gemini-2.5-flash', 'Gemini 2.5 Flash')
+    .replace('gemini-2.5-pro', 'Gemini 2.5 Pro')
+    .replace('gemini-flash-latest', 'Gemini Flash (Latest)')
+    .replace('gemini-flash-lite-latest', 'Gemini Flash Lite (Latest)')
+    .replace('gemini-pro-latest', 'Gemini Pro (Latest)')
+    .replace('gemini-2.0-flash', 'Gemini 2.0 Flash')
+    .replace('gemini-1.5-flash', 'Gemini 1.5 Flash')
+    .replace('gemini-1.5-pro', 'Gemini 1.5 Pro')
+    .replace('gpt-4o-mini', 'GPT-4o Mini')
+    .replace('gpt-4o', 'GPT-4o')
+    .replace('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
+    .replace('claude-3-5-haiku-20241022', 'Claude 3.5 Haiku')
+    .replace('claude-3-opus-20240229', 'Claude 3 Opus')
+    .replace(/^gemini-/, 'Gemini ')
+    .replace(/^gpt-/, 'GPT-')
+    .replace(/^claude-/, 'Claude ');
+}
+
+function isSupportedCloudModel(modelId: string): boolean {
+  if (!modelId) return false;
+  const lower = modelId.toLowerCase();
+  const unsupported = ['tts', 'image', 'imagen', 'audio', 'realtime', 'embedding', 'embed', 'aqa', 'whisper', 'dall-e', 'transcribe'];
+  if (unsupported.some((u) => lower.includes(u))) return false;
+  return lower.startsWith('gemini-') || lower.startsWith('gpt-') || lower.startsWith('o1') || lower.startsWith('o3') || lower.startsWith('claude-');
+}
+
 function App() {
   const {
     messages,
@@ -175,6 +205,7 @@ function App() {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'keys' | 'ollama' | 'general'>('keys');
   const [authOpen, setAuthOpen] = useState(false);
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -259,28 +290,31 @@ function App() {
         const data = await res.json();
         setOllamaOnline(Boolean(data.ollamaOnline));
         const locals: string[] = data.localModels || [];
-        const clouds: string[] = data.cloudModels || [];
+        const clouds: string[] = (data.cloudModels || []).filter(isSupportedCloudModel);
         setLocalModels(locals);
         setCloudModels(clouds);
 
-        // Set default model based on availability
-        if (locals.length > 0) {
-          if (provider === 'ollama') {
+        // Intelligently set default model based on availability and active provider
+        if (provider === 'ollama') {
+          if (locals.length > 0) {
             if (!model || !locals.includes(model)) {
               setModel(locals[0]);
             }
-          } else if (clouds.length === 0) {
-            setProvider('ollama');
-            setModel(locals[0]);
-          }
-        } else if (clouds.length > 0) {
-          setProvider('cloud');
-          if (!model || !clouds.includes(model)) {
+          } else if (clouds.length > 0 && !data.ollamaOnline) {
+            setProvider('cloud');
             setModel(clouds[0]);
           }
         } else {
-          // No models available at all (Offline)
-          setModel('');
+          if (clouds.length > 0) {
+            if (!model || !clouds.includes(model)) {
+              setModel(clouds[0]);
+            }
+          } else if (locals.length > 0) {
+            setProvider('ollama');
+            setModel(locals[0]);
+          } else {
+            setModel('');
+          }
         }
       }
     } catch (e) {
@@ -480,11 +514,11 @@ function App() {
   const modelDisplayName = !hasAnyModels
     ? 'Offline'
     : model
-    ? model.replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-').replace('claude-', 'Claude ')
+    ? formatModelName(model)
     : provider === 'ollama' && localModels.length > 0
     ? localModels[0]
     : cloudModels.length > 0
-    ? cloudModels[0].replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-').replace('claude-', 'Claude ')
+    ? formatModelName(cloudModels[0])
     : 'Offline';
 
   return (
@@ -565,7 +599,10 @@ function App() {
               <div
                 className="status-pill offline"
                 id="mbtn"
-                onClick={() => setSettingsOpen(true)}
+                onClick={() => {
+                  setSettingsTab(provider === 'ollama' ? 'ollama' : 'keys');
+                  setSettingsOpen(true);
+                }}
                 title="All AI models are offline. Click to configure API keys."
               >
                 <span className="status-dot offline-dot" />
@@ -582,65 +619,204 @@ function App() {
                 }}
                 title="Change model"
               >
-                <span className="status-dot online-dot" />
-                <span>{modelDisplayName}</span>
+                <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} />
+                <span>{provider === 'ollama' ? '🖥️ ' : '☁️ '}{modelDisplayName}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
             )}
 
-            {/* Model selection dropdown menu */}
+            {/* Model selection dropdown menu with separate tabs for Ollama and Cloud */}
             <div className={`menu ${menuOpen ? 'open' : ''}`} id="menu" onClick={(e) => e.stopPropagation()}>
-              <div className="menu-section-title">Local Models (Ollama)</div>
-              {localModels.length === 0 ? (
-                <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--muted)' }}>
-                  {ollamaOnline ? 'No local models downloaded (`ollama pull <model>`)' : 'Offline'}
-                </div>
-              ) : (
-                localModels.map((lm) => (
-                  <button
-                    key={lm}
-                    className={provider === 'ollama' && model === lm ? 'active-model' : ''}
-                    onClick={() => handleSelectModel('ollama', lm)}
-                  >
-                    {lm}
-                    <small>Local model • private & offline</small>
-                  </button>
-                ))
-              )}
-
-              <div className="menu-section-title" style={{ marginTop: '6px' }}>Cloud AI Models</div>
-              {cloudModels.length === 0 ? (
-                <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--muted)' }}>
-                  Offline (No API keys configured)
-                </div>
-              ) : (
-                cloudModels.map((cm) => (
-                  <button
-                    key={cm}
-                    className={provider === 'cloud' && model === cm ? 'active-model' : ''}
-                    onClick={() => handleSelectModel('cloud', cm)}
-                  >
-                    {cm.replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-').replace('claude-', 'Claude ')}
-                    <small>
-                      {cm.includes('flash') || cm.includes('mini') ? 'Fast, everyday responses' : 'Advanced reasoning'}
-                    </small>
-                  </button>
-                ))
-              )}
-
-              <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
+              {/* Separate Tabs Header */}
+              <div className="menu-tabs-header">
                 <button
+                  type="button"
+                  className={`menu-tab-btn ${provider === 'ollama' ? 'active' : ''}`}
                   onClick={() => {
-                    setMenuOpen(false);
-                    setSettingsOpen(true);
+                    setProvider('ollama');
+                    if (localModels.length > 0 && (!model || cloudModels.includes(model))) {
+                      setModel(localModels[0]);
+                    }
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--accent, #6366f1)' }}
+                  title="Switch to local Ollama models"
                 >
-                  <span>⚙️</span> Manage API Keys
+                  <span className={`status-dot ${ollamaOnline ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                  <span>🖥️ Ollama Local</span>
+                  {localModels.length > 0 && <span className="tab-count-badge">{localModels.length}</span>}
+                </button>
+
+                <button
+                  type="button"
+                  className={`menu-tab-btn ${provider === 'cloud' ? 'active' : ''}`}
+                  onClick={() => {
+                    setProvider('cloud');
+                    if (cloudModels.length > 0 && (!model || localModels.includes(model))) {
+                      setModel(cloudModels[0]);
+                    }
+                  }}
+                  title="Switch to Cloud AI models"
+                >
+                  <span className={`status-dot ${cloudModels.length > 0 ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                  <span>☁️ Cloud AI</span>
+                  {cloudModels.length > 0 && <span className="tab-count-badge">{cloudModels.length}</span>}
                 </button>
               </div>
+
+              {/* SEPARATED SECTION 1: OLLAMA LOCAL MODELS */}
+              {provider === 'ollama' && (
+                <>
+                  <div className="menu-section-title">
+                    <span>Local Models (Ollama)</span>
+                    <span style={{ fontSize: '10px', color: ollamaOnline ? '#10b981' : '#ef4444', textTransform: 'none' }}>
+                      {ollamaOnline ? '🟢 Connected' : '⚪ Offline'}
+                    </span>
+                  </div>
+
+                  <div className="menu-models-scroll">
+                    {localModels.length === 0 ? (
+                      <div className="menu-empty-state">
+                        <div className="menu-empty-title">
+                          {ollamaOnline ? 'No Local Models Installed' : 'Ollama Daemon Offline'}
+                        </div>
+                        <p className="menu-empty-desc">
+                          {ollamaOnline
+                            ? 'Run `ollama pull qwen2.5-coder:7b` in your terminal or manage models in Settings.'
+                            : 'Ollama is not running on port 11434. Start Ollama to run models 100% locally.'}
+                        </p>
+                        <button
+                          type="button"
+                          className="menu-empty-btn"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setSettingsTab('ollama');
+                            setSettingsOpen(true);
+                          }}
+                        >
+                          ⚙️ Manage Local Models
+                        </button>
+                      </div>
+                    ) : (
+                      localModels.map((lm) => (
+                        <button
+                          key={lm}
+                          type="button"
+                          className={`menu-item-btn ${provider === 'ollama' && model === lm ? 'active-model' : ''}`}
+                          onClick={() => handleSelectModel('ollama', lm)}
+                        >
+                          <div className="menu-item-header">
+                            <span className="menu-item-name">
+                              {provider === 'ollama' && model === lm && (
+                                <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                              )}
+                              {lm}
+                            </span>
+                            <span className="menu-badge local">Local</span>
+                          </div>
+                          <span className="menu-item-desc">Private & runs 100% on your machine</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="menu-footer">
+                    <button
+                      type="button"
+                      className="menu-footer-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSettingsTab('ollama');
+                        setSettingsOpen(true);
+                      }}
+                    >
+                      <span>🦙</span> Manage Ollama & Pull Models
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* SEPARATED SECTION 2: CLOUD AI MODELS */}
+              {provider === 'cloud' && (
+                <>
+                  <div className="menu-section-title">
+                    <span>Verified Cloud Models</span>
+                    <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'none' }}>
+                      {cloudModels.length} available
+                    </span>
+                  </div>
+
+                  <div className="menu-models-scroll">
+                    {cloudModels.length === 0 ? (
+                      <div className="menu-empty-state">
+                        <div className="menu-empty-title">No Cloud Models Available</div>
+                        <p className="menu-empty-desc">
+                          Add your Google Gemini, OpenAI, or Anthropic API key to enable high-speed cloud reasoning models.
+                        </p>
+                        <button
+                          type="button"
+                          className="menu-empty-btn"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setSettingsTab('keys');
+                            setSettingsOpen(true);
+                          }}
+                        >
+                          🔑 Add API Key
+                        </button>
+                      </div>
+                    ) : (
+                      cloudModels.map((cm) => {
+                        const isFlash = cm.includes('flash') || cm.includes('mini') || cm.includes('haiku');
+                        const isPro = cm.includes('pro') || cm.includes('o1') || cm.includes('o3') || cm.includes('opus') || cm.includes('sonnet');
+                        return (
+                          <button
+                            key={cm}
+                            type="button"
+                            className={`menu-item-btn ${provider === 'cloud' && model === cm ? 'active-model' : ''}`}
+                            onClick={() => handleSelectModel('cloud', cm)}
+                          >
+                            <div className="menu-item-header">
+                              <span className="menu-item-name">
+                                {provider === 'cloud' && model === cm && (
+                                  <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                                )}
+                                {formatModelName(cm)}
+                              </span>
+                              <div className="menu-item-badges">
+                                {isFlash && <span className="menu-badge fast">Fast</span>}
+                                {isPro && <span className="menu-badge pro">Reasoning</span>}
+                                <span className="menu-badge verified">Verified</span>
+                              </div>
+                            </div>
+                            <span className="menu-item-desc">
+                              {isFlash
+                                ? 'Ultra-fast, cost-effective everyday responses'
+                                : isPro
+                                ? 'High-capacity logic, deep reasoning & code analysis'
+                                : 'Verified cloud intelligence model'}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="menu-footer">
+                    <button
+                      type="button"
+                      className="menu-footer-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSettingsTab('keys');
+                        setSettingsOpen(true);
+                      }}
+                    >
+                      <span>⚙️</span> Manage API Keys
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -780,8 +956,8 @@ function App() {
                       }}
                       title="Select AI Model"
                     >
-                      <span className="status-dot online-dot" style={{ width: '6px', height: '6px' }} />
-                      <span>{provider === 'ollama' ? 'Local' : 'Cloud'}</span>
+                      <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                      <span>{provider === 'ollama' ? '🖥️ Local' : '☁️ Cloud'}</span>
                       <span style={{ opacity: 0.4 }}>•</span>
                       <span>{modelDisplayName}</span>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -796,15 +972,18 @@ function App() {
                       onClick={handleToggleProvider}
                       title={provider === 'ollama' ? 'Switch to Cloud AI' : 'Switch to Local Ollama'}
                     >
-                      {provider === 'ollama' ? 'Use Cloud ☁️' : 'Use Ollama 🖥️'}
+                      {provider === 'ollama' ? 'Switch to Cloud ☁️' : 'Switch to Ollama 🖥️'}
                     </button>
 
                     {/* Settings Button */}
                     <button
                       type="button"
                       className="composer-pill-btn"
-                      onClick={() => setSettingsOpen(true)}
-                      title="Configure Cloud API Keys"
+                      onClick={() => {
+                        setSettingsTab(provider === 'ollama' ? 'ollama' : 'keys');
+                        setSettingsOpen(true);
+                      }}
+                      title={provider === 'ollama' ? 'Manage Ollama Models' : 'Configure Cloud API Keys'}
                       style={{ padding: '3px 8px' }}
                     >
                       ⚙️
@@ -839,6 +1018,7 @@ function App() {
         onSave={() => fetchModels()}
         theme={theme}
         toggleTheme={toggleTheme}
+        initialTab={settingsTab}
       />
 
       {/* Auth Modal (Requirement 1: Mandatory login before chatting) */}
