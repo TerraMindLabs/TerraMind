@@ -6,6 +6,8 @@ import { ChatMessage } from './components/ChatMessage';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
 import { ShareProjectModal } from './components/ShareProjectModal';
+import { PrimaryRail, RailTab } from './components/PrimaryRail';
+import { SettingsView, SettingsSection } from './components/SettingsView';
 
 interface SuggestionCard {
   icon: string;
@@ -233,6 +235,8 @@ function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'keys' | 'enterprise' | 'ollama'>('keys');
+  const [railTab, setRailTab] = useState<RailTab>('chats');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
   const [authOpen, setAuthOpen] = useState(false);
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -576,10 +580,39 @@ function App() {
 
   return (
     <div className={`app ${sidebarOpen ? '' : 'closed'}`} id="app">
-      {/* Sidebar */}
+      {/* Primary Left Navigation Rail with Theme Capsule Switch */}
+      <PrimaryRail
+        activeTab={railTab}
+        onSelectTab={(tab) => {
+          setRailTab(tab);
+          setSidebarOpen(true);
+        }}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        currentUser={currentUser}
+        onOpenAuth={() => setAuthOpen(true)}
+        onLogout={() => {
+          localStorage.removeItem('tm_user');
+          localStorage.removeItem('tm_token');
+          setCurrentUser(null);
+          setConversations([]);
+          startNewChat();
+        }}
+        onNewChat={() => {
+          setRailTab('chats');
+          startNewChat();
+          textareaRef.current?.focus();
+        }}
+      />
+
+      {/* Secondary Nested Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
+        railTab={railTab}
+        onSelectRailTab={(tab) => setRailTab(tab)}
+        settingsSection={settingsSection}
+        onSelectSettingsSection={(sec) => setSettingsSection(sec)}
         conversations={conversations}
         activeId={conversationId}
         onSelect={(id) => {
@@ -594,6 +627,7 @@ function App() {
           if (window.innerWidth <= 768) setSidebarOpen(false);
         }}
         onNewChat={() => {
+          setRailTab('chats');
           startNewChat();
           if (window.innerWidth <= 768) setSidebarOpen(false);
           textareaRef.current?.focus();
@@ -618,7 +652,10 @@ function App() {
           setInput((prev) => (prev ? `${prev}\nReview file: ${filename}` : `Review and explain file: ${filename}`));
           textareaRef.current?.focus();
         }}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setRailTab('settings');
+          setSettingsSection('keys');
+        }}
         currentUser={currentUser}
         onOpenAuth={() => setAuthOpen(true)}
         onLogout={() => {
@@ -635,8 +672,21 @@ function App() {
       {/* Scrim for mobile */}
       <div className="scrim" id="scrim" onClick={() => setSidebarOpen(false)}></div>
 
-      {/* Main chat window */}
-      <main className="main">
+      {/* Main chat window or Full-Canvas Settings View */}
+      <main className="main" style={railTab === 'settings' ? { background: 'var(--bg)', overflow: 'hidden' } : undefined}>
+        {railTab === 'settings' ? (
+          <SettingsView
+            activeSection={settingsSection}
+            onSelectSection={(sec) => setSettingsSection(sec)}
+            currentUser={currentUser}
+            onClose={() => setRailTab('chats')}
+            onSaveKeys={() => {
+              fetchModels();
+              refreshConversations();
+            }}
+          />
+        ) : (
+          <>
         {/* Top bar */}
         <div className="bar">
           <div className="bar-left">
@@ -1166,6 +1216,8 @@ function App() {
           </div>
           <div className="note">AI can make mistakes. Check important information.</div>
         </div>
+        </>
+        )}
       </main>
 
       {/* Settings Modal */}

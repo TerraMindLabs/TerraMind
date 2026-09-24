@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { TERRAMIND_AGENTS, getAgentIcon } from './AgentSelector';
+import { RailTab } from './PrimaryRail';
+import { SettingsSection } from './SettingsView';
 
 export interface Project {
   id: string;
@@ -27,6 +29,51 @@ export interface WorkspaceFile {
   size: number;
 }
 
+export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: string; icon: string }> = [
+  {
+    id: 'workspace',
+    title: 'Workspace',
+    desc: 'Workspace name, avatar, email, timezone, etc.',
+    icon: '🏢'
+  },
+  {
+    id: 'profile',
+    title: 'Profile',
+    desc: 'User information, email, profile photo',
+    icon: '👤'
+  },
+  {
+    id: 'keys',
+    title: 'Cloud API Keys',
+    desc: 'Google Gemini, OpenAI, Anthropic credentials',
+    icon: '🔑'
+  },
+  {
+    id: 'ollama',
+    title: 'Ollama Local Models',
+    desc: 'Offline LLMs, pull models & daemon control',
+    icon: '🦙'
+  },
+  {
+    id: 'enterprise',
+    title: 'Enterprise Cloud AI',
+    desc: 'AWS Bedrock, Azure Foundry, OCI GenAI',
+    icon: '☁️'
+  },
+  {
+    id: 'security',
+    title: 'Security',
+    desc: 'User password, devices & local vault',
+    icon: '🔒'
+  },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    desc: 'Email, mobile, desktop, SMS',
+    icon: '🔔'
+  }
+];
+
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
@@ -35,6 +82,11 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onNewChat: () => void;
   onDelete: (id: string) => void;
+  // Rail navigation integration
+  railTab?: RailTab;
+  onSelectRailTab?: (tab: RailTab) => void;
+  settingsSection?: SettingsSection;
+  onSelectSettingsSection?: (section: SettingsSection) => void;
   // Agents
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
@@ -74,6 +126,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelect,
   onNewChat,
   onDelete,
+  railTab = 'chats',
+  onSelectRailTab,
+  settingsSection = 'profile',
+  onSelectSettingsSection,
   selectedAgentId,
   onSelectAgent,
   projects,
@@ -129,55 +185,315 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="side" aria-label="Sidebar">
-      {/* Top action bar with Brand Logo */}
-      <div className="top">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img
-            src="/logo/only_logo.png"
-            alt="TerraMind"
-            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
+      {railTab === 'settings' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <div className="nested-sidebar-header">
+            <button
+              type="button"
+              className="nested-back-btn"
+              onClick={() => onSelectRailTab?.('chats')}
+              title="Back to Conversations"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              <span>Settings</span>
+            </button>
+            <button className="icon" onClick={onToggle} aria-label="Close sidebar" title="Toggle sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <path d="M9 4v16" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="sidebar-scroll" style={{ padding: '4px 8px' }}>
+            {SETTINGS_ITEMS.map((item) => {
+              const isActive = settingsSection === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`nested-nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onSelectSettingsSection?.(item.id)}
+                >
+                  <span className="nested-nav-icon">{item.icon}</span>
+                  <div className="nested-nav-content">
+                    <span className="nested-nav-title">{item.title}</span>
+                    <span className="nested-nav-desc">{item.desc}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : railTab === 'projects' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <div className="nested-sidebar-header">
+            <button
+              type="button"
+              className="nested-back-btn"
+              onClick={() => onSelectRailTab?.('chats')}
+              title="Back to Conversations"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              <span>Workspaces</span>
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                className="icon"
+                onClick={() => setShowNewProjInput(!showNewProjInput)}
+                title="Create New Project Workspace"
+                style={{ fontSize: '16px', fontWeight: 600, color: 'var(--muted)' }}
+              >
+                +
+              </button>
+              <button className="icon" onClick={onToggle} aria-label="Close sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="16" rx="3" />
+                  <path d="M9 4v16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="sidebar-scroll" style={{ padding: '4px 8px' }}>
+            {showNewProjInput && (
+              <form onSubmit={handleCreateProjectSubmit} style={{ padding: '4px 6px 10px' }}>
+                <input
+                  type="text"
+                  placeholder="Workspace name & Enter..."
+                  autoFocus
+                  value={newProjName}
+                  onChange={(e) => setNewProjName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: '12.5px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    background: 'var(--bg)',
+                    color: 'var(--text)'
+                  }}
+                />
+              </form>
+            )}
+
+            {/* Global Workspace */}
+            <button
+              type="button"
+              className={`nested-nav-item ${selectedProjectId === '' ? 'active' : ''}`}
+              onClick={() => {
+                onSelectProject('');
+                onSelectRailTab?.('chats');
+              }}
+            >
+              <span className="nested-nav-icon">🌐</span>
+              <div className="nested-nav-content">
+                <span className="nested-nav-title">Global Workspace</span>
+                <span className="nested-nav-desc">Quick chats • No project segregation</span>
+              </div>
+            </button>
+
+            {/* User Workspaces */}
+            {projects.map((proj) => (
+              <div key={proj.id} style={{ position: 'relative', width: '100%' }}>
+                <button
+                  type="button"
+                  className={`nested-nav-item ${selectedProjectId === proj.id ? 'active' : ''}`}
+                  onClick={() => {
+                    onSelectProject(proj.id);
+                    onSelectRailTab?.('chats');
+                  }}
+                >
+                  <span className="nested-nav-icon">{proj.icon || '📁'}</span>
+                  <div className="nested-nav-content">
+                    <span className="nested-nav-title">{proj.name}</span>
+                    <span className="nested-nav-desc">{proj.description || 'Active infrastructure workspace'}</span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : railTab === 'agents' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <div className="nested-sidebar-header">
+            <button
+              type="button"
+              className="nested-back-btn"
+              onClick={() => onSelectRailTab?.('chats')}
+              title="Back to Conversations"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              <span>AI Architects</span>
+            </button>
+            <button className="icon" onClick={onToggle} aria-label="Close sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <path d="M9 4v16" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="sidebar-scroll" style={{ padding: '4px 8px' }}>
+            {TERRAMIND_AGENTS.map((agent) => {
+              const isSelected = selectedAgentId === agent.id;
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={`nested-nav-item ${isSelected ? 'active' : ''}`}
+                  onClick={() => {
+                    onSelectAgent(agent.id);
+                    onSelectRailTab?.('chats');
+                  }}
+                >
+                  <span className="nested-nav-icon">
+                    <img
+                      src={getAgentIcon(agent, theme)}
+                      alt={agent.name}
+                      style={{ width: '18px', height: '18px', objectFit: 'contain', verticalAlign: 'middle' }}
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  </span>
+                  <div className="nested-nav-content">
+                    <span className="nested-nav-title">{agent.name}</span>
+                    <span className="nested-nav-desc">{agent.role}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : railTab === 'finops' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <div className="nested-sidebar-header">
+            <button
+              type="button"
+              className="nested-back-btn"
+              onClick={() => onSelectRailTab?.('chats')}
+              title="Back to Conversations"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              <span>Cost & FinOps</span>
+            </button>
+            <button className="icon" onClick={onToggle} aria-label="Close sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <path d="M9 4v16" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="sidebar-scroll" style={{ padding: '4px 8px' }}>
+            <button
+              type="button"
+              className="nested-nav-item"
+              onClick={() => {
+                onSelectAgent('agent_finops-cost-optimizer');
+                onSelectRailTab?.('chats');
+                onNewChat();
+              }}
+            >
+              <span className="nested-nav-icon">📊</span>
+              <div className="nested-nav-content">
+                <span className="nested-nav-title">Multi-Cloud Pricing Audit</span>
+                <span className="nested-nav-desc">Side-by-side cost: AWS vs GCP vs Azure</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              className="nested-nav-item"
+              onClick={() => {
+                onSelectAgent('agent_finops-cost-optimizer');
+                onSelectRailTab?.('chats');
+                onNewChat();
+              }}
+            >
+              <span className="nested-nav-icon">⚡</span>
+              <div className="nested-nav-content">
+                <span className="nested-nav-title">Compute Rightsizing</span>
+                <span className="nested-nav-desc">Identify idle NATs & over-provisioned nodes</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              className="nested-nav-item"
+              onClick={() => {
+                onSelectAgent('agent_finops-cost-optimizer');
+                onSelectRailTab?.('chats');
+                onNewChat();
+              }}
+            >
+              <span className="nested-nav-icon">💾</span>
+              <div className="nested-nav-content">
+                <span className="nested-nav-title">Storage & Egress Optimization</span>
+                <span className="nested-nav-desc">Save on Glacier transitions & egress routing</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Top action bar with Brand Logo */}
+          <div className="top">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img
+                src="/logo/only_logo.png"
+                alt="TerraMind"
+                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+              <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em', color: 'var(--text)' }}>
+                Conversations
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button className="icon" onClick={onNewChat} aria-label="New chat" title="New chat">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+                </svg>
+              </button>
+              <button className="icon" onClick={onToggle} aria-label="Close sidebar" title="Toggle sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="16" rx="3" />
+                  <path d="M9 4v16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* New chat row button */}
+          <button className="row" onClick={onNewChat} id="new" style={{ fontWeight: 500, margin: '4px 0' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New chat
+          </button>
+
+          {/* Search chats */}
+          <input
+            className="search"
+            placeholder="Search chats..."
+            aria-label="Search chats"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em', color: 'var(--text)' }}>
-            TerraMind
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-          <button className="icon" onClick={onNewChat} aria-label="New chat" title="New chat">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-            </svg>
-          </button>
-          <button className="icon" onClick={onToggle} aria-label="Close sidebar" title="Toggle sidebar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="16" rx="3" />
-              <path d="M9 4v16" />
-            </svg>
-          </button>
-        </div>
-      </div>
 
-      {/* New chat row button */}
-      <button className="row" onClick={onNewChat} id="new" style={{ fontWeight: 500, margin: '4px 0' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        New chat
-      </button>
-
-      {/* Search chats */}
-      <input
-        className="search"
-        placeholder="Search chats..."
-        aria-label="Search chats"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      {/* Scrollable sections */}
-      <div className="sidebar-scroll">
+          {/* Scrollable sections */}
+          <div className="sidebar-scroll">
         {/* 1. Projects Section (Requirement 3: Renamed to Projects, no pre-existing projects) */}
         <div
           className={`collapsible-header ${projectsOpen ? 'open' : ''}`}
@@ -793,6 +1109,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
       </div>
+      </>
+      )}
 
       {/* Delete Project Confirmation Modal */}
       {projectToDelete && (
