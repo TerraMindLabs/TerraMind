@@ -18,7 +18,10 @@
     "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.5.4",
+    "vite": "^5.3.4"
   },
   "description": "Welcome to **AutoDevOps AI**, your dedicated, self-correcting AI Cloud Architect. This package installs a private, containerized AI agent that writes, formats, secures, and automatically validates Terraform code against your cloud infrastructure.",
   "main": "index.js",

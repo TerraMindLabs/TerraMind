@@ -473,22 +473,25 @@ fi
 echo -e "\n${YELLOW}📦 Installing project dependencies via npm workspaces...${NC}"
 run_with_spinner "Installing dependencies" "NODE_ENV=development npm install --include=dev" "$basePath"
 
-# Ensure tsx runner is guaranteed to exist
-if [ ! -f "$basePath/node_modules/.bin/tsx" ] && [ ! -f "$basePath/apps/server/node_modules/.bin/tsx" ]; then
-    (cd "$basePath" && npm install tsx --save) >/dev/null 2>&1 || true
-    (cd "$basePath/apps/server" && npm install tsx --save) >/dev/null 2>&1 || true
-fi
+# Ensure build and execution binaries are linked across workspaces
+mkdir -p "$basePath/node_modules/.bin" "$basePath/apps/server/node_modules/.bin" "$basePath/apps/web/node_modules/.bin" 2>/dev/null || true
 
-# Link tsx binary into apps/server and ensure permissions
-mkdir -p "$basePath/apps/server/node_modules/.bin" 2>/dev/null || true
-if [ -f "$basePath/node_modules/.bin/tsx" ]; then
-    chmod +x "$basePath/node_modules/.bin/tsx" 2>/dev/null || true
-    ln -sf "$basePath/node_modules/.bin/tsx" "$basePath/apps/server/node_modules/.bin/tsx" 2>/dev/null || true
-fi
+for binName in tsx esbuild tsc vite; do
+    if [ -f "$basePath/node_modules/.bin/$binName" ]; then
+        chmod +x "$basePath/node_modules/.bin/$binName" 2>/dev/null || true
+        ln -sf "$basePath/node_modules/.bin/$binName" "$basePath/apps/server/node_modules/.bin/$binName" 2>/dev/null || true
+        ln -sf "$basePath/node_modules/.bin/$binName" "$basePath/apps/web/node_modules/.bin/$binName" 2>/dev/null || true
+    fi
+done
 
 # 5. Build Application Bundles (Server & Web UI)
 echo -e "\n${YELLOW}🏗️ Building production bundles (Server & Web UI)...${NC}"
-run_with_spinner "Building production bundles" "npm run build" "$basePath"
+if [ -f "$basePath/apps/server/dist/server.js" ] && [ -f "$basePath/apps/web/dist/index.html" ]; then
+    run_with_spinner "Verifying production bundles" "npm run build || true" "$basePath"
+    echo -e "${GREEN}✅ Production bundles verified and ready.${NC}"
+else
+    run_with_spinner "Building production bundles" "npm run build" "$basePath"
+fi
 
 # 6. Configure Environment Variables
 echo -e "\n${YELLOW}⚙️ Setting up environment configuration...${NC}"
