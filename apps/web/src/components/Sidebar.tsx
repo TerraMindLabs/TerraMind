@@ -93,6 +93,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [groupByProject, setGroupByProject] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+
+  const toggleProjectExpand = (projId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedProjects((prev) => ({ ...prev, [projId]: !prev[projId] }));
+  };
 
   // Collapsible section state
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -220,118 +226,257 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </form>
             )}
 
+            {/* Global Workspace Option (Quick Chat • No Project Segregation) */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', marginBottom: '2px' }}>
+              <button
+                className={`row project-row ${selectedProjectId === '' ? 'active' : ''}`}
+                onClick={() => onSelectProject('')}
+                title="Global workspace for quick chats without project segregation"
+                style={{ fontSize: '13px' }}
+              >
+                <span style={{ fontSize: '14px' }}>🌐</span>
+                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Global Workspace
+                </span>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: selectedProjectId === '' ? 'rgba(59, 130, 246, 0.2)' : 'var(--hover)',
+                    color: selectedProjectId === '' ? '#3b82f6' : 'var(--muted)',
+                    fontWeight: 600
+                  }}
+                >
+                  Quick Chat
+                </span>
+              </button>
+            </div>
+
             {projects.length === 0 && !showNewProjInput ? (
               <button
                 type="button"
                 className="row"
-                style={{ fontSize: '12.5px', color: 'var(--muted)', fontStyle: 'italic' }}
+                style={{ fontSize: '12.5px', color: 'var(--muted)', fontStyle: 'italic', paddingLeft: '24px' }}
                 onClick={() => setShowNewProjInput(true)}
               >
                 <span>+</span>
                 <span>Create first project</span>
               </button>
             ) : (
-              projects.map((proj) => (
-                <div
-                  key={proj.id}
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}
-                >
-                  <button
-                    className={`row project-row ${selectedProjectId === proj.id ? 'active' : ''}`}
-                    onClick={() => onSelectProject(proj.id)}
-                    title={proj.description || proj.name}
-                    style={{ fontSize: '13px', paddingRight: '56px' }}
-                  >
-                    <span style={{ fontSize: '14px' }}>{proj.icon || '📁'}</span>
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {proj.name}
-                    </span>
-                    {proj.is_shared && (
-                      <span
-                        style={{
-                          fontSize: '10px',
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          background: 'rgba(59, 130, 246, 0.15)',
-                          color: '#3b82f6',
-                          fontWeight: 600,
-                          marginLeft: '4px'
-                        }}
-                        title={`Shared workspace (owned by ${proj.owner_name || 'team'})`}
-                      >
-                        Shared
-                      </span>
-                    )}
-                  </button>
+              projects.map((proj) => {
+                const projChats = conversations.filter((c) => (c.project_id || '') === proj.id);
+                const isExpanded = Boolean(expandedProjects[proj.id]);
+                const isSelected = selectedProjectId === proj.id;
 
-                  <div style={{ position: 'absolute', right: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                    {onOpenShareProject && (
+                return (
+                  <div key={proj.id} style={{ display: 'flex', flexDirection: 'column', width: '100%', marginBottom: '2px' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+                      {/* Expand / Collapse toggle */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenShareProject(proj);
-                        }}
-                        title="Share workspace with collaborators"
+                        onClick={(e) => toggleProjectExpand(proj.id, e)}
                         style={{
+                          position: 'absolute',
+                          left: '4px',
+                          zIndex: 2,
                           padding: '4px',
-                          borderRadius: '4px',
-                          background: 'transparent',
+                          background: 'none',
                           border: 'none',
                           color: 'var(--muted)',
                           cursor: 'pointer',
                           display: 'grid',
-                          placeItems: 'center',
-                          opacity: 0.6,
-                          transition: 'opacity 0.15s ease'
+                          placeItems: 'center'
                         }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = '1')}
-                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = '0.6')}
+                        title={isExpanded ? 'Collapse project chats' : 'Expand project chats'}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                          <circle cx="9" cy="7" r="4" />
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          style={{
+                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s ease'
+                          }}
+                        >
+                          <path d="M9 18l6-6-6-6" />
                         </svg>
                       </button>
-                    )}
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProjectToDelete(proj);
-                      }}
-                      title="Delete project workspace"
-                      style={{
-                        padding: '4px',
-                        borderRadius: '4px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--muted)',
-                        cursor: 'pointer',
-                        display: 'grid',
-                        placeItems: 'center',
-                        opacity: 0.6,
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.opacity = '1';
-                        (e.currentTarget as HTMLElement).style.color = '#ef4444';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.opacity = '0.6';
-                        (e.currentTarget as HTMLElement).style.color = 'var(--muted)';
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
-                      </svg>
-                    </button>
+                      <button
+                        className={`row project-row ${isSelected ? 'active' : ''}`}
+                        onClick={() => {
+                          onSelectProject(proj.id);
+                          setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+                        }}
+                        title={proj.description || proj.name}
+                        style={{ fontSize: '13px', paddingLeft: '22px', paddingRight: '56px' }}
+                      >
+                        <span style={{ fontSize: '14px' }}>{proj.icon || '📁'}</span>
+                        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {proj.name}
+                        </span>
+                        {projChats.length > 0 && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'var(--hover)',
+                              color: 'var(--muted)',
+                              marginRight: '2px'
+                            }}
+                          >
+                            {projChats.length}
+                          </span>
+                        )}
+                        {proj.is_shared && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              color: '#3b82f6',
+                              fontWeight: 600,
+                              marginLeft: '2px'
+                            }}
+                            title={`Shared workspace (owned by ${proj.owner_name || 'team'})`}
+                          >
+                            Shared
+                          </span>
+                        )}
+                      </button>
+
+                      <div style={{ position: 'absolute', right: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        {onOpenShareProject && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenShareProject(proj);
+                            }}
+                            title="Share workspace with collaborators"
+                            style={{
+                              padding: '4px',
+                              borderRadius: '4px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--muted)',
+                              cursor: 'pointer',
+                              display: 'grid',
+                              placeItems: 'center',
+                              opacity: 0.6,
+                              transition: 'opacity 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = '1')}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = '0.6')}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectToDelete(proj);
+                          }}
+                          title="Delete project workspace"
+                          style={{
+                            padding: '4px',
+                            borderRadius: '4px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--muted)',
+                            cursor: 'pointer',
+                            display: 'grid',
+                            placeItems: 'center',
+                            opacity: 0.6,
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.opacity = '1';
+                            (e.currentTarget as HTMLElement).style.color = '#ef4444';
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.opacity = '0.6';
+                            (e.currentTarget as HTMLElement).style.color = 'var(--muted)';
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Nested project chats list */}
+                    {isExpanded && (
+                      <div
+                        style={{
+                          paddingLeft: '16px',
+                          borderLeft: '1px dashed var(--border)',
+                          marginLeft: '14px',
+                          marginTop: '2px',
+                          marginBottom: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1px'
+                        }}
+                      >
+                        {projChats.length === 0 ? (
+                          <div style={{ fontSize: '11px', color: 'var(--muted)', padding: '4px 8px', fontStyle: 'italic' }}>
+                            No chats in this project yet
+                          </div>
+                        ) : (
+                          projChats.map((c) => {
+                            const convoAgent = TERRAMIND_AGENTS.find((a) => a.id === c.agent_id) || TERRAMIND_AGENTS[0];
+                            return (
+                              <div key={c.id} className="chat" style={{ margin: '1px 0' }}>
+                                <button
+                                  className={`row ${activeId === c.id ? 'active' : ''}`}
+                                  onClick={() => onSelect(c.id)}
+                                  title={`${c.title || 'New chat'} (${convoAgent.name})`}
+                                  style={{ fontSize: '12px', padding: '4px 8px', gap: '6px' }}
+                                >
+                                  <img
+                                    src={getAgentIcon(convoAgent, theme)}
+                                    alt={convoAgent.name}
+                                    style={{ width: '13px', height: '13px', objectFit: 'contain', borderRadius: '3px', flexShrink: 0 }}
+                                  />
+                                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {c.title || 'New chat'}
+                                  </span>
+                                </button>
+                                <button
+                                  className="del"
+                                  aria-label="Delete chat"
+                                  title="Delete chat"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete(c.id);
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

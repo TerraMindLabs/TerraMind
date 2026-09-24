@@ -446,7 +446,18 @@ function App() {
 
   const handleSelectProject = (projId: string) => {
     setSelectedProjectId(projId);
-    startNewChat();
+    // Find the latest chat belonging to this project (or global if projId is ''), or start fresh
+    const matchingChat = conversations.find(
+      (c) => (c.project_id || '') === projId
+    );
+    if (matchingChat) {
+      loadConversation(matchingChat.id);
+      if (matchingChat.agent_id) {
+        setSelectedAgentId(matchingChat.agent_id);
+      }
+    } else {
+      startNewChat();
+    }
     if (window.innerWidth <= 768) {
       setSidebarOpen(false);
     }
@@ -524,6 +535,13 @@ function App() {
   const currentProject = projects.find((p) => p.id === selectedProjectId);
   const currentCards = AGENT_CARDS[selectedAgentId] || AGENT_CARDS['agent_tf-devops-expert'];
 
+  const activeConversation = conversations.find((c) => c.id === conversationId);
+  const activeChatTitle =
+    activeConversation?.title ||
+    (messages.length > 0
+      ? (messages[0].content || '').trim().split('\n')[0].replace(/[`#*]/g, '').slice(0, 26)
+      : 'New Chat');
+
   const hasAnyModels = localModels.length > 0 || cloudModels.length > 0;
 
   const modelDisplayName = !hasAnyModels
@@ -547,8 +565,11 @@ function App() {
         onSelect={(id) => {
           loadConversation(id);
           const found = conversations.find((c) => c.id === id);
-          if (found?.agent_id) {
-            setSelectedAgentId(found.agent_id);
+          if (found) {
+            if (found.agent_id) {
+              setSelectedAgentId(found.agent_id);
+            }
+            setSelectedProjectId(found.project_id || '');
           }
           if (window.innerWidth <= 768) setSidebarOpen(false);
         }}
@@ -839,13 +860,34 @@ function App() {
             </div>
           </div>
 
-          {/* Unified Breadcrumb Nav (Project / Agent) */}
+          {/* Unified Breadcrumb Nav (Project Scope / Agent / Chat Title) */}
           <div className="breadcrumb-nav">
-            {currentProject && (
+            {currentProject ? (
               <>
+                <button
+                  type="button"
+                  className="breadcrumb-item clickable"
+                  onClick={() => handleSelectProject('')}
+                  title="Switch to Global workspace (no project segregation)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    color: 'var(--muted)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <span style={{ fontSize: '12px' }}>🌐</span>
+                  <span className="breadcrumb-text">Global</span>
+                </button>
+                <span className="breadcrumb-separator">/</span>
                 <span
-                  className="breadcrumb-item"
-                  title={`Active Workspace: ${currentProject.name} (Click to share)`}
+                  className="breadcrumb-item clickable"
+                  title={`Project: ${currentProject.name} (Click to share workspace)`}
                   onClick={() => {
                     setSharingProject(currentProject);
                     setShareModalOpen(true);
@@ -853,19 +895,49 @@ function App() {
                   style={{ cursor: 'pointer' }}
                 >
                   <span style={{ fontSize: '13px' }}>{currentProject.icon || '📁'}</span>
-                  <span className="breadcrumb-text">{currentProject.name}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '4px' }}>👥</span>
+                  <span className="breadcrumb-text" style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    {currentProject.name}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '2px' }}>👥</span>
+                </span>
+                <span className="breadcrumb-separator">/</span>
+              </>
+            ) : (
+              <>
+                <span className="breadcrumb-item" title="Global Workspace: Quick chats without project segregation">
+                  <span style={{ fontSize: '12px' }}>🌐</span>
+                  <span className="breadcrumb-text" style={{ fontWeight: 600, color: 'var(--text)' }}>
+                    Global Workspace
+                  </span>
                 </span>
                 <span className="breadcrumb-separator">/</span>
               </>
             )}
-            <span className="breadcrumb-item active" title={`Active Agent: ${currentAgent.name} (${currentAgent.role})`}>
+
+            {/* Agent in Breadcrumbs */}
+            <span
+              className="breadcrumb-item"
+              title={`Agent: ${currentAgent.name} (${currentAgent.role})`}
+            >
               <img
                 src={getAgentIcon(currentAgent, theme)}
                 alt={currentAgent.name}
-                style={{ width: '15px', height: '15px', objectFit: 'contain', borderRadius: '3px' }}
+                style={{ width: '14px', height: '14px', objectFit: 'contain', borderRadius: '3px' }}
               />
               <span className="breadcrumb-text">{currentAgent.name}</span>
+            </span>
+
+            {/* Chat Title in Breadcrumbs */}
+            <span className="breadcrumb-separator">/</span>
+            <span
+              className="breadcrumb-item active"
+              title={activeChatTitle}
+              style={{ color: 'var(--text)' }}
+            >
+              <span style={{ fontSize: '11px' }}>💬</span>
+              <span className="breadcrumb-text" style={{ fontWeight: 600 }}>
+                {activeChatTitle}
+              </span>
             </span>
           </div>
         </div>
