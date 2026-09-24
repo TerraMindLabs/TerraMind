@@ -18,6 +18,7 @@ import { buildSystemPrompt } from './agent-prompts';
 interface ChatRequestBody {
   conversationId?: string;
   projectId?: string;
+  userId?: string;
   messages: Array<{ role: string; content: string }>;
   provider?: string;
   model?: string;
@@ -25,10 +26,11 @@ interface ChatRequestBody {
 }
 
 export default async function chatRoutes(fastify: FastifyInstance) {
-  // 1. Projects API
+  // 1. Projects API (Requirement 3: Renamed to Projects, no pre-existing projects seeded)
   fastify.get('/api/projects', async (request, reply) => {
     try {
-      const projects = getProjects();
+      const userId = (request.headers['x-user-id'] as string) || (request.query as any)?.userId;
+      const projects = getProjects(userId);
       return { projects };
     } catch (err: any) {
       fastify.log.error(err);
@@ -38,12 +40,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   fastify.post('/api/projects', async (request, reply) => {
     try {
-      const { name, description, icon } = request.body as any;
+      const userId = (request.headers['x-user-id'] as string) || (request.body as any)?.userId || '';
+      const { name, description, icon } = (request.body as any) || {};
       if (!name) {
         return reply.status(400).send({ error: 'Project name is required' });
       }
       const id = 'proj-' + Date.now();
-      const proj = createProject(id, name, description || '', icon || '📁');
+      const proj = createProject(id, name, description || '', icon || '📁', userId);
       return proj;
     } catch (err: any) {
       fastify.log.error(err);
@@ -53,8 +56,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   fastify.delete('/api/projects/:id', async (request, reply) => {
     try {
+      const userId = (request.headers['x-user-id'] as string) || '';
       const { id } = request.params as { id: string };
-      deleteProject(id);
+      deleteProject(id, userId);
       return { success: true };
     } catch (err: any) {
       fastify.log.error(err);
@@ -62,11 +66,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 2. List conversations (optionally filtered by projectId)
+  // 2. List conversations (Requirement 4: Full persistent history)
   fastify.get('/api/conversations', async (request, reply) => {
     try {
+      const userId = (request.headers['x-user-id'] as string) || (request.query as any)?.userId;
       const { projectId } = request.query as { projectId?: string };
-      const convos = getConversations(projectId);
+      // If projectId is specifically requested, filter; otherwise return all user conversations
+      const convos = getConversations(userId, projectId || undefined);
       return { conversations: convos };
     } catch (err: any) {
       fastify.log.error(err);
@@ -77,13 +83,14 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   // 3. Create conversation
   fastify.post('/api/conversations', async (request, reply) => {
     try {
+      const userId = (request.headers['x-user-id'] as string) || (request.body as any)?.userId || '';
       const body = (request.body as any) || {};
       const id = body.id || randomUUID();
       const title = body.title || 'New Infrastructure Chat';
       const provider = body.provider || 'ollama';
       const model = body.model || '';
-      const projectId = body.projectId || 'proj-aws';
-      const convo = createConversation(id, title, provider, model, projectId);
+      const projectId = body.projectId || '';
+      const convo = createConversation(id, title, provider, model, projectId, userId);
       return convo;
     } catch (err: any) {
       fastify.log.error(err);
@@ -106,8 +113,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   // 5. Delete a conversation
   fastify.delete('/api/conversations/:id', async (request, reply) => {
     try {
+      const userId = (request.headers['x-user-id'] as string) || '';
       const { id } = request.params as { id: string };
-      deleteConversation(id);
+      deleteConversation(id, userId);
       return { success: true };
     } catch (err: any) {
       fastify.log.error(err);
@@ -159,9 +167,14 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   // 7. SSE Streaming Chat Endpoint
   fastify.post('/api/chat', async (request, reply) => {
+    const userId =
+      (request.headers['x-user-id'] as string) ||
+      (request.body as any)?.userId ||
+      '';
+
     const {
       conversationId: incomingConvoId,
-      projectId = 'proj-aws',
+      projectId = '',
       messages,
       provider = 'ollama',
       model = '',
@@ -176,22 +189,22 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     // Ensure conversation exists
     let conversationId = incomingConvoId;
     const latestUserMsg = messages[messages.length - 1];
+    const rawContent = latestUserMsg?.content?.trim() || 'Terraform Project';
+    const cleanTitle = rawContent.split('\n')[0].replace(/[`#*]/g, '').trim().slice(0, 40) || 'Terraform Chat';
 
     if (!conversationId) {
       conversationId = randomUUID();
-      const titlePrompt = latestUserMsg?.content?.slice(0, 32) || 'Terraform Project';
-      createConversation(conversationId, titlePrompt, provider, model, projectId);
+      createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
     } else {
       const existing = getConversation(conversationId);
       if (!existing && latestUserMsg) {
-        const titlePrompt = latestUserMsg?.content?.slice(0, 32) || 'Terraform Project';
-        createConversation(conversationId, titlePrompt, provider, model, projectId);
+        createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
       }
     }
 
     // Save user message to database
     if (latestUserMsg && latestUserMsg.role === 'user') {
-      addMessage(randomUUID(), conversationId, 'user', latestUserMsg.content);
+      addMessage(randomUUID(), conversationId, 'user', latestUserMsg.content, userId);
     }
 
     let fullAssistantResponse = '';
@@ -426,9 +439,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Save assistant message to SQLite
+    // Save assistant message to SQLite & MongoDB
     if (fullAssistantResponse.trim()) {
-      addMessage(randomUUID(), conversationId, 'assistant', fullAssistantResponse);
+      addMessage(randomUUID(), conversationId, 'assistant', fullAssistantResponse, userId);
     }
 
     reply.raw.write(`data: [DONE]\n\n`);

@@ -4,6 +4,7 @@ interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
   agentEmoji?: string;
+  agentIcon?: string;
   isStreaming?: boolean;
   onRegenerate?: () => void;
 }
@@ -12,6 +13,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   role,
   content,
   agentEmoji = 'AI',
+  agentIcon,
   isStreaming = false,
   onRegenerate
 }) => {
@@ -35,7 +37,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   return (
     <div className="msg ai">
-      <span className="av" title="TerraMind Agent">{agentEmoji}</span>
+      <span
+        className="av"
+        title="TerraMind Agent"
+        style={{
+          overflow: 'hidden',
+          padding: agentIcon ? '2px' : 0,
+          background: agentIcon ? 'var(--user)' : 'var(--green)',
+          border: agentIcon ? '1px solid var(--border)' : 'none'
+        }}
+      >
+        {agentIcon ? (
+          <img src={agentIcon} alt="Agent" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        ) : (
+          agentEmoji
+        )}
+      </span>
       <div>
         <div className="body">
           {isEmptyOrWaiting ? (

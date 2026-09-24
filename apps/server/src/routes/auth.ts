@@ -37,8 +37,13 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Invalid username or password' });
     }
 
+    const sessionToken = randomUUID();
+    recordUserSession(user.id, user.username, sessionToken);
+    logUserActivity(user.id, 'user_logged_in', { username: user.username });
+
     return {
       success: true,
+      token: sessionToken,
       user: { id: user.id, username: user.username }
     };
   });
@@ -56,8 +61,12 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
 
     const newUser = createUser(randomUUID(), username, hashPassword(password));
+    const sessionToken = randomUUID();
+    recordUserSession(newUser.id, newUser.username, sessionToken);
+
     return {
       success: true,
+      token: sessionToken,
       user: newUser
     };
   });

@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "mongodb": "^7.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

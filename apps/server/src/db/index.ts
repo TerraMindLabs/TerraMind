@@ -1,5 +1,16 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
+import {
+  initMongo,
+  recordUserSession,
+  logUserActivity,
+  syncMongoConversation,
+  syncMongoMessage,
+  deleteMongoConversation
+} from './mongo';
+
+// Initialize MongoDB in the background
+initMongo().catch((err) => console.warn('[MongoDB] Init error:', err.message));
 
 // Stores DB in the server directory
 const db = new DatabaseSync(path.join(process.cwd(), 'terramind.db'));
@@ -27,6 +38,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     icon TEXT DEFAULT '📁',
+    user_id TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -35,8 +47,10 @@ db.exec(`
     title TEXT,
     provider TEXT,
     model TEXT,
-    project_id TEXT DEFAULT 'proj-aws',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    project_id TEXT DEFAULT '',
+    user_id TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   
   CREATE TABLE IF NOT EXISTS messages (
@@ -49,29 +63,34 @@ db.exec(`
   );
 `);
 
-// Ensure project_id column exists if table existed previously without it
+// Migrations for existing tables
 try {
-  db.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT 'proj-aws';`);
-} catch {
-  // Column already exists
-}
+  db.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT '';`);
+} catch {}
 
-// Seed default projects if none exist
-const projectCountStmt = db.prepare('SELECT COUNT(*) as count FROM projects');
-const countRow = projectCountStmt.get() as { count: number };
-if (!countRow || countRow.count === 0) {
-  const insertProj = db.prepare(`INSERT INTO projects (id, name, description, icon) VALUES (?, ?, ?, ?)`);
-  insertProj.run('proj-aws', 'AWS Production Cloud', 'VPC, EKS, RDS, S3 multi-region setup', '☁️');
-  insertProj.run('proj-k8s', 'Kubernetes Platform', 'GitOps, ArgoCD, Ingress & microservices', '☸️');
-  insertProj.run('proj-finops', 'FinOps Cost Optimizer', 'Multi-cloud pricing, Spot & Graviton audit', '💰');
-  insertProj.run('proj-cicd', 'CI/CD & DevSecOps', 'GitHub Actions, OIDC keyless & tfsec', '🔄');
-}
+try {
+  db.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT '';`);
+} catch {}
+
+try {
+  db.exec(`ALTER TABLE conversations ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;`);
+} catch {}
+
+try {
+  db.exec(`ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT '';`);
+} catch {}
+
+// Requirement 3: Clean up any seeded default projects
+try {
+  db.exec(`DELETE FROM projects WHERE id IN ('proj-aws', 'proj-k8s', 'proj-finops', 'proj-cicd');`);
+} catch {}
 
 export interface Project {
   id: string;
   name: string;
   description: string;
   icon: string;
+  user_id?: string;
   created_at: string;
 }
 
@@ -81,7 +100,9 @@ export interface Conversation {
   provider: string;
   model: string;
   project_id?: string;
+  user_id?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Message {
@@ -107,6 +128,7 @@ export function getUserByUsername(username: string): { id: string; username: str
 export function createUser(id: string, username: string, passwordHash: string): User {
   const stmt = db.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)');
   stmt.run(id, username, passwordHash);
+  logUserActivity(id, 'user_registered', { username });
   return { id, username, created_at: new Date().toISOString() };
 }
 
@@ -142,43 +164,85 @@ export function setSetting(key: string, value: string): void {
   stmt.run(key, value);
 }
 
-// Project Helpers
-export function getProjects(): Project[] {
+// Project Helpers (Requirement 3: No pre-existing projects seeded)
+export function getProjects(userId?: string): Project[] {
+  if (userId) {
+    const stmt = db.prepare('SELECT * FROM projects WHERE user_id = ? OR user_id = "" ORDER BY created_at ASC');
+    return stmt.all(userId) as unknown as Project[];
+  }
   const stmt = db.prepare('SELECT * FROM projects ORDER BY created_at ASC');
   return stmt.all() as unknown as Project[];
 }
 
-export function createProject(id: string, name: string, description: string, icon = '📁'): Project {
-  const stmt = db.prepare('INSERT INTO projects (id, name, description, icon) VALUES (?, ?, ?, ?)');
-  stmt.run(id, name, description, icon);
+export function createProject(id: string, name: string, description: string, icon = '📁', userId = ''): Project {
+  const stmt = db.prepare('INSERT INTO projects (id, name, description, icon, user_id) VALUES (?, ?, ?, ?, ?)');
+  stmt.run(id, name, description, icon, userId);
+  if (userId) {
+    logUserActivity(userId, 'project_created', { id, name });
+  }
   const getStmt = db.prepare('SELECT * FROM projects WHERE id = ?');
   return getStmt.get(id) as unknown as Project;
 }
 
-export function deleteProject(id: string): void {
+export function deleteProject(id: string, userId?: string): void {
   const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
   stmt.run(id);
+  if (userId) {
+    logUserActivity(userId, 'project_deleted', { id });
+  }
 }
 
-// Conversation Helpers
-export function createConversation(id: string, title: string, provider: string, model: string, projectId = 'proj-aws'): Conversation {
+// Conversation Helpers (Requirement 4: Persists all history properly)
+export function createConversation(
+  id: string,
+  title: string,
+  provider: string,
+  model: string,
+  projectId = '',
+  userId = ''
+): Conversation {
   const stmt = db.prepare(`
-    INSERT INTO conversations (id, title, provider, model, project_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO conversations (id, title, provider, model, project_id, user_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `);
-  stmt.run(id, title, provider, model, projectId);
-  return getConversation(id)!;
+  stmt.run(id, title, provider, model, projectId, userId);
+
+  const convo = getConversation(id)!;
+  syncMongoConversation(convo);
+  if (userId) {
+    logUserActivity(userId, 'conversation_started', { id, title });
+  }
+  return convo;
 }
 
-export function getConversations(projectId?: string): Conversation[] {
+export function getConversations(userId?: string, projectId?: string): Conversation[] {
+  if (userId && projectId) {
+    const stmt = db.prepare(`
+      SELECT * FROM conversations 
+      WHERE (user_id = ? OR user_id = '') AND project_id = ? 
+      ORDER BY updated_at DESC, created_at DESC
+    `);
+    return stmt.all(userId, projectId) as unknown as Conversation[];
+  }
+  if (userId) {
+    const stmt = db.prepare(`
+      SELECT * FROM conversations 
+      WHERE user_id = ? OR user_id = '' 
+      ORDER BY updated_at DESC, created_at DESC
+    `);
+    return stmt.all(userId) as unknown as Conversation[];
+  }
   if (projectId) {
     const stmt = db.prepare(`
-      SELECT * FROM conversations WHERE project_id = ? ORDER BY created_at DESC
+      SELECT * FROM conversations 
+      WHERE project_id = ? 
+      ORDER BY updated_at DESC, created_at DESC
     `);
     return stmt.all(projectId) as unknown as Conversation[];
   }
   const stmt = db.prepare(`
-    SELECT * FROM conversations ORDER BY created_at DESC
+    SELECT * FROM conversations 
+    ORDER BY updated_at DESC, created_at DESC
   `);
   return stmt.all() as unknown as Conversation[];
 }
@@ -190,18 +254,40 @@ export function getConversation(id: string): Conversation | undefined {
   return stmt.get(id) as unknown as Conversation | undefined;
 }
 
-export function updateConversationTitle(id: string, title: string): void {
-  const stmt = db.prepare(`
-    UPDATE conversations SET title = ? WHERE id = ?
-  `);
-  stmt.run(title, id);
+export function touchConversation(id: string, title?: string): void {
+  if (title) {
+    const stmt = db.prepare(`
+      UPDATE conversations SET updated_at = CURRENT_TIMESTAMP, title = ? WHERE id = ?
+    `);
+    stmt.run(title, id);
+  } else {
+    const stmt = db.prepare(`
+      UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `);
+    stmt.run(id);
+  }
+  const convo = getConversation(id);
+  if (convo) syncMongoConversation(convo);
 }
 
-export function deleteConversation(id: string): void {
+export function updateConversationTitle(id: string, title: string): void {
+  const stmt = db.prepare(`
+    UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `);
+  stmt.run(title, id);
+  const convo = getConversation(id);
+  if (convo) syncMongoConversation(convo);
+}
+
+export function deleteConversation(id: string, userId?: string): void {
   const deleteMsgs = db.prepare(`DELETE FROM messages WHERE conversation_id = ?`);
   deleteMsgs.run(id);
   const deleteConvo = db.prepare(`DELETE FROM conversations WHERE id = ?`);
   deleteConvo.run(id);
+  deleteMongoConversation(id);
+  if (userId) {
+    logUserActivity(userId, 'conversation_deleted', { id });
+  }
 }
 
 export function getMessages(conversationId: string): Message[] {
@@ -211,14 +297,19 @@ export function getMessages(conversationId: string): Message[] {
   return stmt.all(conversationId) as unknown as Message[];
 }
 
-export function addMessage(id: string, conversationId: string, role: string, content: string): Message {
+export function addMessage(id: string, conversationId: string, role: string, content: string, userId = ''): Message {
   const stmt = db.prepare(`
     INSERT INTO messages (id, conversation_id, role, content)
     VALUES (?, ?, ?, ?)
   `);
   stmt.run(id, conversationId, role, content);
+  touchConversation(conversationId);
+
   const getStmt = db.prepare(`SELECT * FROM messages WHERE id = ?`);
-  return getStmt.get(id) as unknown as Message;
+  const msg = getStmt.get(id) as unknown as Message;
+  syncMongoMessage({ ...msg, user_id: userId });
+  return msg;
 }
 
+export { recordUserSession, logUserActivity };
 export default db;

@@ -33,7 +33,7 @@ interface SidebarProps {
   // Agents
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
-  // Projects
+  // Projects (Requirement 3: Renamed to Projects, no pre-existing projects)
   projects: Project[];
   selectedProjectId: string;
   onSelectProject: (id: string) => void;
@@ -41,8 +41,6 @@ interface SidebarProps {
   // Files
   workspaceFiles: WorkspaceFile[];
   onSelectFile?: (filename: string) => void;
-  // Templates
-  onSelectTemplate: (prompt: string) => void;
   // Settings & Auth
   onOpenSettings: () => void;
   currentUser?: { username: string } | null;
@@ -50,14 +48,6 @@ interface SidebarProps {
   onLogout: () => void;
   toggleTheme: () => void;
 }
-
-const PLAYBOOKS = [
-  { name: 'Multi-AZ AWS VPC', icon: '🌐', prompt: 'Build an AWS VPC with 3 public and private subnets, NAT gateway, and route tables.' },
-  { name: 'Hardened S3 Storage', icon: '🛡️', prompt: 'Create an encrypted AWS S3 bucket with KMS, versioning, and lifecycle policy.' },
-  { name: 'Kubernetes HPA Manifest', icon: '☸️', prompt: 'Design a production Kubernetes Deployment with HPA, securityContext, and health probes.' },
-  { name: 'GitHub Actions OIDC', icon: '🔄', prompt: 'Create a GitHub Actions workflow with AWS OIDC keyless authentication and tfsec scan.' },
-  { name: 'FinOps Compute Audit', icon: '💰', prompt: 'Audit my Terraform configuration for Graviton3 savings, unused volumes, and Spot instances.' }
-];
 
 function groupDate(dateStr: string): string {
   const timestamp = new Date(dateStr).getTime() || Date.now();
@@ -84,7 +74,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCreateProject,
   workspaceFiles,
   onSelectFile,
-  onSelectTemplate,
   onOpenSettings,
   currentUser,
   onOpenAuth,
@@ -98,7 +87,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [agentsOpen, setAgentsOpen] = useState(true);
   const [filesOpen, setFilesOpen] = useState(false);
-  const [playbooksOpen, setPlaybooksOpen] = useState(false);
   const [chatsOpen, setChatsOpen] = useState(true);
 
   // New Project form state
@@ -108,12 +96,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleCreateProjectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjName.trim()) return;
-    onCreateProject(newProjName.trim(), 'Custom Project Workspace', '📁');
+    onCreateProject(newProjName.trim(), 'Project Workspace', '📁');
     setNewProjName('');
     setShowNewProjInput(false);
   };
 
-  // Filter conversations by search and selected project if filtered
+  // Filter conversations by search
   const filteredConversations = conversations.filter((c) => {
     const matchesSearch = (c.title || 'New Chat').toLowerCase().includes(search.toLowerCase());
     return matchesSearch;
@@ -121,23 +109,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="side" aria-label="Sidebar">
-      {/* Top action bar */}
+      {/* Top action bar with Brand Logo */}
       <div className="top">
-        <button className="icon" onClick={onToggle} aria-label="Close sidebar" title="Toggle sidebar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="4" width="18" height="16" rx="3" />
-            <path d="M9 4v16" />
-          </svg>
-        </button>
-        <button className="icon" onClick={onNewChat} aria-label="New chat" title="New chat">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-          </svg>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <img
+            src="/logo/only_logo.png"
+            alt="TerraMind"
+            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+          <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em', color: 'var(--text)' }}>
+            TerraMind
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+          <button className="icon" onClick={onNewChat} aria-label="New chat" title="New chat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+            </svg>
+          </button>
+          <button className="icon" onClick={onToggle} aria-label="Close sidebar" title="Toggle sidebar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="16" rx="3" />
+              <path d="M9 4v16" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* New chat row button */}
-      <button className="row" onClick={onNewChat} id="new" style={{ fontWeight: 500 }}>
+      <button className="row" onClick={onNewChat} id="new" style={{ fontWeight: 500, margin: '4px 0' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 5v14M5 12h14" />
         </svg>
@@ -155,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable sections */}
       <div className="sidebar-scroll">
-        {/* 1. Projects & Workspaces Section */}
+        {/* 1. Projects Section (Requirement 3: Renamed to Projects, no pre-existing projects) */}
         <div
           className={`collapsible-header ${projectsOpen ? 'open' : ''}`}
           onClick={() => setProjectsOpen(!projectsOpen)}
@@ -164,12 +167,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 18l6-6-6-6" />
             </svg>
-            <span>Projects & Workspaces ({projects.length})</span>
+            <span>Projects ({projects.length})</span>
           </div>
           <button
             type="button"
-            style={{ fontSize: '13px', padding: '0 4px', color: 'var(--muted)' }}
-            title="Create Project"
+            style={{ fontSize: '14px', padding: '0 4px', color: 'var(--muted)', fontWeight: 600 }}
+            title="Create New Project"
             onClick={(e) => {
               e.stopPropagation();
               setProjectsOpen(true);
@@ -183,16 +186,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {projectsOpen && (
           <div className="section-items">
             {showNewProjInput && (
-              <form onSubmit={handleCreateProjectSubmit} style={{ padding: '4px 6px', marginBottom: '4px' }}>
+              <form onSubmit={handleCreateProjectSubmit} style={{ padding: '4px 4px 6px' }}>
                 <input
                   type="text"
-                  placeholder="New project name..."
+                  placeholder="Project name & press Enter..."
                   autoFocus
                   value={newProjName}
                   onChange={(e) => setNewProjName(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '5px 8px',
+                    padding: '6px 8px',
                     fontSize: '12.5px',
                     border: '1px solid var(--border)',
                     borderRadius: '6px',
@@ -203,24 +206,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </form>
             )}
 
-            {projects.map((proj) => (
+            {projects.length === 0 && !showNewProjInput ? (
               <button
-                key={proj.id}
-                className={`row ${selectedProjectId === proj.id ? 'active' : ''}`}
-                onClick={() => onSelectProject(proj.id)}
-                title={proj.description}
-                style={{ fontSize: '13px' }}
+                type="button"
+                className="row"
+                style={{ fontSize: '12.5px', color: 'var(--muted)', fontStyle: 'italic' }}
+                onClick={() => setShowNewProjInput(true)}
               >
-                <span>{proj.icon || '📁'}</span>
-                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {proj.name}
-                </span>
+                <span>+</span>
+                <span>Create first project</span>
               </button>
-            ))}
+            ) : (
+              projects.map((proj) => (
+                <button
+                  key={proj.id}
+                  className={`row ${selectedProjectId === proj.id ? 'active' : ''}`}
+                  onClick={() => onSelectProject(proj.id)}
+                  title={proj.description || proj.name}
+                  style={{ fontSize: '13px' }}
+                >
+                  <span>{proj.icon || '📁'}</span>
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {proj.name}
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         )}
 
-        {/* 2. Specialized Agents Section */}
+        {/* 2. AI Agents Section with New Agent Icons (Requirement 2) */}
         <div
           className={`collapsible-header ${agentsOpen ? 'open' : ''}`}
           onClick={() => setAgentsOpen(!agentsOpen)}
@@ -229,7 +244,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 18l6-6-6-6" />
             </svg>
-            <span>AI Agents ({TERRAMIND_AGENTS.length})</span>
+            <span>Agents ({TERRAMIND_AGENTS.length})</span>
           </div>
         </div>
 
@@ -243,12 +258,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 title={agent.description}
                 style={{ fontSize: '13px' }}
               >
-                <span style={{ fontSize: '14px' }}>{agent.emoji}</span>
+                <img
+                  src={agent.icon}
+                  alt={agent.name}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    objectFit: 'contain',
+                    borderRadius: '4px',
+                    flexShrink: 0
+                  }}
+                />
                 <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <span style={{ fontWeight: selectedAgentId === agent.id ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span
+                    style={{
+                      fontWeight: selectedAgentId === agent.id ? 600 : 400,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {agent.name}
                   </span>
-                  <span style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {agent.role}
                   </span>
                 </div>
@@ -293,39 +333,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* 4. Playbooks & Templates Section */}
-        <div
-          className={`collapsible-header ${playbooksOpen ? 'open' : ''}`}
-          onClick={() => setPlaybooksOpen(!playbooksOpen)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-            <span>IaC Playbooks ({PLAYBOOKS.length})</span>
-          </div>
-        </div>
-
-        {playbooksOpen && (
-          <div className="section-items">
-            {PLAYBOOKS.map((pb) => (
-              <button
-                key={pb.name}
-                className="row"
-                style={{ fontSize: '12.5px' }}
-                onClick={() => onSelectTemplate(pb.prompt)}
-                title={pb.prompt}
-              >
-                <span>{pb.icon}</span>
-                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {pb.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* 5. Chat History Section */}
+        {/* 4. Chat History Section (Requirement 4: Persists all history properly) */}
         <div
           className={`collapsible-header ${chatsOpen ? 'open' : ''}`}
           onClick={() => setChatsOpen(!chatsOpen)}
@@ -334,37 +342,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 18l6-6-6-6" />
             </svg>
-            <span>Chats ({filteredConversations.length})</span>
+            <span>Chat History ({filteredConversations.length})</span>
           </div>
-          <button
-            type="button"
-            style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'none' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setGroupByProject(!groupByProject);
-            }}
-            title="Toggle Grouping: Date vs Project"
-          >
-            {groupByProject ? 'By Project' : 'By Date'}
-          </button>
+          {projects.length > 0 && (
+            <button
+              type="button"
+              style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'none' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setGroupByProject(!groupByProject);
+              }}
+              title="Toggle Grouping: Date vs Project"
+            >
+              {groupByProject ? 'By Project' : 'By Date'}
+            </button>
+          )}
         </div>
 
         {chatsOpen && (
           <div className="section-items">
             {filteredConversations.length === 0 ? (
               <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--muted)' }}>
-                {search ? 'No matching chats' : 'No chats yet'}
+                {search ? 'No matching chats' : 'No chats yet. Start a conversation!'}
               </div>
-            ) : groupByProject ? (
+            ) : groupByProject && projects.length > 0 ? (
               projects.map((proj) => {
                 const projChats = filteredConversations.filter(
-                  (c) => (c.project_id || 'proj-aws') === proj.id
+                  (c) => (c.project_id || '') === proj.id
                 );
                 if (projChats.length === 0) return null;
                 return (
                   <React.Fragment key={proj.id}>
                     <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 8px 2px' }}>
-                      {proj.icon} {proj.name}
+                      {proj.icon || '📁'} {proj.name}
                     </div>
                     {projChats.map((c) => (
                       <div key={c.id} className="chat">

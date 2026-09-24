@@ -47,13 +47,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState('agent_tf-devops-expert');
-  const [selectedProjectId, setSelectedProjectId] = useState('proj-aws');
-  const [projects, setProjects] = useState<Project[]>([
-    { id: 'proj-aws', name: 'AWS Production Cloud', description: 'VPC, EKS, RDS, S3 multi-region setup', icon: '☁️' },
-    { id: 'proj-k8s', name: 'Kubernetes Platform', description: 'GitOps, ArgoCD, Ingress & microservices', icon: '☸️' },
-    { id: 'proj-finops', name: 'FinOps Cost Optimizer', description: 'Multi-cloud pricing, Spot & Graviton audit', icon: '💰' },
-    { id: 'proj-cicd', name: 'CI/CD & DevSecOps', description: 'GitHub Actions, OIDC keyless & tfsec', icon: '🔄' }
-  ]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [projects, setProjects] = useState<Project[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
 
   const [provider, setProvider] = useState<'ollama' | 'cloud'>('ollama');
@@ -70,9 +65,7 @@ function App() {
   ]);
   const [ollamaOnline, setOllamaOnline] = useState(false);
 
-  // Modals & Auth state
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
+  // Requirement 1: Mandatory Authentication to Chat
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(() => {
     try {
       const stored = localStorage.getItem('tm_user');
@@ -81,6 +74,9 @@ function App() {
       return null;
     }
   });
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -107,14 +103,17 @@ function App() {
     return () => document.removeEventListener('click', handleDocClick);
   }, []);
 
-  // Fetch projects
+  // Fetch projects (Requirement 3)
   const refreshProjects = async () => {
     try {
-      const res = await fetch('/api/projects');
+      const headers: Record<string, string> = {};
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      const res = await fetch('/api/projects', { headers });
       if (res.ok) {
         const data = await res.json();
-        if (data.projects && data.projects.length > 0) {
-          setProjects(data.projects);
+        setProjects(data.projects || []);
+        if (data.projects && data.projects.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(data.projects[0].id);
         }
       }
     } catch (e) {
@@ -137,10 +136,12 @@ function App() {
     }
   };
 
-  // Fetch conversations
+  // Fetch conversations (Requirement 4: Persists all history properly)
   const refreshConversations = async () => {
     try {
-      const res = await fetch('/api/conversations');
+      const headers: Record<string, string> = {};
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      const res = await fetch('/api/conversations', { headers });
       if (res.ok) {
         const data = await res.json();
         setConversations(data.conversations || []);
@@ -179,20 +180,13 @@ function App() {
   };
 
   useEffect(() => {
-    refreshProjects();
+    if (currentUser) {
+      refreshProjects();
+      refreshConversations();
+    }
     refreshWorkspaceFiles();
-    refreshConversations();
     fetchModels();
-
-    fetch('/api/auth/status')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.requiresSetup && !currentUser) {
-          setAuthOpen(true);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  }, [currentUser]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -206,18 +200,35 @@ function App() {
   };
 
   const handleSend = (textToSend?: string) => {
+    if (!currentUser) {
+      setAuthOpen(true);
+      return;
+    }
+
     const text = textToSend || input;
     if (!text.trim() || isGenerating) return;
 
-    sendMessage(text, provider, model, selectedAgentId, selectedProjectId, () => {
-      refreshConversations();
-      refreshWorkspaceFiles();
-    });
+    sendMessage(
+      text,
+      provider,
+      model,
+      selectedAgentId,
+      selectedProjectId,
+      () => {
+        refreshConversations();
+        refreshWorkspaceFiles();
+      }
+    );
 
     setInput('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+
+    // Refresh immediately to capture newly generated conversation in sidebar
+    setTimeout(() => {
+      refreshConversations();
+    }, 400);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -229,7 +240,9 @@ function App() {
 
   const handleDeleteConversation = async (id: string) => {
     try {
-      await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+      const headers: Record<string, string> = {};
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
+      await fetch(`/api/conversations/${id}`, { method: 'DELETE', headers });
       if (conversationId === id) {
         startNewChat();
       }
@@ -257,9 +270,11 @@ function App() {
 
   const handleCreateProject = async (name: string, description: string, icon: string) => {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (currentUser?.id) headers['x-user-id'] = currentUser.id;
       const res = await fetch('/api/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name, description, icon })
       });
       if (res.ok) {
@@ -294,7 +309,7 @@ function App() {
   };
 
   const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
-  const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+  const currentProject = projects.find((p) => p.id === selectedProjectId);
 
   const currentChips = AGENT_CHIPS[selectedAgentId] || [
     'Explain a concept simply',
@@ -330,7 +345,7 @@ function App() {
         // Agents
         selectedAgentId={selectedAgentId}
         onSelectAgent={handleSelectAgent}
-        // Projects
+        // Projects (Requirement 3)
         projects={projects}
         selectedProjectId={selectedProjectId}
         onSelectProject={handleSelectProject}
@@ -341,17 +356,15 @@ function App() {
           setInput((prev) => (prev ? `${prev}\nReview file: ${filename}` : `Review and explain file: ${filename}`));
           textareaRef.current?.focus();
         }}
-        // Templates
-        onSelectTemplate={(prompt) => {
-          handleSend(prompt);
-          if (window.innerWidth <= 768) setSidebarOpen(false);
-        }}
         onOpenSettings={() => setSettingsOpen(true)}
         currentUser={currentUser}
         onOpenAuth={() => setAuthOpen(true)}
         onLogout={() => {
           localStorage.removeItem('tm_user');
+          localStorage.removeItem('tm_token');
           setCurrentUser(null);
+          setConversations([]);
+          startNewChat();
         }}
         toggleTheme={toggleTheme}
       />
@@ -444,31 +457,33 @@ function App() {
 
           {/* Right badges: Active Project, Active Agent, and Ollama status */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '3px 8px',
-                borderRadius: '12px',
-                background: 'var(--user)',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: 'var(--text)'
-              }}
-              title={`Active Project: ${currentProject?.name}`}
-            >
-              <span>{currentProject?.icon || '📁'}</span>
-              <span style={{ maxWidth: '140px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentProject?.name}
-              </span>
-            </div>
+            {currentProject && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: 'var(--user)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'var(--text)'
+                }}
+                title={`Active Project: ${currentProject.name}`}
+              >
+                <span>{currentProject.icon || '📁'}</span>
+                <span style={{ maxWidth: '140px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {currentProject.name}
+                </span>
+              </div>
+            )}
 
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                gap: '6px',
                 padding: '3px 8px',
                 borderRadius: '12px',
                 background: 'var(--user)',
@@ -478,7 +493,11 @@ function App() {
               }}
               title={`Active Agent: ${currentAgent.name}`}
             >
-              <span>{currentAgent.emoji}</span>
+              <img
+                src={currentAgent.icon}
+                alt={currentAgent.name}
+                style={{ width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px' }}
+              />
               <span style={{ display: window.innerWidth > 600 ? 'inline' : 'none' }}>{currentAgent.name}</span>
             </div>
           </div>
@@ -489,7 +508,12 @@ function App() {
           <div className="col" id="msgs">
             {messages.length === 0 ? (
               <div className="empty">
-                <h1>What can I help with?</h1>
+                <img
+                  src={currentAgent.icon}
+                  alt={currentAgent.name}
+                  style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '10px' }}
+                />
+                <h1 style={{ fontSize: '24px' }}>What can {currentAgent.name} help with?</h1>
                 <div className="chips">
                   {currentChips.map((chipText) => (
                     <button key={chipText} onClick={() => handleSend(chipText)}>
@@ -505,6 +529,7 @@ function App() {
                   role={m.role}
                   content={m.content}
                   agentEmoji={currentAgent.emoji}
+                  agentIcon={currentAgent.icon}
                   isStreaming={isGenerating && idx === messages.length - 1 && m.role === 'assistant'}
                   onRegenerate={() => {
                     const lastUserMsg = [...messages].reverse().find((msg) => msg.role === 'user');
@@ -526,7 +551,11 @@ function App() {
               ref={textareaRef}
               id="in"
               rows={1}
-              placeholder={`Message ${currentAgent.name} in ${currentProject?.name}...`}
+              placeholder={
+                currentUser
+                  ? `Message ${currentAgent.name}${currentProject ? ` in ${currentProject.name}` : ''}...`
+                  : 'Please log in or sign up to chat...'
+              }
               aria-label="Message"
               value={input}
               onChange={(e) => {
@@ -570,7 +599,14 @@ function App() {
                 {/* Status Dot */}
                 <div
                   title={ollamaOnline ? 'Ollama: Online (11434)' : 'Ollama: Offline'}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--muted)', marginLeft: '2px' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: 'var(--muted)',
+                    marginLeft: '2px'
+                  }}
                 >
                   <span
                     style={{
@@ -619,9 +655,10 @@ function App() {
         onSave={() => fetchModels()}
       />
 
-      {/* Auth Modal */}
+      {/* Auth Modal (Requirement 1: Mandatory login before chatting) */}
       <AuthModal
-        isOpen={authOpen}
+        isOpen={authOpen || !currentUser}
+        isMandatory={!currentUser}
         onSuccess={(user) => {
           setCurrentUser(user);
           setAuthOpen(false);

@@ -4,9 +4,15 @@ interface AuthModalProps {
   isOpen: boolean;
   onSuccess: (user: { id: string; username: string }) => void;
   onClose?: () => void;
+  isMandatory?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onSuccess,
+  onClose,
+  isMandatory = false
+}) => {
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +39,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
         setError(data.error || 'Authentication failed');
       } else {
         localStorage.setItem('tm_user', JSON.stringify(data.user));
+        if (data.token) {
+          localStorage.setItem('tm_token', data.token);
+        }
         onSuccess(data.user);
       }
     } catch (err: any) {
@@ -42,29 +51,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
     }
   };
 
-  const handleSsoClick = (provider: string) => {
-    // Demo SSO login
-    const demoUser = {
-      id: 'sso_' + Date.now(),
-      username: `${provider.toLowerCase()}_user`
-    };
-    localStorage.setItem('tm_user', JSON.stringify(demoUser));
-    onSuccess(demoUser);
+  const handleSsoClick = async (provider: string) => {
+    setLoading(true);
+    try {
+      const username = `${provider.toLowerCase()}_user`;
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: 'sso_auth_password_123' })
+      });
+      let user;
+      if (res.ok) {
+        const data = await res.json();
+        user = data.user;
+      } else {
+        const loginRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password: 'sso_auth_password_123' })
+        });
+        const loginData = await loginRes.json();
+        user = loginData.user;
+      }
+      if (user) {
+        localStorage.setItem('tm_user', JSON.stringify(user));
+        onSuccess(user);
+      }
+    } catch (e: any) {
+      setError('SSO sign-in failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onClick={() => {
+        if (!isMandatory && onClose) onClose();
+      }}
+    >
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="av" style={{ width: '28px', height: '28px', fontSize: '11px', background: 'var(--text)', color: 'var(--bg)' }}>
-              TM
-            </div>
-            <strong style={{ fontSize: '15px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img
+              src="/logo/only_logo.png"
+              alt="TerraMind"
+              style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+            <strong style={{ fontSize: '16px', letterSpacing: '-0.02em' }}>
               {isRegister ? 'Create TerraMind Account' : 'Welcome to TerraMind'}
             </strong>
           </div>
-          {onClose && (
+          {!isMandatory && onClose && (
             <button className="close-btn" onClick={onClose} aria-label="Close">
               ✕
             </button>
@@ -74,23 +116,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
         <form onSubmit={handleSubmit} className="modal-form">
           {error && <div className="modal-error">{error}</div>}
 
-          <div style={{ textAlign: 'center', margin: '8px 0 18px' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
-              {isRegister ? 'Sign Up' : 'Log In'}
+          <div style={{ textAlign: 'center', margin: '4px 0 16px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
+              {isRegister ? 'Sign Up' : 'Log In to Start Chatting'}
             </h2>
             <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>
               {isRegister
-                ? 'Create an account to save workspaces & infrastructure prompts'
-                : 'Enter your credentials to continue'}
+                ? 'Sign up to access AI Agents and save your cloud workspaces'
+                : 'Sign in with your account or continue with SSO to proceed'}
             </p>
           </div>
 
           {/* SSO Options */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
             <button
               type="button"
               className="sso-btn"
               onClick={() => handleSsoClick('Google')}
+              disabled={loading}
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path
@@ -105,6 +148,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
               type="button"
               className="sso-btn"
               onClick={() => handleSsoClick('GitHub')}
+              disabled={loading}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
@@ -113,7 +157,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 14px' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
             <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>or</span>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
@@ -143,10 +187,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, onClose
           </div>
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Log In'}
+            {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Log In'}
           </button>
 
-          <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px', color: 'var(--muted)' }}>
+          <div style={{ textAlign: 'center', marginTop: '14px', fontSize: '13px', color: 'var(--muted)' }}>
             {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"

@@ -3,6 +3,7 @@ import React from 'react';
 export interface Agent {
   id: string;
   name: string;
+  icon: string;
   emoji: string;
   role: string;
   description: string;
@@ -13,6 +14,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_tf-devops-expert',
     name: 'Terraform DevOps',
+    icon: '/agents/Terraform.png',
     emoji: '🏗️',
     role: 'Principal Cloud Architect',
     description: 'Writes modular, secure, and validated Terraform HCL code with automated formatting and security gates.',
@@ -21,6 +23,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_finops-cost-optimizer',
     name: 'FinOps Cost Optimizer',
+    icon: '/agents/FinOps.png',
     emoji: '💰',
     role: 'Cloud Economist',
     description: 'Analyzes IaC, provides multi-cloud cost comparisons (AWS vs GCP vs Azure), and recommends Spot/Graviton savings.',
@@ -29,6 +32,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_k8s-gitops-architect',
     name: 'Kubernetes Platform',
+    icon: '/agents/K8s.png',
     emoji: '☸️',
     role: 'K8s & GitOps Architect',
     description: 'Designs production Kubernetes manifests, QoS sizing, health probes, Helm charts, and GitOps rollouts.',
@@ -37,6 +41,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_cicd-pipeline-engineer',
     name: 'CI/CD Engineer',
+    icon: '/agents/CICD.png',
     emoji: '🔄',
     role: 'DevSecOps Engineer',
     description: 'Designs multi-stage CI/CD pipelines (GitHub Actions) with OIDC keyless auth and tfsec security gates.',
@@ -65,7 +70,11 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
             onClick={() => onSelectAgent(agent.id)}
             title={agent.description}
           >
-            <span>{agent.emoji}</span>
+            <img
+              src={agent.icon}
+              alt={agent.name}
+              style={{ width: '18px', height: '18px', objectFit: 'contain', borderRadius: '4px' }}
+            />
             <span>{agent.name}</span>
           </button>
         ))}
@@ -73,22 +82,6 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
       <div className="agent-info-bar">
         <span className="agent-badge">{currentAgent.role}</span>
         <span>{currentAgent.description}</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.3rem' }}>
-          {currentAgent.tools.map((t) => (
-            <span
-              key={t}
-              style={{
-                fontSize: '0.65rem',
-                backgroundColor: 'rgba(255,255,255,0.06)',
-                padding: '0.1rem 0.35rem',
-                borderRadius: '3px',
-                fontFamily: 'monospace'
-              }}
-            >
-              {t}
-            </span>
-          ))}
-        </div>
       </div>
     </div>
   );
