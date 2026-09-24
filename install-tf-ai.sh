@@ -135,12 +135,73 @@ ensure_terraform() {
     return 0
 }
 
+ensure_nodejs() {
+    export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+    if command -v node &> /dev/null && command -v npm &> /dev/null; then
+        local majorVer=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
+        if [ "$majorVer" -ge 18 ]; then
+            local nodeVer=$(node -v 2>/dev/null)
+            local npmVer=$(npm -v 2>/dev/null)
+            echo -e "${GREEN}✅ Found Node.js: ${nodeVer} and npm: ${npmVer}${NC}"
+            return 0
+        fi
+    fi
+
+    echo -e "\n${YELLOW}⚙️ Node.js 18+ is not installed or outdated. Attempting automatic installation (Node.js 20 LTS)...${NC}"
+    local sudoCmd=""
+    [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && sudoCmd="sudo"
+
+    if command -v apt-get &> /dev/null; then
+        $sudoCmd apt-get update -qq 2>/dev/null || true
+        $sudoCmd apt-get install -y -qq curl gnupg ca-certificates 2>/dev/null || true
+        curl -fsSL https://deb.nodesource.com/setup_20.x | $sudoCmd bash - 2>/dev/null || true
+        $sudoCmd apt-get install -y -qq nodejs 2>/dev/null || true
+    elif command -v dnf &> /dev/null; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | $sudoCmd bash - 2>/dev/null || true
+        $sudoCmd dnf install -y nodejs 2>/dev/null || true
+    elif command -v yum &> /dev/null; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | $sudoCmd bash - 2>/dev/null || true
+        $sudoCmd yum install -y nodejs 2>/dev/null || true
+    elif command -v apk &> /dev/null; then
+        $sudoCmd apk add --no-cache nodejs npm 2>/dev/null || true
+    fi
+
+    if command -v node &> /dev/null && command -v npm &> /dev/null; then
+        local nodeVer=$(node -v 2>/dev/null)
+        local npmVer=$(npm -v 2>/dev/null)
+        echo -e "${GREEN}✅ Node.js ${nodeVer} and npm ${npmVer} installed successfully!${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}Node.js and npm are required. Please install Node.js 18+ (https://nodejs.org/) first!${NC}"
+    exit 1
+}
+
 export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
 
 ensure_ollama_running() {
     export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
     if ! command -v ollama &> /dev/null; then
         return 1
+    fi
+
+    # Verify that the ollama binary is executable (avoid 'required file not found' on minimal/musl containers)
+    if ! ollama --version &> /dev/null; then
+        echo -e "${YELLOW}⚠️ Ollama binary is present but could not execute (checking container libraries)...${NC}"
+        local sudoCmd=""
+        [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && sudoCmd="sudo"
+        if command -v apt-get &> /dev/null; then
+            $sudoCmd apt-get update -qq 2>/dev/null || true
+            $sudoCmd apt-get install -y -qq libc6 libstdc++6 zstd 2>/dev/null || true
+        elif command -v apk &> /dev/null; then
+            $sudoCmd apk add --no-cache gcompat libc6-compat 2>/dev/null || true
+        fi
+
+        if ! ollama --version &> /dev/null; then
+            echo -e "${YELLOW}⚠️ Cannot run local Ollama binary in this environment. Skipping local daemon.${NC}"
+            echo -e "${YELLOW}💡 Tip: You can select Cloud AI providers (Gemini, OpenAI, Anthropic, Groq, DeepSeek) seamlessly in TerraMind.${NC}"
+            return 1
+        fi
     fi
 
     if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
@@ -337,16 +398,21 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
         *) ;;
     esac
 
-    if [ ${#models[@]} -gt 0 ] && command -v ollama &> /dev/null; then
-        echo -e "\n${YELLOW}📥 Downloading / Verifying Local AI Models via Ollama...${NC}"
-        for model in "${models[@]}"; do
-            if ollama list 2>/dev/null | grep -q "^${model}:\|^${model} "; then
-                echo -e "${GREEN}✅ Model $model is already installed!${NC}"
-            else
-                echo -e "${CYAN}📥 Pulling $model...${NC}"
-                ollama pull "$model" || echo -e "${YELLOW}⚠️ Could not pull $model automatically. You can run 'ollama pull $model' later.${NC}"
-            fi
-        done
+    if [ ${#models[@]} -gt 0 ]; then
+        if ollama --version &> /dev/null; then
+            echo -e "\n${YELLOW}📥 Downloading / Verifying Local AI Models via Ollama...${NC}"
+            for model in "${models[@]}"; do
+                if ollama list 2>/dev/null | grep -q "^${model}:\|^${model} "; then
+                    echo -e "${GREEN}✅ Model $model is already installed!${NC}"
+                else
+                    echo -e "${CYAN}📥 Pulling $model...${NC}"
+                    ollama pull "$model" || echo -e "${YELLOW}⚠️ Could not pull $model automatically. You can run 'ollama pull $model' later.${NC}"
+                fi
+            done
+        else
+            echo -e "\n${YELLOW}⚠️ Ollama is not executable in this container environment. Model download skipped.${NC}"
+            echo -e "${YELLOW}💡 You can continue setup using Cloud AI models (Gemini, Claude, GPT, Groq, DeepSeek).${NC}"
+        fi
     fi
 fi
 
@@ -354,17 +420,24 @@ fi
 echo -e "\n${CYAN}🔍 Checking System Dependencies...${NC}"
 
 if ! command -v git &> /dev/null; then
-    echo -e "${RED}Git is not installed. Please install Git first!${NC}"
-    exit 1
+    echo -e "${YELLOW}⚙️ Git is not installed. Attempting automatic installation...${NC}"
+    local sudoCmd=""
+    [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && sudoCmd="sudo"
+    if command -v apt-get &> /dev/null; then
+        $sudoCmd apt-get update -qq 2>/dev/null || true
+        $sudoCmd apt-get install -y -qq git 2>/dev/null || true
+    elif command -v apk &> /dev/null; then
+        $sudoCmd apk add --no-cache git 2>/dev/null || true
+    elif command -v dnf &> /dev/null; then
+        $sudoCmd dnf install -y git 2>/dev/null || true
+    fi
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}Git is not installed. Please install Git first!${NC}"
+        exit 1
+    fi
 fi
 
-if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js and npm are required. Please install Node.js 18+ (https://nodejs.org/) first!${NC}"
-    exit 1
-fi
-nodeVer=$(node -v 2>/dev/null || echo "detected")
-npmVer=$(npm -v 2>/dev/null || echo "detected")
-echo -e "${GREEN}✅ Found Node.js: ${nodeVer} and npm: ${npmVer}${NC}"
+ensure_nodejs
 
 # Database: SQLite WAL mode - Zero external DB required
 echo -e "${GREEN}✅ Database: SQLite WAL embedded engine ready (zero setup required).${NC}"
