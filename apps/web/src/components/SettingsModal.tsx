@@ -789,10 +789,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--muted)', alignSelf: 'center', marginRight: '4px' }}>Quick Add:</span>
                 {[
-                  { tag: 'qwen2.5-coder:7b', label: 'qwen2.5-coder:7b (IaC Pick)' },
-                  { tag: 'qwen2.5-coder:1.5b', label: 'qwen2.5-coder:1.5b (1GB)' },
-                  { tag: 'llama3.2', label: 'llama3.2 (Meta 3B)' },
-                  { tag: 'deepseek-r1:7b', label: 'deepseek-r1:7b' }
+                  { tag: 'qwen2.5-coder:3b', label: 'qwen2.5-coder:3b (CPU Pick ~2GB)' },
+                  { tag: 'qwen2.5-coder:7b', label: 'qwen2.5-coder:7b (IaC Pick ~4.5GB)' },
+                  { tag: 'deepseek-r1:7b', label: 'deepseek-r1:7b (Reasoning ~4.7GB)' },
+                  { tag: 'llama3.2', label: 'llama3.2 (Meta 3B ~2GB)' },
+                  { tag: 'qwen2.5-coder:1.5b', label: 'qwen2.5-coder:1.5b (Fast ~1GB)' }
                 ].map((rec) => (
                   <button
                     key={rec.tag}

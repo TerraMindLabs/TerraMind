@@ -378,23 +378,25 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
     echo -e "\n${CYAN}======================================================================${NC}"
     echo -e "${CYAN}          Select Local Ollama Models (Sorted by RAM Tier)            ${NC}"
     echo -e "${CYAN}======================================================================${NC}"
-    echo -e "${GREEN}  [1] qwen2.5-coder:1.5b          (~1GB VRAM - Ultra-fast, runs anywhere)${NC}"
-    echo -e "${GREEN}  [2] qwen2.5-coder:3b            (~2GB VRAM - Lightweight code assistant)${NC}"
-    echo -e "${GREEN}  [3] llama3.2                    (~2.2GB VRAM - Meta 3B general & DevOps)${NC}"
-    echo -e "${YELLOW}  [4] qwen2.5-coder:7b            (~4.5GB - ⭐ Recommended for Terraform/IaC)${NC}"
-    echo -e "${YELLOW}  [5] llama3.1                    (~4.7GB - Meta flagship 8B generalist)${NC}"
-    echo -e "${RED}  [6] qwen2.5-coder:14b           (~9GB - Enterprise full-stack coding)${NC}"
-    echo -e "${WHITE}  [7] Skip Model Pull            (I will download models manually later)${NC}"
-    read -p "Enter your choice (1-7) [Default: 4 (qwen2.5-coder:7b)]: " rawModelChoice
-    rawModelChoice=${rawModelChoice:-4}
+    echo -e "${GREEN}  [1] qwen2.5-coder:1.5b    (Min RAM: 2GB  | ~1.0GB - Ultra-fast, runs anywhere)${NC}"
+    echo -e "${GREEN}  [2] qwen2.5-coder:3b      (Min RAM: 4GB  | ~2.0GB - ⭐ Best overall for CPU & YAML/HCL)${NC}"
+    echo -e "${GREEN}  [3] llama3.2              (Min RAM: 4GB  | ~2.0GB - Meta 3B fast CPU generalist)${NC}"
+    echo -e "${YELLOW}  [4] deepseek-r1:7b        (Min RAM: 8GB  | ~4.7GB - ⭐ Best Architecture & Reasoning)${NC}"
+    echo -e "${YELLOW}  [5] qwen2.5-coder:7b      (Min RAM: 8GB  | ~4.5GB - ⭐ Recommended for Terraform/IaC)${NC}"
+    echo -e "${YELLOW}  [6] llama3.1              (Min RAM: 8GB  | ~4.7GB - Meta flagship 8B generalist)${NC}"
+    echo -e "${RED}  [7] qwen2.5-coder:14b     (Min RAM: 16GB | ~9.0GB - Enterprise full-stack coding)${NC}"
+    echo -e "${WHITE}  [8] Skip Model Pull       (Download models manually later via 'ollama pull')${NC}"
+    read -p "Enter your choice (1-8) [Default: 2 (qwen2.5-coder:3b)]: " rawModelChoice
+    rawModelChoice=${rawModelChoice:-2}
 
     case $rawModelChoice in
         1) models+=("qwen2.5-coder:1.5b") ;;
         2) models+=("qwen2.5-coder:3b") ;;
         3) models+=("llama3.2") ;;
-        4) models+=("qwen2.5-coder:7b") ;;
-        5) models+=("llama3.1") ;;
-        6) models+=("qwen2.5-coder:14b") ;;
+        4) models+=("deepseek-r1:7b") ;;
+        5) models+=("qwen2.5-coder:7b") ;;
+        6) models+=("llama3.1") ;;
+        7) models+=("qwen2.5-coder:14b") ;;
         *) ;;
     esac
 

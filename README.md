@@ -56,6 +56,21 @@ TerraMind gives you full freedom over your AI models. Choose between 100% offlin
 > [!TIP]
 > **No Forced Keys:** If you select Local Ollama during installation, TerraMind will **never** prompt or force you to enter a Gemini or cloud API key. You can also run purely offline or enter cloud keys later via **Settings > Provider Keys** in the web interface.
 
+### 🧠 Local Ollama Models & Hardware RAM Matrix
+
+TerraMind's installer allows you to select models tailored to your machine's hardware capabilities. Use the matrix below to choose the optimal model for your system's RAM:
+
+| Model | Download Size | Minimum System RAM | Recommended Hardware | Key Strengths & Best Use Case | CLI Run / Pull Command |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Qwen 2.5 Coder (3B)** | ~2.0 GB | **4 GB RAM** | 4-Core CPU / Laptop | **⭐ Best Overall for CPU.** Highly optimized for code generation, syntax tracking, and structured configuration files like YAML/HCL. Outperforms many larger models on coding benchmarks. | `ollama run qwen2.5-coder:3b` |
+| **Qwen 2.5 Coder (1.5B)** | ~1.0 GB | **2 GB RAM** | Low-spec VM / Codespaces | **Ultra-fast & Lightweight.** Perfect for resource-constrained cloud containers, devcontainers, and rapid syntax verification. | `ollama run qwen2.5-coder:1.5b` |
+| **Llama 3.2 (3B)** | ~2.0 GB | **4 GB RAM** | Pure CPU environments | **Lightweight Generalist.** While not explicitly code-first, it handles scripting syntax well and responds noticeably faster on pure CPU environments. | `ollama run llama3.2` |
+| **DeepSeek R1 (7B / 8B Distill)** | ~4.7 GB | **8 GB RAM** | 8 GB+ RAM / Entry GPU | **⭐ Best for Architecture & Logic.** Features native "Chain of Thought" reasoning. Use this when you need to plan complex infrastructure designs or debug obscure pipeline syntax errors. | `ollama run deepseek-r1:7b` |
+| **Qwen 2.5 Coder (7B)** | ~4.5 GB | **8 GB RAM** | 8 GB+ RAM / Modern CPU or GPU | **⭐ Flagship for Terraform & IaC.** Deep understanding of Terraform providers, state manipulation, and multi-cloud architectural patterns. | `ollama run qwen2.5-coder:7b` |
+| **Llama 3.1 (8B)** | ~4.7 GB | **8 GB - 12 GB RAM** | 8-Core CPU / 6GB+ VRAM | **Flagship 8B Generalist.** Excellent for end-to-end documentation, CI/CD pipeline authoring, and DevOps troubleshooting. | `ollama run llama3.1` |
+| **Qwen 2.5 Coder (14B)** | ~9.0 GB | **16 GB RAM** | 16 GB+ RAM / Dedicated GPU | **Enterprise Full-Stack.** Handles complex multi-file deployments and cross-module Terraform dependencies across extensive codebases. | `ollama run qwen2.5-coder:14b` |
+
+
 ## ⚡ Quick Start (One-Liner Installation)
 You do not need to clone this repository manually. Run the single command below in your terminal, and TerraMind will install directly into your chosen directory with zero dead weight:
 

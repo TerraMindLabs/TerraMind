@@ -229,23 +229,25 @@ if ($aiChoice -eq "1" -or $aiChoice -eq "3") {
     Write-Host "`n===========================================================" -ForegroundColor DarkGray
     Write-Host "    Select Local Ollama Models (Sorted by RAM Tier)        " -ForegroundColor Cyan
     Write-Host "===========================================================" -ForegroundColor DarkGray
-    Write-Host " [1] qwen2.5-coder:1.5b    (~1GB VRAM - Ultra-fast, runs anywhere)" -ForegroundColor Green
-    Write-Host " [2] qwen2.5-coder:3b      (~2GB VRAM - Lightweight code assistant)" -ForegroundColor Green
-    Write-Host " [3] llama3.2              (~2.2GB VRAM - Meta 3B general & DevOps)" -ForegroundColor Green
-    Write-Host " [4] qwen2.5-coder:7b      (~4.5GB - ⭐ Recommended for Terraform/IaC)" -ForegroundColor Yellow
-    Write-Host " [5] llama3.1              (~4.7GB - Meta flagship 8B generalist)" -ForegroundColor Yellow
-    Write-Host " [6] qwen2.5-coder:14b     (~9GB - Enterprise full-stack coding)" -ForegroundColor Red
-    Write-Host " [7] Skip Model Pull       (Download models manually later)" -ForegroundColor White
-    $modelChoice = Read-Host "`n => Enter choice (1-7) [Default: 4 (qwen2.5-coder:7b)]"
-    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "4" }
+    Write-Host " [1] qwen2.5-coder:1.5b    (Min RAM: 2GB  | ~1.0GB - Ultra-fast, runs anywhere)" -ForegroundColor Green
+    Write-Host " [2] qwen2.5-coder:3b      (Min RAM: 4GB  | ~2.0GB - ⭐ Best overall for CPU & YAML/HCL)" -ForegroundColor Green
+    Write-Host " [3] llama3.2              (Min RAM: 4GB  | ~2.0GB - Meta 3B fast CPU generalist)" -ForegroundColor Green
+    Write-Host " [4] deepseek-r1:7b        (Min RAM: 8GB  | ~4.7GB - ⭐ Best Architecture & Reasoning)" -ForegroundColor Yellow
+    Write-Host " [5] qwen2.5-coder:7b      (Min RAM: 8GB  | ~4.5GB - ⭐ Recommended for Terraform/IaC)" -ForegroundColor Yellow
+    Write-Host " [6] llama3.1              (Min RAM: 8GB  | ~4.7GB - Meta flagship 8B generalist)" -ForegroundColor Yellow
+    Write-Host " [7] qwen2.5-coder:14b     (Min RAM: 16GB | ~9.0GB - Enterprise full-stack coding)" -ForegroundColor Red
+    Write-Host " [8] Skip Model Pull       (Download models manually later via 'ollama pull')" -ForegroundColor White
+    $modelChoice = Read-Host "`n => Enter choice (1-8) [Default: 2 (qwen2.5-coder:3b)]"
+    if ([string]::IsNullOrWhiteSpace($modelChoice)) { $modelChoice = "2" }
 
     switch ($modelChoice) {
         "1" { $models += "qwen2.5-coder:1.5b" }
         "2" { $models += "qwen2.5-coder:3b" }
         "3" { $models += "llama3.2" }
-        "4" { $models += "qwen2.5-coder:7b" }
-        "5" { $models += "llama3.1" }
-        "6" { $models += "qwen2.5-coder:14b" }
+        "4" { $models += "deepseek-r1:7b" }
+        "5" { $models += "qwen2.5-coder:7b" }
+        "6" { $models += "llama3.1" }
+        "7" { $models += "qwen2.5-coder:14b" }
         default {}
     }
 
