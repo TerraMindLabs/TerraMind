@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import {
   createConversation,
+  updateConversationAgent,
   getConversations,
   getConversation,
   getMessages,
@@ -133,7 +134,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       const provider = body.provider || 'ollama';
       const model = body.model || '';
       const projectId = body.projectId || '';
-      const convo = createConversation(id, title, provider, model, projectId, userId);
+      const agentId = body.agentId || 'agent_tf-devops-expert';
+      const convo = createConversation(id, title, provider, model, projectId, userId, agentId);
       return convo;
     } catch (err: any) {
       fastify.log.error(err);
@@ -248,16 +250,15 @@ export default async function chatRoutes(fastify: FastifyInstance) {
               })
               .map((m: any) => m.name.replace(/^models\//, ''));
 
-            // Sort prioritizing latest working stable models (gemini-3.6-flash, gemini-3-flash-preview)
+            // Sort prioritizing latest working stable models (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)
             fetched.sort((a: string, b: string) => {
               const score = (name: string) => {
-                if (name === 'gemini-3.6-flash') return 100;
-                if (name === 'gemini-3-flash-preview') return 95;
-                if (name === 'gemini-flash-latest') return 90;
-                if (name === 'gemini-3.5-flash') return 80;
-                if (name === 'gemini-3.5-flash-lite') return 75;
-                if (name === 'gemini-3.1-pro-preview') return 70;
-                if (name.includes('3.6')) return 85;
+                if (name === 'gemini-2.5-flash') return 100;
+                if (name === 'gemini-2.0-flash') return 95;
+                if (name === 'gemini-1.5-flash') return 90;
+                if (name === 'gemini-2.5-pro') return 85;
+                if (name === 'gemini-2.0-flash-lite') return 80;
+                if (name === 'gemini-1.5-pro') return 75;
                 if (name.includes('flash')) return 50;
                 return 10;
               };
@@ -274,7 +275,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
       // If fetching fails or times out, but geminiKey was configured, supply verified default models
       if (!cloudModels.some((m) => m.startsWith('gemini'))) {
-        cloudModels.push('gemini-3.6-flash', 'gemini-3-flash-preview');
+        cloudModels.push('gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash');
       }
     }
 
@@ -528,11 +529,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
     if (!conversationId) {
       conversationId = randomUUID();
-      createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
+      createConversation(conversationId, cleanTitle, provider, model, projectId, userId, agentId);
     } else {
       const existing = getConversation(conversationId);
       if (!existing && latestUserMsg) {
-        createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
+        createConversation(conversationId, cleanTitle, provider, model, projectId, userId, agentId);
+      } else if (existing && agentId) {
+        updateConversationAgent(conversationId, agentId);
       }
     }
 
@@ -694,10 +697,15 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         (targetModel.startsWith('gpt') && !openaiKey) ||
         (targetModel.startsWith('claude') && !anthropicKey)
       ) {
-        if (geminiKey) targetModel = 'gemini-3.6-flash';
+        if (geminiKey) targetModel = 'gemini-2.5-flash';
         else if (openaiKey) targetModel = 'gpt-4o';
         else if (anthropicKey) targetModel = 'claude-3-5-sonnet-20241022';
-        else targetModel = 'gemini-3.6-flash';
+        else targetModel = 'gemini-2.5-flash';
+      }
+
+      // If user had an obsolete or non-existent Gemini tag, normalize to verified stable model
+      if (targetModel.startsWith('gemini') && (targetModel === 'gemini-3.6-flash' || targetModel === 'gemini-3-flash-preview')) {
+        targetModel = 'gemini-2.5-flash';
       }
 
       const isGemini = targetModel.startsWith('gemini');
@@ -718,14 +726,27 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         );
       } else if (isGemini && geminiKey) {
         sendStatus(`Connecting to Google Gemini (${targetModel})...`, 'connecting');
-        // Stream Gemini Generate Content with automatic fallback for 503 / 429 / 404
-        const streamGemini = async (modelToUse: string, isFallback = false): Promise<boolean> => {
+        const geminiFallbacks = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+        if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith('gemini')) {
+          geminiFallbacks.unshift(targetModel);
+        }
+
+        // Stream Gemini Generate Content with automatic fallback for 503 / 429 / 404 / 500
+        const streamGemini = async (modelToUse: string, triedModels: string[] = []): Promise<boolean> => {
+          triedModels.push(modelToUse);
           try {
             sendStatus(`Generating response with Google Gemini (${modelToUse})...`, 'generating');
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-            const contents = messages.map((m) => ({
+
+            // Sanitize messages: exclude prior error notices to prevent invalid prompt format
+            const sanitizedMessages = messages.filter(
+              (m) => m && m.content && !m.content.startsWith('> ⚠️') && !m.content.startsWith('> 🔑')
+            );
+            const validMessages = sanitizedMessages.length > 0 ? sanitizedMessages : messages;
+
+            const contents = validMessages.map((m) => ({
               role: m.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: m.content }]
+              parts: [{ text: m.content || ' ' }]
             }));
 
             const res = await fetch(url, {
@@ -739,12 +760,12 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
             if (!res.ok) {
               const err = await res.text();
-              // If model has temporary high demand (503), rate-limited (429), or deprecated (404), auto-switch to stable gemini-3.6-flash
-              if (!isFallback && (res.status === 503 || res.status === 429 || res.status === 404) && modelToUse !== 'gemini-3.6-flash') {
+              const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
+              if (nextModel && (res.status === 503 || res.status === 429 || res.status === 404 || res.status === 500)) {
                 streamToken(
-                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${res.status} High Demand). Automatically switching to stable \`gemini-3.6-flash\`...*\n\n`
+                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${res.status}). Automatically switching to \`${nextModel}\`...*\n\n`
                 );
-                return await streamGemini('gemini-3.6-flash', true);
+                return await streamGemini(nextModel, triedModels);
               }
               streamToken(`> ⚠️ **Gemini Error (${res.status}):** ${err}`);
               return false;
@@ -753,6 +774,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
             if (res.body) {
               const reader = res.body.getReader();
               const decoder = new TextDecoder();
+              let hasEmitted = false;
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -763,19 +785,23 @@ export default async function chatRoutes(fastify: FastifyInstance) {
                   try {
                     const data = JSON.parse(raw);
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text) streamToken(text);
+                    if (text) {
+                      streamToken(text);
+                      hasEmitted = true;
+                    }
                   } catch {}
                 }
               }
-              return true;
+              return hasEmitted;
             }
             return false;
           } catch (e: any) {
-            if (!isFallback && modelToUse !== 'gemini-3.6-flash') {
+            const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
+            if (nextModel) {
               streamToken(
-                `> ℹ️ *Connection to \`${modelToUse}\` failed. Automatically retrying with \`gemini-3.6-flash\`...*\n\n`
+                `> ℹ️ *Connection to \`${modelToUse}\` failed (${e.message}). Automatically retrying with \`${nextModel}\`...*\n\n`
               );
-              return await streamGemini('gemini-3.6-flash', true);
+              return await streamGemini(nextModel, triedModels);
             }
             streamToken(`> ⚠️ **Gemini request failed:** ${e.message}`);
             return false;

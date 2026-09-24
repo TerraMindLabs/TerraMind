@@ -17,7 +17,9 @@ export interface Conversation {
   provider: string;
   model: string;
   project_id?: string;
+  agent_id?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface WorkspaceFile {
@@ -467,28 +469,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 14px 2px' }}>
                       {proj.icon || '📁'} {proj.name}
                     </div>
-                    {projChats.map((c) => (
-                      <div key={c.id} className="chat">
-                        <button
-                          className={`row ${activeId === c.id ? 'active' : ''}`}
-                          onClick={() => onSelect(c.id)}
-                          title={c.title}
-                        >
-                          {c.title || 'New chat'}
-                        </button>
-                        <button
-                          className="del"
-                          aria-label="Delete chat"
-                          title="Delete chat"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(c.id);
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                    {projChats.map((c) => {
+                      const convoAgent = TERRAMIND_AGENTS.find((a) => a.id === c.agent_id) || TERRAMIND_AGENTS[0];
+                      return (
+                        <div key={c.id} className="chat">
+                          <button
+                            className={`row ${activeId === c.id ? 'active' : ''}`}
+                            onClick={() => onSelect(c.id)}
+                            title={`${c.title || 'New chat'} (${convoAgent.name})`}
+                            style={{ display: 'flex', alignItems: 'center', gap: '7px' }}
+                          >
+                            <img
+                              src={getAgentIcon(convoAgent, theme)}
+                              alt={convoAgent.name}
+                              style={{ width: '15px', height: '15px', objectFit: 'contain', borderRadius: '3px', flexShrink: 0, opacity: 0.9 }}
+                            />
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.title || 'New chat'}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: 'var(--hover)',
+                                color: 'var(--muted)',
+                                flexShrink: 0,
+                                fontWeight: 500
+                              }}
+                            >
+                              {convoAgent.name.split(' ')[0]}
+                            </span>
+                          </button>
+                          <button
+                            className="del"
+                            aria-label="Delete chat"
+                            title="Delete chat"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(c.id);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })
@@ -509,28 +535,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 14px 2px' }}>
                         {grpName}
                       </div>
-                      {items.map((c) => (
-                        <div key={c.id} className="chat">
-                          <button
-                            className={`row ${activeId === c.id ? 'active' : ''}`}
-                            onClick={() => onSelect(c.id)}
-                            title={c.title}
-                          >
-                            {c.title || 'New chat'}
-                          </button>
-                          <button
-                            className="del"
-                            aria-label="Delete chat"
-                            title="Delete chat"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(c.id);
-                            }}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+                      {items.map((c) => {
+                        const convoAgent = TERRAMIND_AGENTS.find((a) => a.id === c.agent_id) || TERRAMIND_AGENTS[0];
+                        return (
+                          <div key={c.id} className="chat">
+                            <button
+                              className={`row ${activeId === c.id ? 'active' : ''}`}
+                              onClick={() => onSelect(c.id)}
+                              title={`${c.title || 'New chat'} (${convoAgent.name})`}
+                              style={{ display: 'flex', alignItems: 'center', gap: '7px' }}
+                            >
+                              <img
+                                src={getAgentIcon(convoAgent, theme)}
+                                alt={convoAgent.name}
+                                style={{ width: '15px', height: '15px', objectFit: 'contain', borderRadius: '3px', flexShrink: 0, opacity: 0.9 }}
+                              />
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {c.title || 'New chat'}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: 'var(--hover)',
+                                  color: 'var(--muted)',
+                                  flexShrink: 0,
+                                  fontWeight: 500
+                                }}
+                              >
+                                {convoAgent.name.split(' ')[0]}
+                              </span>
+                            </button>
+                            <button
+                              className="del"
+                              aria-label="Delete chat"
+                              title="Delete chat"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(c.id);
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
                     </React.Fragment>
                   );
                 });

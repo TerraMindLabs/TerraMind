@@ -55,3 +55,6 @@ hs_err_pid*
 replay_pid*
 Error.md
 vid.md
+*.db
+*.db-shm
+*.db-wal

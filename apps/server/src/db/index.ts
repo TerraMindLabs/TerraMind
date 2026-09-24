@@ -60,6 +60,7 @@ db.exec(`
     model TEXT,
     project_id TEXT DEFAULT '',
     user_id TEXT DEFAULT '',
+    agent_id TEXT DEFAULT 'agent_tf-devops-expert',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -81,6 +82,10 @@ try {
 
 try {
   db.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT '';`);
+} catch {}
+
+try {
+  db.exec(`ALTER TABLE conversations ADD COLUMN agent_id TEXT DEFAULT 'agent_tf-devops-expert';`);
 } catch {}
 
 try {
@@ -139,6 +144,7 @@ export interface Conversation {
   model: string;
   project_id?: string;
   user_id?: string;
+  agent_id?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -286,27 +292,34 @@ export function removeProjectMember(projectId: string, memberId: string): void {
   stmt.run(projectId, memberId, memberId);
 }
 
-// Conversation Helpers (Requirement 4: Persists all history properly)
 export function createConversation(
   id: string,
   title: string,
   provider: string,
   model: string,
   projectId = '',
-  userId = ''
+  userId = '',
+  agentId = 'agent_tf-devops-expert'
 ): Conversation {
   const stmt = db.prepare(`
-    INSERT INTO conversations (id, title, provider, model, project_id, user_id, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO conversations (id, title, provider, model, project_id, user_id, agent_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `);
-  stmt.run(id, title, provider, model, projectId, userId);
+  stmt.run(id, title, provider, model, projectId, userId, agentId);
 
   const convo = getConversation(id)!;
   syncMongoConversation(convo);
   if (userId) {
-    logUserActivity(userId, 'conversation_started', { id, title });
+    logUserActivity(userId, 'conversation_started', { id, title, agentId });
   }
   return convo;
+}
+
+export function updateConversationAgent(id: string, agentId: string): void {
+  try {
+    const stmt = db.prepare(`UPDATE conversations SET agent_id = ? WHERE id = ?`);
+    stmt.run(agentId, id);
+  } catch {}
 }
 
 export function getConversations(userId?: string, projectId?: string): Conversation[] {

@@ -51,7 +51,7 @@ export function useChatStream() {
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      const userStr = localStorage.getItem('terramind_user');
+      const userStr = localStorage.getItem('tm_user') || localStorage.getItem('terramind_user');
       if (userStr) {
         try {
           const user = JSON.parse(userStr);

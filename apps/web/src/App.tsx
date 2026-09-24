@@ -430,7 +430,15 @@ function App() {
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedAgentId(agentId);
-    startNewChat();
+    // Automatically load the most recent conversation with this agent, or start fresh if none exists
+    const lastChat = conversations.find(
+      (c) => (c.agent_id || 'agent_tf-devops-expert') === agentId
+    );
+    if (lastChat) {
+      loadConversation(lastChat.id);
+    } else {
+      startNewChat();
+    }
     if (window.innerWidth <= 768) {
       setSidebarOpen(false);
     }
@@ -538,6 +546,10 @@ function App() {
         activeId={conversationId}
         onSelect={(id) => {
           loadConversation(id);
+          const found = conversations.find((c) => c.id === id);
+          if (found?.agent_id) {
+            setSelectedAgentId(found.agent_id);
+          }
           if (window.innerWidth <= 768) setSidebarOpen(false);
         }}
         onNewChat={() => {

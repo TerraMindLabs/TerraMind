@@ -77293,6 +77293,7 @@ db2.exec(`
     model TEXT,
     project_id TEXT DEFAULT '',
     user_id TEXT DEFAULT '',
+    agent_id TEXT DEFAULT 'agent_tf-devops-expert',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -77312,6 +77313,10 @@ try {
 }
 try {
   db2.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT '';`);
+} catch {
+}
+try {
+  db2.exec(`ALTER TABLE conversations ADD COLUMN agent_id TEXT DEFAULT 'agent_tf-devops-expert';`);
 } catch {
 }
 try {
@@ -77448,18 +77453,25 @@ function removeProjectMember(projectId, memberId) {
   const stmt = db2.prepare("DELETE FROM project_members WHERE project_id = ? AND (id = ? OR user_id = ?)");
   stmt.run(projectId, memberId, memberId);
 }
-function createConversation(id, title, provider, model, projectId = "", userId = "") {
+function createConversation(id, title, provider, model, projectId = "", userId = "", agentId = "agent_tf-devops-expert") {
   const stmt = db2.prepare(`
-    INSERT INTO conversations (id, title, provider, model, project_id, user_id, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO conversations (id, title, provider, model, project_id, user_id, agent_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `);
-  stmt.run(id, title, provider, model, projectId, userId);
+  stmt.run(id, title, provider, model, projectId, userId, agentId);
   const convo = getConversation(id);
   syncMongoConversation(convo);
   if (userId) {
-    logUserActivity(userId, "conversation_started", { id, title });
+    logUserActivity(userId, "conversation_started", { id, title, agentId });
   }
   return convo;
+}
+function updateConversationAgent(id, agentId) {
+  try {
+    const stmt = db2.prepare(`UPDATE conversations SET agent_id = ? WHERE id = ?`);
+    stmt.run(agentId, id);
+  } catch {
+  }
 }
 function getConversations(userId, projectId) {
   if (userId && projectId) {
@@ -78529,7 +78541,8 @@ async function chatRoutes(fastify2) {
       const provider = body.provider || "ollama";
       const model = body.model || "";
       const projectId = body.projectId || "";
-      const convo = createConversation(id, title, provider, model, projectId, userId);
+      const agentId = body.agentId || "agent_tf-devops-expert";
+      const convo = createConversation(id, title, provider, model, projectId, userId, agentId);
       return convo;
     } catch (err) {
       fastify2.log.error(err);
@@ -78622,13 +78635,12 @@ async function chatRoutes(fastify2) {
             }).map((m) => m.name.replace(/^models\//, ""));
             fetched.sort((a, b) => {
               const score = (name) => {
-                if (name === "gemini-3.6-flash") return 100;
-                if (name === "gemini-3-flash-preview") return 95;
-                if (name === "gemini-flash-latest") return 90;
-                if (name === "gemini-3.5-flash") return 80;
-                if (name === "gemini-3.5-flash-lite") return 75;
-                if (name === "gemini-3.1-pro-preview") return 70;
-                if (name.includes("3.6")) return 85;
+                if (name === "gemini-2.5-flash") return 100;
+                if (name === "gemini-2.0-flash") return 95;
+                if (name === "gemini-1.5-flash") return 90;
+                if (name === "gemini-2.5-pro") return 85;
+                if (name === "gemini-2.0-flash-lite") return 80;
+                if (name === "gemini-1.5-pro") return 75;
                 if (name.includes("flash")) return 50;
                 return 10;
               };
@@ -78643,7 +78655,7 @@ async function chatRoutes(fastify2) {
         console.error("Failed to fetch dynamic Gemini models:", err);
       }
       if (!cloudModels.some((m) => m.startsWith("gemini"))) {
-        cloudModels.push("gemini-3.6-flash", "gemini-3-flash-preview");
+        cloudModels.push("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash");
       }
     }
     if (openaiKey) {
@@ -78853,11 +78865,13 @@ async function chatRoutes(fastify2) {
       const cleanTitle = rawContent.split("\n")[0].replace(/[`#*]/g, "").trim().slice(0, 40) || "Terraform Chat";
       if (!conversationId) {
         conversationId = (0, import_crypto2.randomUUID)();
-        createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
+        createConversation(conversationId, cleanTitle, provider, model, projectId, userId, agentId);
       } else {
         const existing = getConversation(conversationId);
         if (!existing && latestUserMsg) {
-          createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
+          createConversation(conversationId, cleanTitle, provider, model, projectId, userId, agentId);
+        } else if (existing && agentId) {
+          updateConversationAgent(conversationId, agentId);
         }
       }
       if (latestUserMsg && latestUserMsg.role === "user") {
@@ -79007,10 +79021,13 @@ Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel
       if (activeProvider === "cloud") {
         let targetModel = model;
         if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey) {
-          if (geminiKey) targetModel = "gemini-3.6-flash";
+          if (geminiKey) targetModel = "gemini-2.5-flash";
           else if (openaiKey) targetModel = "gpt-4o";
           else if (anthropicKey) targetModel = "claude-3-5-sonnet-20241022";
-          else targetModel = "gemini-3.6-flash";
+          else targetModel = "gemini-2.5-flash";
+        }
+        if (targetModel.startsWith("gemini") && (targetModel === "gemini-3.6-flash" || targetModel === "gemini-3-flash-preview")) {
+          targetModel = "gemini-2.5-flash";
         }
         const isGemini = targetModel.startsWith("gemini");
         const isAnthropic = targetModel.startsWith("claude");
@@ -79035,13 +79052,22 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
           );
         } else if (isGemini && geminiKey) {
           sendStatus(`Connecting to Google Gemini (${targetModel})...`, "connecting");
-          const streamGemini = async (modelToUse, isFallback = false) => {
+          const geminiFallbacks = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith("gemini")) {
+            geminiFallbacks.unshift(targetModel);
+          }
+          const streamGemini = async (modelToUse, triedModels = []) => {
+            triedModels.push(modelToUse);
             try {
               sendStatus(`Generating response with Google Gemini (${modelToUse})...`, "generating");
               const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-              const contents = messages.map((m) => ({
+              const sanitizedMessages = messages.filter(
+                (m) => m && m.content && !m.content.startsWith("> \u26A0\uFE0F") && !m.content.startsWith("> \u{1F511}")
+              );
+              const validMessages = sanitizedMessages.length > 0 ? sanitizedMessages : messages;
+              const contents = validMessages.map((m) => ({
                 role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: m.content }]
+                parts: [{ text: m.content || " " }]
               }));
               const res = await fetch(url, {
                 method: "POST",
@@ -79053,13 +79079,14 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
               });
               if (!res.ok) {
                 const err = await res.text();
-                if (!isFallback && (res.status === 503 || res.status === 429 || res.status === 404) && modelToUse !== "gemini-3.6-flash") {
+                const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
+                if (nextModel && (res.status === 503 || res.status === 429 || res.status === 404 || res.status === 500)) {
                   streamToken(
-                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${res.status} High Demand). Automatically switching to stable \`gemini-3.6-flash\`...*
+                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${res.status}). Automatically switching to \`${nextModel}\`...*
 
 `
                   );
-                  return await streamGemini("gemini-3.6-flash", true);
+                  return await streamGemini(nextModel, triedModels);
                 }
                 streamToken(`> \u26A0\uFE0F **Gemini Error (${res.status}):** ${err}`);
                 return false;
@@ -79067,6 +79094,7 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
               if (res.body) {
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
+                let hasEmitted = false;
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
@@ -79077,22 +79105,26 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
                     try {
                       const data = JSON.parse(raw);
                       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                      if (text) streamToken(text);
+                      if (text) {
+                        streamToken(text);
+                        hasEmitted = true;
+                      }
                     } catch {
                     }
                   }
                 }
-                return true;
+                return hasEmitted;
               }
               return false;
             } catch (e) {
-              if (!isFallback && modelToUse !== "gemini-3.6-flash") {
+              const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
+              if (nextModel) {
                 streamToken(
-                  `> \u2139\uFE0F *Connection to \`${modelToUse}\` failed. Automatically retrying with \`gemini-3.6-flash\`...*
+                  `> \u2139\uFE0F *Connection to \`${modelToUse}\` failed (${e.message}). Automatically retrying with \`${nextModel}\`...*
 
 `
                 );
-                return await streamGemini("gemini-3.6-flash", true);
+                return await streamGemini(nextModel, triedModels);
               }
               streamToken(`> \u26A0\uFE0F **Gemini request failed:** ${e.message}`);
               return false;
