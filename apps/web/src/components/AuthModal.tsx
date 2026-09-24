@@ -34,7 +34,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         body: JSON.stringify({ username, password })
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Server response error (${res.status}). Verify server is running on port 3080.`);
+      }
+
       if (!res.ok) {
         setError(data.error || 'Authentication failed');
       } else {
@@ -45,40 +52,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(data.user);
       }
     } catch (err: any) {
-      setError(err.message || 'Network error');
+      setError(err.message || 'Network error connecting to backend');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSsoClick = async (provider: string) => {
+  const handleSsoClick = async (provider: 'okta' | 'google' | 'github') => {
+    setError(null);
     setLoading(true);
+
     try {
-      const username = `${provider.toLowerCase()}_user`;
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch('/api/auth/sso', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password: 'sso_auth_password_123' })
+        body: JSON.stringify({ provider })
       });
-      let user;
-      if (res.ok) {
-        const data = await res.json();
-        user = data.user;
-      } else {
-        const loginRes = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password: 'sso_auth_password_123' })
-        });
-        const loginData = await loginRes.json();
-        user = loginData.user;
+
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`SSO failed (${res.status}). Verify backend on port 3080.`);
       }
-      if (user) {
-        localStorage.setItem('tm_user', JSON.stringify(user));
-        onSuccess(user);
+
+      if (!res.ok || !data.user) {
+        setError(data.error || `${provider.toUpperCase()} SSO sign-in failed`);
+      } else {
+        localStorage.setItem('tm_user', JSON.stringify(data.user));
+        if (data.token) {
+          localStorage.setItem('tm_token', data.token);
+        }
+        onSuccess(data.user);
       }
     } catch (e: any) {
-      setError('SSO sign-in failed');
+      setError(e.message || `${provider} authentication failed`);
     } finally {
       setLoading(false);
     }
@@ -122,18 +131,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </h2>
             <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>
               {isRegister
-                ? 'Sign up to access AI Agents and save your cloud workspaces'
-                : 'Sign in with your account or continue with SSO to proceed'}
+                ? 'Sign up to access AI Agents and save your cloud projects'
+                : 'Choose an SSO provider or enter your credentials to proceed'}
             </p>
           </div>
 
-          {/* SSO Options */}
+          {/* 3 SSO Options: Okta, Google, GitHub */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+            {/* 1. Okta SSO */}
             <button
               type="button"
               className="sso-btn"
-              onClick={() => handleSsoClick('Google')}
+              onClick={() => handleSsoClick('okta')}
               disabled={loading}
+              title="Sign in with Enterprise Okta SSO"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#007dc1">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="4.5" fill="#fff" />
+              </svg>
+              <span>Sign in with Okta SSO</span>
+            </button>
+
+            {/* 2. Google SSO */}
+            <button
+              type="button"
+              className="sso-btn"
+              onClick={() => handleSsoClick('google')}
+              disabled={loading}
+              title="Sign in with Google"
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path
@@ -141,28 +167,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   fill="#4285F4"
                 />
               </svg>
-              Continue with Google
+              <span>Sign in with Google</span>
             </button>
 
+            {/* 3. GitHub SSO */}
             <button
               type="button"
               className="sso-btn"
-              onClick={() => handleSsoClick('GitHub')}
+              onClick={() => handleSsoClick('github')}
               disabled={loading}
+              title="Sign in with GitHub"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
               </svg>
-              Continue with GitHub
+              <span>Sign in with GitHub</span>
             </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 14px' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>or</span>
+            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>
+              or with password
+            </span>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
           </div>
 
+          {/* 4. Simple Username & Password */}
           <div className="form-group">
             <label>Username / Email</label>
             <input
@@ -187,7 +218,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Log In'}
+            {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Log In with Password'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '14px', fontSize: '13px', color: 'var(--muted)' }}>

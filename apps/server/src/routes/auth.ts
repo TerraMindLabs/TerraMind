@@ -5,7 +5,9 @@ import {
   createUser,
   getUserCount,
   getAllSettings,
-  setSetting
+  setSetting,
+  recordUserSession,
+  logUserActivity
 } from '../db';
 
 function hashPassword(password: string): string {
@@ -23,7 +25,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
 
   // Login
   fastify.post('/api/auth/login', async (request, reply) => {
-    const { username, password } = request.body as any || {};
+    const { username, password } = (request.body as any) || {};
     if (!username || !password) {
       return reply.status(400).send({ error: 'Username and password are required' });
     }
@@ -50,7 +52,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
 
   // Register / Setup first user
   fastify.post('/api/auth/register', async (request, reply) => {
-    const { username, password } = request.body as any || {};
+    const { username, password } = (request.body as any) || {};
     if (!username || !password || password.length < 4) {
       return reply.status(400).send({ error: 'Username and password (min 4 chars) are required' });
     }
@@ -71,6 +73,32 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     };
   });
 
+  // SSO Login (Okta, Google, GitHub)
+  fastify.post('/api/auth/sso', async (request, reply) => {
+    try {
+      const { provider = 'sso', email, name } = (request.body as any) || {};
+      const username = email || (name ? `${name.toLowerCase().replace(/\s+/g, '_')}_${provider.toLowerCase()}` : `${provider.toLowerCase()}_user`);
+
+      let user = getUserByUsername(username);
+      if (!user) {
+        user = createUser(randomUUID(), username, hashPassword(`sso_${provider}_${randomUUID()}`));
+      }
+
+      const sessionToken = randomUUID();
+      recordUserSession(user.id, user.username, sessionToken);
+      logUserActivity(user.id, 'sso_login', { provider, username: user.username });
+
+      return {
+        success: true,
+        token: sessionToken,
+        user: { id: user.id, username: user.username, provider }
+      };
+    } catch (e: any) {
+      fastify.log.error(e);
+      return reply.status(500).send({ error: 'SSO authentication failed' });
+    }
+  });
+
   // Get Settings (API keys)
   fastify.get('/api/settings', async (request, reply) => {
     const settings = getAllSettings();
@@ -86,7 +114,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
 
   // Save Settings (API keys)
   fastify.post('/api/settings', async (request, reply) => {
-    const body = request.body as any || {};
+    const body = (request.body as any) || {};
     if (body.openaiApiKey !== undefined && !body.openaiApiKey.includes('••••')) {
       setSetting('openai_api_key', body.openaiApiKey.trim());
     }
