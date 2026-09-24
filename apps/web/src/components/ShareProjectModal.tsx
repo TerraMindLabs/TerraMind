@@ -88,8 +88,12 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
     }
   };
 
-  const handleRemoveMember = async (memberId: string, memberUsername: string) => {
-    if (!confirm(`Remove @${memberUsername} from this workspace?`)) return;
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; username: string } | null>(null);
+
+  const confirmAndRemoveMember = async () => {
+    if (!memberToRemove) return;
+    const { id: memberId, username: memberUsername } = memberToRemove;
+    setMemberToRemove(null);
     try {
       const res = await fetch(`/api/projects/${project.id}/members/${memberId}`, {
         method: 'DELETE'
@@ -101,6 +105,10 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
     } catch (e: any) {
       setError(e.message || 'Failed to remove member');
     }
+  };
+
+  const handleRemoveMember = (memberId: string, memberUsername: string) => {
+    setMemberToRemove({ id: memberId, username: memberUsername });
   };
 
   return (
@@ -267,6 +275,67 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
           </button>
         </div>
       </div>
+
+      {memberToRemove && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setMemberToRemove(null)}
+          style={{ zIndex: 120, background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)' }}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '400px',
+              padding: '24px',
+              borderRadius: '12px',
+              border: '1px solid var(--border)',
+              background: 'var(--card-bg, #1a1d24)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '22px' }}>👤</span>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text)' }}>
+                Remove Workspace Collaborator
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+              Are you sure you want to remove <strong>@{memberToRemove.username}</strong> from this project? They will lose access to all project chats and architecture plans.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="cancel-btn"
+                onClick={() => setMemberToRemove(null)}
+                style={{ padding: '8px 16px', fontSize: '13px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="submit-btn"
+                onClick={confirmAndRemoveMember}
+                style={{
+                  width: 'auto',
+                  marginTop: 0,
+                  padding: '8px 18px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: '#ffffff',
+                  boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                Remove Collaborator
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

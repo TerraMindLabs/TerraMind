@@ -82,6 +82,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showInstallTerminal, setShowInstallTerminal] = useState(false);
   const [serviceMessage, setServiceMessage] = useState<string | null>(null);
 
+  // In-App Confirmation Modal state (Replaces ugly browser window.confirm alerts)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    icon: string;
+    message: string;
+    details?: string;
+    confirmText: string;
+    confirmVariant?: 'primary' | 'danger';
+    onConfirm: () => void;
+  } | null>(null);
+
   // Load Settings & Models on open
   const loadData = () => {
     // 1. Load API keys
@@ -333,27 +345,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // Handle Delete Ollama Model
-  const handleDeleteModel = async (modelName: string) => {
-    if (!window.confirm(`Are you sure you want to delete Ollama model '${modelName}'?`)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/models/ollama/${encodeURIComponent(modelName)}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setInstalledModels((prev) => prev.filter((m) => m !== modelName));
-        if (onSave) onSave();
-        loadData();
-      } else {
-        const data = await res.json();
-        setActionError(data.error || 'Failed to delete model.');
+  // Handle Delete Ollama Model via In-App Confirm
+  const handleDeleteModel = (modelName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      icon: '🗑️',
+      title: 'Remove Local Model',
+      message: `Are you sure you want to remove '${modelName}' from local disk?`,
+      details: 'This will delete the model weights and free up disk space on your drive. You can always pull this model again at any time.',
+      confirmText: 'Delete Model',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const res = await fetch(`/api/models/ollama/${encodeURIComponent(modelName)}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            setInstalledModels((prev) => prev.filter((m) => m !== modelName));
+            if (onSave) onSave();
+            loadData();
+          } else {
+            const data = await res.json();
+            setActionError(data.error || 'Failed to delete model.');
+          }
+        } catch (e: any) {
+          setActionError(e.message || 'Error removing model.');
+        }
       }
-    } catch (e: any) {
-      setActionError(e.message || 'Error removing model.');
-    }
+    });
   };
 
   // Start local Ollama daemon service
@@ -383,12 +403,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // Automated one-click download & installation of Ollama
-  const handleInstallOllama = async () => {
-    if (!window.confirm('Download and install the official Ollama package on this system? This will run the installer and start the background daemon.')) {
-      return;
-    }
+  // Automated one-click download & installation of Ollama via In-App Confirm
+  const handleInstallOllama = () => {
+    setConfirmDialog({
+      isOpen: true,
+      icon: '📥',
+      title: 'Install Local Ollama Service',
+      message: 'Download and install the official Ollama package on this system?',
+      details: 'This will automatically execute the official package installer, download the Ollama runtime binary, and launch the background service on port 11434 so you can run AI models 100% locally and offline.',
+      confirmText: 'Download & Install Now',
+      confirmVariant: 'primary',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        executeInstallOllama();
+      }
+    });
+  };
 
+  const executeInstallOllama = async () => {
     setInstallingOllama(true);
     setShowInstallTerminal(true);
     setInstallLogs('>>> Initializing automated Ollama installation...\n');
@@ -1455,6 +1487,121 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* In-App Confirmation Modal (Replaces clunky browser native popups) */}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setConfirmDialog(null)}
+          style={{ zIndex: 130, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(5px)' }}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '440px',
+              padding: '24px',
+              border: '1px solid var(--border)',
+              boxShadow: '0 24px 48px rgba(0, 0, 0, 0.5)',
+              borderRadius: '12px'
+            }}
+          >
+            <div className="modal-header" style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: confirmDialog.confirmVariant === 'danger' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '20px'
+                  }}
+                >
+                  {confirmDialog.icon}
+                </div>
+                <strong style={{ fontSize: '16px', color: 'var(--text)' }}>{confirmDialog.title}</strong>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={() => setConfirmDialog(null)}
+                aria-label="Close"
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '16px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13.5px', color: 'var(--text)', marginBottom: '12px', lineHeight: 1.5, fontWeight: 500 }}>
+              {confirmDialog.message}
+            </p>
+
+            {confirmDialog.details && (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  background: 'var(--hover)',
+                  border: '1px solid var(--border)',
+                  fontSize: '12px',
+                  color: 'var(--muted)',
+                  lineHeight: 1.5,
+                  marginBottom: '20px'
+                }}
+              >
+                {confirmDialog.details}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="cancel-btn"
+                onClick={() => setConfirmDialog(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--hover)',
+                  color: 'var(--text)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="submit-btn"
+                onClick={confirmDialog.onConfirm}
+                style={{
+                  width: 'auto',
+                  marginTop: 0,
+                  padding: '8px 18px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: confirmDialog.confirmVariant === 'danger'
+                    ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                    : 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#ffffff',
+                  boxShadow: confirmDialog.confirmVariant === 'danger'
+                    ? '0 4px 12px rgba(239, 68, 68, 0.3)'
+                    : '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                {confirmDialog.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
