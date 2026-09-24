@@ -476,6 +476,14 @@ run_with_spinner "Installing dependencies" "NODE_ENV=development npm install --i
 # Ensure tsx runner is guaranteed to exist
 if [ ! -f "$basePath/node_modules/.bin/tsx" ] && [ ! -f "$basePath/apps/server/node_modules/.bin/tsx" ]; then
     (cd "$basePath" && npm install tsx --save) >/dev/null 2>&1 || true
+    (cd "$basePath/apps/server" && npm install tsx --save) >/dev/null 2>&1 || true
+fi
+
+# Link tsx binary into apps/server and ensure permissions
+mkdir -p "$basePath/apps/server/node_modules/.bin" 2>/dev/null || true
+if [ -f "$basePath/node_modules/.bin/tsx" ]; then
+    chmod +x "$basePath/node_modules/.bin/tsx" 2>/dev/null || true
+    ln -sf "$basePath/node_modules/.bin/tsx" "$basePath/apps/server/node_modules/.bin/tsx" 2>/dev/null || true
 fi
 
 # 5. Build Web Frontend
@@ -527,7 +535,7 @@ if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version
     fi
 fi
 
-npm start
+npx tsx apps/server/src/server.ts
 EOF
 chmod +x "$launchScript"
 echo -e "${GREEN}✅ Created launch script: $launchScript${NC}"

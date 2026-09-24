@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w @terramind/server\" \"npm run dev -w @terramind/web\"",
     "build": "npm run build --workspaces",
-    "backend": "npm run start -w @terramind/server",
+    "backend": "npx tsx apps/server/src/server.ts",
     "frontend": "npm run build -w @terramind/web",
-    "start": "npm run backend"
+    "start": "npx tsx apps/server/src/server.ts"
   },
   "dependencies": {
     "tsx": "^4.19.2"
