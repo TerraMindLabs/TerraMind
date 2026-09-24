@@ -141,6 +141,12 @@ const AGENT_CARDS: Record<string, SuggestionCard[]> = {
 function formatModelName(modelName: string): string {
   if (!modelName) return '';
   return modelName
+    .replace('gemini-3.6-flash', 'Gemini 3.6 Flash')
+    .replace('gemini-3-flash-preview', 'Gemini 3 Flash (Preview)')
+    .replace('gemini-3.5-flash-lite', 'Gemini 3.5 Flash Lite')
+    .replace('gemini-3.5-flash', 'Gemini 3.5 Flash')
+    .replace('gemini-3.1-pro-preview', 'Gemini 3.1 Pro (Preview)')
+    .replace('gemini-3.1-flash-lite-preview', 'Gemini 3.1 Flash Lite (Preview)')
     .replace('gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite')
     .replace('gemini-2.5-flash', 'Gemini 2.5 Flash')
     .replace('gemini-2.5-pro', 'Gemini 2.5 Pro')

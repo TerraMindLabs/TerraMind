@@ -248,20 +248,17 @@ export default async function chatRoutes(fastify: FastifyInstance) {
               })
               .map((m: any) => m.name.replace(/^models\//, ''));
 
-            // Sort prioritizing latest flash, pro, and stable versions
+            // Sort prioritizing latest working stable models (gemini-3.6-flash, gemini-3-flash-preview)
             fetched.sort((a: string, b: string) => {
               const score = (name: string) => {
-                if (name === 'gemini-2.5-flash') return 100;
-                if (name === 'gemini-2.5-pro') return 95;
-                if (name === 'gemini-2.0-flash') return 90;
-                if (name === 'gemini-flash-latest') return 88;
-                if (name === 'gemini-1.5-pro') return 85;
-                if (name === 'gemini-1.5-flash') return 80;
-                if (name === 'gemini-2.5-flash-lite') return 75;
-                if (name === 'gemini-flash-lite-latest') return 70;
-                if (name.includes('2.5')) return 65;
-                if (name.includes('2.0')) return 60;
-                if (name.includes('1.5')) return 55;
+                if (name === 'gemini-3.6-flash') return 100;
+                if (name === 'gemini-3-flash-preview') return 95;
+                if (name === 'gemini-flash-latest') return 90;
+                if (name === 'gemini-3.5-flash') return 80;
+                if (name === 'gemini-3.5-flash-lite') return 75;
+                if (name === 'gemini-3.1-pro-preview') return 70;
+                if (name.includes('3.6')) return 85;
+                if (name.includes('flash')) return 50;
                 return 10;
               };
               return score(b) - score(a);
@@ -277,7 +274,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
       // If fetching fails or times out, but geminiKey was configured, supply verified default models
       if (!cloudModels.some((m) => m.startsWith('gemini'))) {
-        cloudModels.push('gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro');
+        cloudModels.push('gemini-3.6-flash', 'gemini-3-flash-preview');
       }
     }
 
@@ -522,11 +519,12 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     let activeProvider = provider;
 
     // CASE 1: Local Ollama
+    // CASE 1: Local Ollama
     if (activeProvider === 'ollama') {
       let ollamaActive = false;
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1500);
+        const timeout = setTimeout(() => controller.abort(), 2000);
         const check = await fetch('http://127.0.0.1:11434/api/version', { signal: controller.signal });
         clearTimeout(timeout);
         ollamaActive = check.ok;
@@ -535,25 +533,49 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
 
       if (!ollamaActive) {
-        if (hasAnyCloudKey) {
-          // Auto-fallback to configured cloud AI if Ollama is offline
-          activeProvider = 'cloud';
-        } else {
-          streamToken(
-            `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
-              `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
-              `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
-              `Or add an API key in **Settings > API Keys** (gear icon) to use Cloud AI.`
-          );
-          reply.raw.write(`data: [DONE]\n\n`);
-          reply.raw.end();
-          return;
-        }
+        // Attempt to start local Ollama daemon
+        try {
+          const { startOllamaDaemon, isOllamaRunning } = await import('../services/ollama');
+          await startOllamaDaemon();
+          ollamaActive = await isOllamaRunning();
+        } catch {}
       }
-    }
 
-    if (activeProvider === 'ollama') {
-      const targetModel = model || 'qwen2.5-coder:7b';
+      if (!ollamaActive) {
+        streamToken(
+          `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
+            `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
+            `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
+            `Once started, send your message again. Or switch to **Cloud AI** in the model menu if you prefer.`
+        );
+        reply.raw.write(`data: [DONE]\n\n`);
+        reply.raw.end();
+        return;
+      }
+
+      // Automatically resolve target model to match installed local models
+      let targetModel = model;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const tagsRes = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
+        clearTimeout(timeout);
+        if (tagsRes.ok) {
+          const tagsData = (await tagsRes.json()) as any;
+          const available = (tagsData.models || []).map((m: any) => m.name);
+          if (available.length > 0) {
+            if (!targetModel || !available.includes(targetModel)) {
+              targetModel = available[0];
+            }
+          }
+        }
+      } catch (e) {
+        fastify.log.warn({ err: e }, 'Could not query Ollama tags for model fallback');
+      }
+
+      if (!targetModel) {
+        targetModel = 'qwen2.5-coder:1.5b';
+      }
 
       try {
         const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
@@ -604,10 +626,10 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         (targetModel.startsWith('gpt') && !openaiKey) ||
         (targetModel.startsWith('claude') && !anthropicKey)
       ) {
-        if (openaiKey) targetModel = 'gpt-4o';
-        else if (geminiKey) targetModel = 'gemini-2.5-flash';
+        if (geminiKey) targetModel = 'gemini-3.6-flash';
+        else if (openaiKey) targetModel = 'gpt-4o';
         else if (anthropicKey) targetModel = 'claude-3-5-sonnet-20241022';
-        else targetModel = 'gpt-4o';
+        else targetModel = 'gemini-3.6-flash';
       }
 
       const isGemini = targetModel.startsWith('gemini');
@@ -627,47 +649,70 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           `> 🔑 **Anthropic API Key Missing**\n\nPlease add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
         );
       } else if (isGemini && geminiKey) {
-        // Stream Gemini Generate Content
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-          const contents = messages.map((m) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-          }));
+        // Stream Gemini Generate Content with automatic fallback for 503 / 429 / 404
+        const streamGemini = async (modelToUse: string, isFallback = false): Promise<boolean> => {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+            const contents = messages.map((m) => ({
+              role: m.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: m.content }]
+            }));
 
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents
-            })
-          });
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents
+              })
+            });
 
-          if (!res.ok) {
-            const err = await res.text();
-            streamToken(`> ⚠️ **Gemini Error (${res.status}):** ${err}`);
-          } else if (res.body) {
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
-              for (const line of lines) {
-                const raw = line.replace('data: ', '').trim();
-                try {
-                  const data = JSON.parse(raw);
-                  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (text) streamToken(text);
-                } catch {}
+            if (!res.ok) {
+              const err = await res.text();
+              // If model has temporary high demand (503), rate-limited (429), or deprecated (404), auto-switch to stable gemini-3.6-flash
+              if (!isFallback && (res.status === 503 || res.status === 429 || res.status === 404) && modelToUse !== 'gemini-3.6-flash') {
+                streamToken(
+                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${res.status} High Demand). Automatically switching to stable \`gemini-3.6-flash\`...*\n\n`
+                );
+                return await streamGemini('gemini-3.6-flash', true);
               }
+              streamToken(`> ⚠️ **Gemini Error (${res.status}):** ${err}`);
+              return false;
             }
+
+            if (res.body) {
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
+                for (const line of lines) {
+                  const raw = line.replace('data: ', '').trim();
+                  try {
+                    const data = JSON.parse(raw);
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) streamToken(text);
+                  } catch {}
+                }
+              }
+              return true;
+            }
+            return false;
+          } catch (e: any) {
+            if (!isFallback && modelToUse !== 'gemini-3.6-flash') {
+              streamToken(
+                `> ℹ️ *Connection to \`${modelToUse}\` failed. Automatically retrying with \`gemini-3.6-flash\`...*\n\n`
+              );
+              return await streamGemini('gemini-3.6-flash', true);
+            }
+            streamToken(`> ⚠️ **Gemini request failed:** ${e.message}`);
+            return false;
           }
-        } catch (e: any) {
-          streamToken(`> ⚠️ **Gemini request failed:** ${e.message}`);
-        }
+        };
+
+        await streamGemini(targetModel);
       } else if (isOpenAI && openaiKey) {
         // Stream OpenAI Chat Completion
         try {
