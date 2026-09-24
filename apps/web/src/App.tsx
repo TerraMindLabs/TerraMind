@@ -211,7 +211,7 @@ function App() {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'keys' | 'ollama' | 'general'>('keys');
+  const [settingsTab, setSettingsTab] = useState<'keys' | 'ollama'>('keys');
   const [authOpen, setAuthOpen] = useState(false);
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);

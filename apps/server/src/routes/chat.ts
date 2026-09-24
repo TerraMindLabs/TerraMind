@@ -374,7 +374,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // 6b. Pull a new Ollama model
+  // 6b. Pull a new Ollama model with real-time SSE streaming progress
   fastify.post('/api/models/ollama/pull', async (request, reply) => {
     try {
       const { model } = (request.body as any) || {};
@@ -383,27 +383,81 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
       const modelName = String(model).trim();
       
+      reply.raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+      reply.raw.setHeader('Connection', 'keep-alive');
+
+      const sendEvent = (data: any) => {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      sendEvent({ status: `Connecting to Ollama library for '${modelName}'...`, percent: 0 });
+
       const controller = new AbortController();
-      // Allow up to 10 minutes for large downloads
-      const timeout = setTimeout(() => controller.abort(), 600000);
+      // Allow up to 30 minutes for large downloads
+      const timeout = setTimeout(() => controller.abort(), 1800000);
       
       const res = await fetch('http://127.0.0.1:11434/api/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: modelName, stream: false }),
+        body: JSON.stringify({ name: modelName, stream: true }),
         signal: controller.signal
       });
       clearTimeout(timeout);
 
-      if (res.ok) {
-        return { success: true, message: `Model ${modelName} downloaded successfully` };
-      } else {
+      if (!res.ok) {
         const errorText = await res.text();
-        return reply.status(res.status).send({ error: errorText || 'Failed to pull model from Ollama' });
+        sendEvent({ error: errorText || `Ollama returned error (${res.status})` });
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+        return;
       }
+
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (parsed.error) {
+                sendEvent({ error: parsed.error });
+                continue;
+              }
+              let percent = 0;
+              if (parsed.total && parsed.completed) {
+                percent = Math.min(100, Math.round((parsed.completed / parsed.total) * 100));
+              }
+              sendEvent({
+                status: parsed.status || 'Downloading...',
+                total: parsed.total || 0,
+                completed: parsed.completed || 0,
+                percent,
+                digest: parsed.digest || ''
+              });
+            } catch {}
+          }
+        }
+      }
+
+      sendEvent({ status: `Successfully downloaded '${modelName}'!`, percent: 100, success: true });
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
     } catch (err: any) {
       fastify.log.error(err);
-      return reply.status(500).send({ error: err.message || 'Error pulling Ollama model' });
+      reply.raw.write(`data: ${JSON.stringify({ error: err.message || 'Error pulling Ollama model' })}\n\n`);
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
     }
   });
 

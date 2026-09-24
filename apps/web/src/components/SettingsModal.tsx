@@ -9,7 +9,14 @@ interface SettingsModalProps {
   initialTab?: TabType;
 }
 
-type TabType = 'keys' | 'ollama' | 'general';
+type TabType = 'keys' | 'ollama';
+
+interface PullProgressState {
+  percent: number;
+  status: string;
+  completedMb?: number;
+  totalMb?: number;
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -19,7 +26,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   toggleTheme,
   initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>(initialTab || 'keys');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab && initialTab !== 'general' as any ? initialTab : 'keys');
 
   // API Keys state
   const [openaiKey, setOpenaiKey] = useState('');
@@ -38,6 +45,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newModelInput, setNewModelInput] = useState('');
   const [pulling, setPulling] = useState(false);
   const [pullStatus, setPullStatus] = useState<string | null>(null);
+  const [pullProgress, setPullProgress] = useState<PullProgressState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Load Settings & Models on open
@@ -69,12 +77,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      if (initialTab) {
+      if (initialTab && (initialTab as any) !== 'general') {
         setActiveTab(initialTab);
       }
       loadData();
       setActionError(null);
       setPullStatus(null);
+      setPullProgress(null);
     }
   }, [isOpen, initialTab]);
 
@@ -134,13 +143,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // Handle Pull Ollama Model
+  // Handle Pull Ollama Model with real-time SSE progress
   const handlePullModel = async (modelToPull?: string) => {
     const targetModel = (modelToPull || newModelInput).trim();
     if (!targetModel) return;
 
     setPulling(true);
-    setPullStatus(`Pulling '${targetModel}' from Ollama library... this may take 1-3 minutes.`);
+    setPullProgress({
+      percent: 0,
+      status: `Connecting to Ollama library for '${targetModel}'...`
+    });
+    setPullStatus(null);
     setActionError(null);
 
     try {
@@ -150,20 +163,82 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         body: JSON.stringify({ model: targetModel })
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setPullStatus(`✓ Model '${targetModel}' downloaded and ready!`);
-        setNewModelInput('');
-        loadData();
-        if (onSave) onSave();
-        setTimeout(() => setPullStatus(null), 4000);
-      } else {
-        setActionError(data.error || 'Failed to pull model.');
-        setPullStatus(null);
+      if (!res.ok) {
+        let errMessage = `Error starting download (${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData.error) errMessage = errData.error;
+        } catch {}
+        setActionError(errMessage);
+        setPulling(false);
+        setPullProgress(null);
+        return;
+      }
+
+      if (!res.body) {
+        throw new Error('Streaming response not available.');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let isDone = false;
+
+      while (!isDone) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.slice(6).trim();
+            if (dataStr === '[DONE]') {
+              isDone = true;
+              break;
+            }
+            try {
+              const eventData = JSON.parse(dataStr);
+              if (eventData.error) {
+                setActionError(eventData.error);
+                isDone = true;
+                break;
+              }
+
+              const percent = typeof eventData.percent === 'number' ? eventData.percent : 0;
+              const completedMb = eventData.completed ? +(eventData.completed / (1024 * 1024)).toFixed(1) : undefined;
+              const totalMb = eventData.total ? +(eventData.total / (1024 * 1024)).toFixed(1) : undefined;
+
+              setPullProgress({
+                percent,
+                status: eventData.status || 'Downloading...',
+                completedMb,
+                totalMb
+              });
+
+              if (eventData.success) {
+                setPullStatus(`✓ Successfully downloaded '${targetModel}'!`);
+                setNewModelInput('');
+                loadData();
+                if (onSave) onSave();
+                setTimeout(() => {
+                  setPullStatus(null);
+                  setPullProgress(null);
+                }, 4000);
+              }
+            } catch (err) {
+              console.warn('Could not parse SSE stream chunk:', dataStr, err);
+            }
+          }
+        }
       }
     } catch (e: any) {
       setActionError(e.message || 'Failed to connect to Ollama.');
-      setPullStatus(null);
+      setPullProgress(null);
     } finally {
       setPulling(false);
     }
@@ -199,18 +274,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '620px', padding: '20px' }}
       >
-        {/* Header */}
-        <div className="modal-header" style={{ marginBottom: '12px' }}>
+        {/* Header with Direct Theme Toggle */}
+        <div className="modal-header" style={{ marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '18px' }}>⚙️</span>
             <strong style={{ fontSize: '16px', color: 'var(--text)' }}>TerraMind Settings</strong>
           </div>
-          <button className="close-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Direct Theme Toggle Option */}
+            {toggleTheme && (
+              <button
+                type="button"
+                onClick={toggleTheme}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 11px',
+                  borderRadius: '16px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--hover)',
+                  color: 'var(--text)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease'
+                }}
+                title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+              >
+                <span>{theme === 'light' ? '🌙' : '☀️'}</span>
+                <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
+              </button>
+            )}
+
+            <button className="close-btn" onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+          </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation: Provider API Keys & Ollama Local Models */}
         <div
           style={{
             display: 'flex',
@@ -254,24 +358,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }}
           >
             🦙 Ollama Local Models
-          </button>
-
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === 'general' ? 'active' : ''}`}
-            onClick={() => setActiveTab('general')}
-            style={{
-              padding: '6px 14px',
-              fontSize: '13px',
-              fontWeight: 600,
-              borderRadius: '6px',
-              border: 'none',
-              background: activeTab === 'general' ? 'var(--hover)' : 'transparent',
-              color: activeTab === 'general' ? 'var(--text)' : 'var(--muted)',
-              cursor: 'pointer'
-            }}
-          >
-            🎨 Appearance
           </button>
         </div>
 
@@ -495,14 +581,97 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
-            {pullStatus && (
+            {/* Download Loading Progress Bar */}
+            {pullProgress && (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  background: 'var(--hover)',
+                  border: '1px solid var(--border)',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    {pulling && <span className="spinner" style={{ width: '13px', height: '13px', flexShrink: 0 }} />}
+                    <span
+                      style={{
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        color: 'var(--text)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {pullProgress.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    {pullProgress.totalMb && pullProgress.completedMb ? (
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                        {pullProgress.completedMb >= 1024
+                          ? `${(pullProgress.completedMb / 1024).toFixed(2)} GB`
+                          : `${pullProgress.completedMb} MB`}{' '}
+                        /{' '}
+                        {pullProgress.totalMb >= 1024
+                          ? `${(pullProgress.totalMb / 1024).toFixed(2)} GB`
+                          : `${pullProgress.totalMb} MB`}
+                      </span>
+                    ) : null}
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: '#3b82f6',
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        padding: '1px 6px',
+                        borderRadius: '4px'
+                      }}
+                    >
+                      {pullProgress.percent}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Animated / styled progress bar */}
+                <div
+                  style={{
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '4px',
+                    background: 'var(--border)',
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.max(2, Math.min(100, pullProgress.percent))}%`,
+                      borderRadius: '4px',
+                      background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                      transition: 'width 0.25s ease',
+                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.4)'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Success message banner */}
+            {pullStatus && !pullProgress && (
               <div
                 style={{
                   padding: '8px 12px',
                   borderRadius: '6px',
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                  color: '#3b82f6',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  color: '#10b981',
                   fontSize: '12.5px',
                   marginBottom: '14px',
                   display: 'flex',
@@ -510,7 +679,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   gap: '6px'
                 }}
               >
-                {pulling && <span className="spinner" style={{ width: '12px', height: '12px' }} />}
                 <span>{pullStatus}</span>
               </div>
             )}
@@ -648,84 +816,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: GENERAL & APPEARANCE */}
-        {activeTab === 'general' && (
-          <div>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '13.5px', marginBottom: '6px', color: 'var(--text)' }}>
-                Theme & Interface Appearance
-              </label>
-              <p style={{ fontSize: '12.5px', color: 'var(--muted)', marginBottom: '14px', lineHeight: 1.5 }}>
-                Select your preferred interface color mode. TerraMind defaults to a clean, minimal slate palette.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                {/* Light Mode Card */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (theme !== 'light' && toggleTheme) toggleTheme();
-                  }}
-                  style={{
-                    padding: '16px',
-                    borderRadius: '10px',
-                    border: `2px solid ${theme === 'light' ? 'var(--blue, #3b82f6)' : 'var(--border)'}`,
-                    background: '#ffffff',
-                    color: '#0f172a',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: theme === 'light' ? '0 0 0 1px var(--blue, #3b82f6)' : 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <span style={{ fontSize: '24px' }}>☀️</span>
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>Light Mode</span>
-                  {theme === 'light' && (
-                    <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>Active</span>
-                  )}
-                </button>
-
-                {/* Dark Mode Card */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (theme !== 'dark' && toggleTheme) toggleTheme();
-                  }}
-                  style={{
-                    padding: '16px',
-                    borderRadius: '10px',
-                    border: `2px solid ${theme === 'dark' ? 'var(--blue, #3b82f6)' : 'var(--border)'}`,
-                    background: '#090d16',
-                    color: '#f8fafc',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: theme === 'dark' ? '0 0 0 1px var(--blue, #3b82f6)' : 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <span style={{ fontSize: '24px' }}>🌙</span>
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>Dark Mode</span>
-                  {theme === 'dark' && (
-                    <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 600 }}>Active</span>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="submit-btn" onClick={onClose} style={{ width: 'auto', marginTop: 0 }}>
-                Done
-              </button>
             </div>
           </div>
         )}
