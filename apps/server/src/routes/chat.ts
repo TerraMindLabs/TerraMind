@@ -10,10 +10,15 @@ import {
   updateConversationTitle,
   getAllSettings,
   getProjects,
+  getProjectById,
   createProject,
-  deleteProject
+  deleteProject,
+  getProjectMembers,
+  addProjectMember,
+  removeProjectMember
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
+import { listWorkspaceFiles } from '../services/terraform';
 
 interface ChatRequestBody {
   conversationId?: string;
@@ -63,6 +68,44 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     } catch (err: any) {
       fastify.log.error(err);
       return reply.status(500).send({ error: 'Failed to delete project' });
+    }
+  });
+
+  // 1b. Project Collaboration / Workspace Sharing APIs
+  fastify.get('/api/projects/:id/members', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const members = getProjectMembers(id);
+      return { members };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch project members' });
+    }
+  });
+
+  fastify.post('/api/projects/:id/members', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { username, role } = (request.body as any) || {};
+      if (!username) {
+        return reply.status(400).send({ error: 'Username is required to share project' });
+      }
+      const member = addProjectMember(id, username.trim(), role || 'editor');
+      return { success: true, member };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to add project member' });
+    }
+  });
+
+  fastify.delete('/api/projects/:id/members/:memberId', async (request, reply) => {
+    try {
+      const { id, memberId } = request.params as { id: string; memberId: string };
+      removeProjectMember(id, memberId);
+      return { success: true };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to remove project member' });
     }
   });
 
@@ -142,20 +185,130 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       ollamaOnline = false;
     }
 
-    const cloudModels = [
-      'gemini-2.5-flash',
-      'gemini-1.5-pro',
-      'gpt-4o',
-      'gpt-4o-mini',
-      'claude-3-5-sonnet-20241022'
-    ];
-
     const settings = getAllSettings();
+    const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
+    const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
+    const anthropicKey = settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY;
+
     const hasKeys = {
-      gemini: Boolean(settings['gemini_api_key'] || process.env.GEMINI_API_KEY),
-      openai: Boolean(settings['openai_api_key'] || process.env.OPENAI_API_KEY),
-      anthropic: Boolean(settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY)
+      gemini: Boolean(geminiKey),
+      openai: Boolean(openaiKey),
+      anthropic: Boolean(anthropicKey)
     };
+
+    const cloudModels: string[] = [];
+
+    // Fetch models via provider APIs only if keys are provided
+    if (geminiKey) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          if (Array.isArray(data.models)) {
+            const fetched = data.models
+              .filter((m: any) =>
+                m.name &&
+                Array.isArray(m.supportedGenerationMethods) &&
+                m.supportedGenerationMethods.includes('generateContent') &&
+                !m.name.includes('embedding') &&
+                !m.name.includes('aqa') &&
+                !m.name.includes('imagen')
+              )
+              .map((m: any) => m.name.replace(/^models\//, ''));
+
+            // Sort prioritizing latest flash and pro
+            fetched.sort((a: string, b: string) => {
+              const score = (name: string) => {
+                if (name.includes('2.5-flash')) return 100;
+                if (name.includes('2.0-flash')) return 90;
+                if (name.includes('1.5-flash')) return 80;
+                if (name.includes('1.5-pro')) return 70;
+                return 10;
+              };
+              return score(b) - score(a);
+            });
+
+            if (fetched.length > 0) {
+              cloudModels.push(...fetched.slice(0, 10));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch dynamic Gemini models:', err);
+      }
+      // If fetching fails or times out, but geminiKey was configured, supply default models
+      if (!cloudModels.some((m) => m.startsWith('gemini'))) {
+        cloudModels.push('gemini-2.5-flash', 'gemini-1.5-pro');
+      }
+    }
+
+    if (openaiKey) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('https://api.openai.com/v1/models', {
+          headers: { Authorization: `Bearer ${openaiKey}` },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          if (Array.isArray(data.data)) {
+            const fetched = data.data
+              .map((m: any) => m.id)
+              .filter(
+                (id: string) =>
+                  (id.startsWith('gpt-4') || id.startsWith('o1') || id.startsWith('o3')) &&
+                  !id.includes('realtime') &&
+                  !id.includes('audio')
+              )
+              .sort();
+            if (fetched.length > 0) {
+              cloudModels.push(...fetched.slice(0, 6));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch dynamic OpenAI models:', err);
+      }
+      if (!cloudModels.some((m) => m.startsWith('gpt'))) {
+        cloudModels.push('gpt-4o', 'gpt-4o-mini');
+      }
+    }
+
+    if (anthropicKey) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('https://api.anthropic.com/v1/models', {
+          headers: {
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01'
+          },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          if (Array.isArray(data.data)) {
+            const fetched = data.data.map((m: any) => m.id);
+            if (fetched.length > 0) {
+              cloudModels.push(...fetched.slice(0, 5));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch dynamic Anthropic models:', err);
+      }
+      if (!cloudModels.some((m) => m.startsWith('claude'))) {
+        cloudModels.push('claude-3-5-sonnet-20241022');
+      }
+    }
 
     return {
       ollamaOnline,
@@ -165,6 +318,65 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     };
   });
 
+  // 6b. Pull a new Ollama model
+  fastify.post('/api/models/ollama/pull', async (request, reply) => {
+    try {
+      const { model } = (request.body as any) || {};
+      if (!model || !String(model).trim()) {
+        return reply.status(400).send({ error: 'Model name is required' });
+      }
+      const modelName = String(model).trim();
+      
+      const controller = new AbortController();
+      // Allow up to 10 minutes for large downloads
+      const timeout = setTimeout(() => controller.abort(), 600000);
+      
+      const res = await fetch('http://127.0.0.1:11434/api/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName, stream: false }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        return { success: true, message: `Model ${modelName} downloaded successfully` };
+      } else {
+        const errorText = await res.text();
+        return reply.status(res.status).send({ error: errorText || 'Failed to pull model from Ollama' });
+      }
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: err.message || 'Error pulling Ollama model' });
+    }
+  });
+
+  // 6c. Delete an existing Ollama model
+  fastify.delete('/api/models/ollama/:model', async (request, reply) => {
+    try {
+      const { model } = request.params as { model: string };
+      if (!model) {
+        return reply.status(400).send({ error: 'Model name is required' });
+      }
+      const decoded = decodeURIComponent(model).trim();
+      const res = await fetch('http://127.0.0.1:11434/api/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: decoded })
+      });
+
+      if (res.ok) {
+        return { success: true, message: `Model ${decoded} removed successfully` };
+      } else {
+        const errorText = await res.text();
+        return reply.status(res.status).send({ error: errorText || 'Failed to delete model from Ollama' });
+      }
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: err.message || 'Error deleting Ollama model' });
+    }
+  });
+
   // 7. SSE Streaming Chat Endpoint
   fastify.post('/api/chat', async (request, reply) => {
     const userId =
@@ -172,19 +384,28 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       (request.body as any)?.userId ||
       '';
 
+    const reqBody = (request.body as any) || {};
     const {
       conversationId: incomingConvoId,
       projectId = '',
-      messages,
+      messages: rawMessages,
+      message: singleMessage,
       provider = 'ollama',
       model = '',
       agentId = 'agent_tf-devops-expert'
-    } = request.body as ChatRequestBody;
+    } = reqBody;
 
     // Establish SSE stream
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
+
+    // Defensively normalize messages array
+    const messages: Array<{ role: string; content: string }> = Array.isArray(rawMessages)
+      ? rawMessages
+      : singleMessage
+      ? [{ role: 'user', content: String(singleMessage) }]
+      : [];
 
     // Ensure conversation exists
     let conversationId = incomingConvoId;
@@ -214,11 +435,35 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}\n\n`);
     };
 
+    let projectContext: any = undefined;
+    if (projectId) {
+      try {
+        const proj = getProjectById(projectId);
+        const files = await listWorkspaceFiles();
+        if (proj) {
+          projectContext = {
+            name: proj.name,
+            description: proj.description,
+            files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
+          };
+        }
+      } catch (e) {
+        fastify.log.warn({ err: e }, 'Could not load project workspace files for agent context');
+      }
+    }
+
     const settings = getAllSettings();
-    const systemPrompt = buildSystemPrompt(agentId);
+    const systemPrompt = buildSystemPrompt(agentId, projectContext);
+
+    const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
+    const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
+    const anthropicKey = settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY;
+    const hasAnyCloudKey = Boolean(geminiKey || openaiKey || anthropicKey);
+
+    let activeProvider = provider;
 
     // CASE 1: Local Ollama
-    if (provider === 'ollama') {
+    if (activeProvider === 'ollama') {
       let ollamaActive = false;
       try {
         const controller = new AbortController();
@@ -231,17 +476,24 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
 
       if (!ollamaActive) {
-        streamToken(
-          `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
-            `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
-            `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
-            `Or switch to **Cloud AI** under the prompt box if you have configured an API key.`
-        );
-        reply.raw.write(`data: [DONE]\n\n`);
-        reply.raw.end();
-        return;
+        if (hasAnyCloudKey) {
+          // Auto-fallback to configured cloud AI if Ollama is offline
+          activeProvider = 'cloud';
+        } else {
+          streamToken(
+            `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
+              `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
+              `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
+              `Or add an API key in **Settings > API Keys** (gear icon) to use Cloud AI.`
+          );
+          reply.raw.write(`data: [DONE]\n\n`);
+          reply.raw.end();
+          return;
+        }
       }
+    }
 
+    if (activeProvider === 'ollama') {
       const targetModel = model || 'qwen2.5-coder:7b';
 
       try {
@@ -284,15 +536,24 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
 
     // CASE 2: Cloud AI Providers (Gemini, OpenAI, Anthropic)
-    else if (provider === 'cloud') {
-      const targetModel = model || 'gemini-2.5-flash';
-      const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
-      const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
-      const anthropicKey = settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY;
+    if (activeProvider === 'cloud') {
+      // Intelligently select target model matching available keys
+      let targetModel = model;
+      if (
+        !targetModel ||
+        (targetModel.startsWith('gemini') && !geminiKey) ||
+        (targetModel.startsWith('gpt') && !openaiKey) ||
+        (targetModel.startsWith('claude') && !anthropicKey)
+      ) {
+        if (openaiKey) targetModel = 'gpt-4o';
+        else if (geminiKey) targetModel = 'gemini-2.5-flash';
+        else if (anthropicKey) targetModel = 'claude-3-5-sonnet-20241022';
+        else targetModel = 'gpt-4o';
+      }
 
       const isGemini = targetModel.startsWith('gemini');
       const isAnthropic = targetModel.startsWith('claude');
-      const isOpenAI = targetModel.startsWith('gpt');
+      const isOpenAI = targetModel.startsWith('gpt') || targetModel.startsWith('o1') || targetModel.startsWith('o3');
 
       if (isGemini && !geminiKey) {
         streamToken(
@@ -366,15 +627,22 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
           if (!res.ok) {
             const err = await res.text();
-            streamToken(`> ⚠️ **OpenAI Error (${res.status}):** ${err}`);
+            let errMsg = err;
+            try {
+              const parsed = JSON.parse(err);
+              if (parsed.error?.message) errMsg = parsed.error.message;
+            } catch {}
+            streamToken(`> ⚠️ **OpenAI Error (${res.status}):**\n\n${errMsg}\n\nPlease check or update your OpenAI API key in **Settings > API Keys**.`);
           } else if (res.body) {
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
+            let chunkBuffer = '';
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
+              chunkBuffer += decoder.decode(value, { stream: true });
+              const lines = chunkBuffer.split('\n');
+              chunkBuffer = lines.pop() || '';
               for (const line of lines) {
                 const raw = line.replace('data: ', '').trim();
                 if (raw === '[DONE]') break;
@@ -413,15 +681,22 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
           if (!res.ok) {
             const err = await res.text();
-            streamToken(`> ⚠️ **Anthropic Error (${res.status}):** ${err}`);
+            let errMsg = err;
+            try {
+              const parsed = JSON.parse(err);
+              if (parsed.error?.message) errMsg = parsed.error.message;
+            } catch {}
+            streamToken(`> ⚠️ **Anthropic Error (${res.status}):**\n\n${errMsg}\n\nPlease check or update your Anthropic API key in **Settings > API Keys**.`);
           } else if (res.body) {
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
+            let chunkBuffer = '';
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
+              chunkBuffer += decoder.decode(value, { stream: true });
+              const lines = chunkBuffer.split('\n');
+              chunkBuffer = lines.pop() || '';
               for (const line of lines) {
                 const raw = line.replace('data: ', '').trim();
                 try {

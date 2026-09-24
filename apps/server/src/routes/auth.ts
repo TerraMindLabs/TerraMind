@@ -126,6 +126,16 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
     return { success: true };
   });
+
+  // Delete a specific API key
+  fastify.delete('/api/settings/keys/:provider', async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    const p = String(provider).toLowerCase();
+    if (p === 'openai') setSetting('openai_api_key', '');
+    else if (p === 'gemini') setSetting('gemini_api_key', '');
+    else if (p === 'anthropic') setSetting('anthropic_api_key', '');
+    return { success: true };
+  });
 }
 
 function maskKey(key: string): string {

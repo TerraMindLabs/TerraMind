@@ -1,12 +1,13 @@
 import { MongoClient, Db } from 'mongodb';
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/TerraMind';
+const MONGO_URI = process.env.MONGO_URI || '';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let isConnected = false;
 
 export async function initMongo(): Promise<boolean> {
+  if (!MONGO_URI) return false;
   if (isConnected && db) return true;
   try {
     client = new MongoClient(MONGO_URI, {

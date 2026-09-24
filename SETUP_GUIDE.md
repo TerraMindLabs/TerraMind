@@ -88,18 +88,11 @@ Specify where you want TerraMind to live:
 
 ---
 
-### 2. Dependency Installation Mode
-Choose how application dependencies should be resolved:
-
-```text
-Dependency Installation Method:
-[1] Fast Install - Extract pre-bundled dependencies (~2 mins) [Default]
-[2] Clean Install (Recommended) - Build fresh dependencies from source via 'npm install' (Takes 30+ mins)
-Enter choice (1 or 2) [Default: 1]:
-```
-
-* **Option 1: Fast Install [Default]**: Downloads a pre-packaged, verified dependency archive from Google Drive and unpacks it directly. Perfect for fast testing and getting started in under 3 minutes.
-* **Option 2: Clean Install (Recommended)**: Fetches and compiles all npm packages freshly from npm registries. **Recommended for production and development environments**, ensuring 100% native compatibility with your specific OS and Node.js version. *(Note: Takes 30+ minutes depending on internet connection and hardware)*.
+### 2. Fast Lightweight Installation
+TerraMind is built as an ultra-fast, modern TypeScript monorepo with an embedded SQLite WAL database:
+* **Zero External DB Setup**: No MongoDB or external service dependencies to configure.
+* **Streamlined Workspaces**: Dependencies install cleanly via `npm install` across server and client in under a minute.
+* **Instant Production Build**: The Vite React frontend compiles in seconds into `apps/web/dist`, served directly by the Fastify backend on port 3080.
 
 ---
 

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { TERRAMIND_AGENTS } from './AgentSelector';
+import { TERRAMIND_AGENTS, getAgentIcon } from './AgentSelector';
 
 export interface Project {
   id: string;
   name: string;
   description: string;
   icon: string;
+  is_shared?: boolean;
+  member_role?: string;
+  owner_name?: string;
 }
 
 export interface Conversation {
@@ -38,6 +41,8 @@ interface SidebarProps {
   selectedProjectId: string;
   onSelectProject: (id: string) => void;
   onCreateProject: (name: string, description: string, icon: string) => void;
+  onDeleteProject?: (id: string) => void;
+  onOpenShareProject?: (project: Project) => void;
   // Files
   workspaceFiles: WorkspaceFile[];
   onSelectFile?: (filename: string) => void;
@@ -46,7 +51,8 @@ interface SidebarProps {
   currentUser?: { username: string } | null;
   onOpenAuth: () => void;
   onLogout: () => void;
-  toggleTheme: () => void;
+  toggleTheme?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 function groupDate(dateStr: string): string {
@@ -72,13 +78,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedProjectId,
   onSelectProject,
   onCreateProject,
+  onDeleteProject,
+  onOpenShareProject,
   workspaceFiles,
   onSelectFile,
   onOpenSettings,
   currentUser,
   onOpenAuth,
   onLogout,
-  toggleTheme
+  toggleTheme: _toggleTheme,
+  theme = 'light'
 }) => {
   const [search, setSearch] = useState('');
   const [groupByProject, setGroupByProject] = useState(false);
@@ -86,8 +95,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Collapsible section state
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [agentsOpen, setAgentsOpen] = useState(true);
-  const [filesOpen, setFilesOpen] = useState(false);
-  const [chatsOpen, setChatsOpen] = useState(true);
+  const [filesOpen, setFilesOpen] = useState(workspaceFiles.length > 0);
+  const [chatsOpen, setChatsOpen] = useState(conversations.length > 0);
+
+  // Project deletion confirmation state
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   // New Project form state
   const [showNewProjInput, setShowNewProjInput] = useState(false);
@@ -186,7 +198,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {projectsOpen && (
           <div className="section-items">
             {showNewProjInput && (
-              <form onSubmit={handleCreateProjectSubmit} style={{ padding: '4px 4px 6px' }}>
+              <form onSubmit={handleCreateProjectSubmit} style={{ padding: '4px 14px 6px' }}>
                 <input
                   type="text"
                   placeholder="Project name & press Enter..."
@@ -218,18 +230,105 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             ) : (
               projects.map((proj) => (
-                <button
+                <div
                   key={proj.id}
-                  className={`row ${selectedProjectId === proj.id ? 'active' : ''}`}
-                  onClick={() => onSelectProject(proj.id)}
-                  title={proj.description || proj.name}
-                  style={{ fontSize: '13px' }}
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}
                 >
-                  <span>{proj.icon || '📁'}</span>
-                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {proj.name}
-                  </span>
-                </button>
+                  <button
+                    className={`row project-row ${selectedProjectId === proj.id ? 'active' : ''}`}
+                    onClick={() => onSelectProject(proj.id)}
+                    title={proj.description || proj.name}
+                    style={{ fontSize: '13px', paddingRight: '56px' }}
+                  >
+                    <span style={{ fontSize: '14px' }}>{proj.icon || '📁'}</span>
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {proj.name}
+                    </span>
+                    {proj.is_shared && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          color: '#3b82f6',
+                          fontWeight: 600,
+                          marginLeft: '4px'
+                        }}
+                        title={`Shared workspace (owned by ${proj.owner_name || 'team'})`}
+                      >
+                        Shared
+                      </span>
+                    )}
+                  </button>
+
+                  <div style={{ position: 'absolute', right: '6px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    {onOpenShareProject && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenShareProject(proj);
+                        }}
+                        title="Share workspace with collaborators"
+                        style={{
+                          padding: '4px',
+                          borderRadius: '4px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--muted)',
+                          cursor: 'pointer',
+                          display: 'grid',
+                          placeItems: 'center',
+                          opacity: 0.6,
+                          transition: 'opacity 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = '1')}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = '0.6')}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectToDelete(proj);
+                      }}
+                      title="Delete project workspace"
+                      style={{
+                        padding: '4px',
+                        borderRadius: '4px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--muted)',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        opacity: 0.6,
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.opacity = '1';
+                        (e.currentTarget as HTMLElement).style.color = '#ef4444';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.opacity = '0.6';
+                        (e.currentTarget as HTMLElement).style.color = 'var(--muted)';
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -256,39 +355,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`row agent-row ${selectedAgentId === agent.id ? 'active' : ''}`}
                 onClick={() => onSelectAgent(agent.id)}
                 title={agent.description}
-                style={{ fontSize: '13px' }}
               >
                 <img
-                  src={agent.icon}
+                  src={getAgentIcon(agent, theme)}
                   alt={agent.name}
                   style={{
-                    width: '18px',
-                    height: '18px',
+                    width: '22px',
+                    height: '22px',
                     objectFit: 'contain',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     flexShrink: 0
                   }}
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
                   <span
                     style={{
                       fontWeight: selectedAgentId === agent.id ? 600 : 400,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      textOverflow: 'ellipsis',
+                      fontSize: '13px'
                     }}
                   >
                     {agent.name}
                   </span>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--muted)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}
-                  >
+                  <span className="agent-subtitle">
                     {agent.role}
                   </span>
                 </div>
@@ -313,8 +404,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {filesOpen && (
           <div className="section-items">
             {workspaceFiles.length === 0 ? (
-              <div style={{ padding: '6px 8px', fontSize: '12px', color: 'var(--muted)' }}>
-                No .tf files yet. Deploy code to create!
+              <div className="sidebar-empty-state">
+                No workspace files yet
               </div>
             ) : (
               workspaceFiles.map((f) => (
@@ -362,8 +453,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {chatsOpen && (
           <div className="section-items">
             {filteredConversations.length === 0 ? (
-              <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--muted)' }}>
-                {search ? 'No matching chats' : 'No chats yet. Start a conversation!'}
+              <div className="sidebar-empty-state">
+                {search ? 'No matching chats' : 'No chat history yet'}
               </div>
             ) : groupByProject && projects.length > 0 ? (
               projects.map((proj) => {
@@ -373,7 +464,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (projChats.length === 0) return null;
                 return (
                   <React.Fragment key={proj.id}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 8px 2px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 14px 2px' }}>
                       {proj.icon || '📁'} {proj.name}
                     </div>
                     {projChats.map((c) => (
@@ -415,7 +506,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   if (!items || items.length === 0) return null;
                   return (
                     <React.Fragment key={grpName}>
-                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 8px 2px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', padding: '6px 14px 2px' }}>
                         {grpName}
                       </div>
                       {items.map((c) => (
@@ -451,24 +542,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer (.me) */}
       <div className="me">
-        <button className="row" onClick={toggleTheme} id="theme">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-          </svg>
-          Toggle theme
-        </button>
-
-        <button className="row" onClick={onOpenSettings}>
+        <button className="row" onClick={onOpenSettings} id="settings-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-          API Keys & Settings
+          Settings
         </button>
 
         {currentUser ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '4px 6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '4px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
               <span className="av user-av">{currentUser.username[0]?.toUpperCase() || 'U'}</span>
               <span style={{ fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -490,6 +573,79 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
       </div>
+
+      {/* Delete Project Confirmation Modal */}
+      {projectToDelete && (
+        <div className="modal-backdrop" onClick={() => setProjectToDelete(null)} style={{ zIndex: 120 }}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px', padding: '22px' }}>
+            <div className="modal-header" style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <strong style={{ fontSize: '15px', color: 'var(--text)' }}>Delete Project</strong>
+              </div>
+              <button className="close-btn" onClick={() => setProjectToDelete(null)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13.5px', color: 'var(--text)', marginBottom: '12px', lineHeight: 1.5 }}>
+              Are you sure you want to delete this project?
+            </p>
+
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: 'var(--hover)',
+                border: '1px solid var(--border)',
+                marginBottom: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>{projectToDelete.icon || '📁'}</span>
+              <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>{projectToDelete.name}</strong>
+            </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '18px', lineHeight: 1.4 }}>
+              This will permanently delete the project workspace and remove all associated configurations. This action cannot be undone.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                className="cancel-btn"
+                onClick={() => setProjectToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'opacity 0.15s ease'
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = '0.9')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = '1')}
+                onClick={() => {
+                  if (onDeleteProject) onDeleteProject(projectToDelete.id);
+                  setProjectToDelete(null);
+                }}
+              >
+                Delete Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

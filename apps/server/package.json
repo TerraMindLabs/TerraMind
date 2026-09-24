@@ -5,7 +5,8 @@
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "build": "node -e \"console.log('@terramind/server ready')\""
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",
