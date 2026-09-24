@@ -489,26 +489,29 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
   // 7. SSE Streaming Chat Endpoint
   fastify.post('/api/chat', async (request, reply) => {
-    const userId =
-      (request.headers['x-user-id'] as string) ||
-      (request.body as any)?.userId ||
-      '';
+    reply.hijack();
 
-    const reqBody = (request.body as any) || {};
-    const {
-      conversationId: incomingConvoId,
-      projectId = '',
-      messages: rawMessages,
-      message: singleMessage,
-      provider = 'ollama',
-      model = '',
-      agentId = 'agent_tf-devops-expert'
-    } = reqBody;
+    try {
+      const userId =
+        (request.headers['x-user-id'] as string) ||
+        (request.body as any)?.userId ||
+        '';
 
-    // Establish SSE stream
-    reply.raw.setHeader('Content-Type', 'text/event-stream');
-    reply.raw.setHeader('Cache-Control', 'no-cache');
-    reply.raw.setHeader('Connection', 'keep-alive');
+      const reqBody = (request.body as any) || {};
+      const {
+        conversationId: incomingConvoId,
+        projectId = '',
+        messages: rawMessages,
+        message: singleMessage,
+        provider = 'ollama',
+        model = '',
+        agentId = 'agent_tf-devops-expert'
+      } = reqBody;
+
+      // Establish SSE stream
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
 
     // Defensively normalize messages array
     const messages: Array<{ role: string; content: string }> = Array.isArray(rawMessages)
@@ -887,12 +890,29 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Save assistant message to SQLite & MongoDB
-    if (fullAssistantResponse.trim()) {
-      addMessage(randomUUID(), conversationId, 'assistant', fullAssistantResponse, userId);
-    }
+      // Save assistant message to SQLite & MongoDB
+      if (fullAssistantResponse.trim()) {
+        try {
+          addMessage(randomUUID(), conversationId, 'assistant', fullAssistantResponse, userId);
+        } catch (dbErr) {
+          fastify.log.warn({ err: dbErr }, 'Failed to save assistant message');
+        }
+      }
 
-    reply.raw.write(`data: [DONE]\n\n`);
-    reply.raw.end();
+      reply.raw.write(`data: [DONE]\n\n`);
+      reply.raw.end();
+    } catch (err: any) {
+      fastify.log.error({ err }, 'Error in /api/chat stream handler');
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { 'Content-Type': 'application/json' });
+        reply.raw.end(JSON.stringify({ error: err.message || 'Internal Server Error' }));
+      } else {
+        try {
+          reply.raw.write(`data: ${JSON.stringify({ content: `\n\n> ⚠️ **Error:** ${err.message}` })}\n\n`);
+          reply.raw.write(`data: [DONE]\n\n`);
+          reply.raw.end();
+        } catch {}
+      }
+    }
   });
 }

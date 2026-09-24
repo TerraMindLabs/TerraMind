@@ -61,6 +61,29 @@ if (webDistPath) {
   });
 }
 
+// Guard against ERR_HTTP_HEADERS_SENT on SSE streams
+server.setErrorHandler((error, request, reply) => {
+  if (reply.raw.headersSent) {
+    server.log.warn({ err: error }, 'Handled error after headers were already sent to client');
+    try {
+      reply.raw.end();
+    } catch {}
+    return;
+  }
+  reply.status((error as any).statusCode || 500).send({
+    error: error.name || 'Internal Server Error',
+    message: error.message
+  });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[TerraMind] Uncaught Exception:', err.message);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[TerraMind] Unhandled Rejection:', reason?.message || reason);
+});
+
 const start = async () => {
   try {
     console.log('Database initialized in WAL mode');

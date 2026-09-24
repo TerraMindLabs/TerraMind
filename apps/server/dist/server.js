@@ -78830,98 +78830,100 @@ async function chatRoutes(fastify2) {
     }
   });
   fastify2.post("/api/chat", async (request, reply) => {
-    const userId = request.headers["x-user-id"] || request.body?.userId || "";
-    const reqBody = request.body || {};
-    const {
-      conversationId: incomingConvoId,
-      projectId = "",
-      messages: rawMessages,
-      message: singleMessage,
-      provider = "ollama",
-      model = "",
-      agentId = "agent_tf-devops-expert"
-    } = reqBody;
-    reply.raw.setHeader("Content-Type", "text/event-stream");
-    reply.raw.setHeader("Cache-Control", "no-cache");
-    reply.raw.setHeader("Connection", "keep-alive");
-    const messages = Array.isArray(rawMessages) ? rawMessages : singleMessage ? [{ role: "user", content: String(singleMessage) }] : [];
-    let conversationId = incomingConvoId;
-    const latestUserMsg = messages[messages.length - 1];
-    const rawContent = latestUserMsg?.content?.trim() || "Terraform Project";
-    const cleanTitle = rawContent.split("\n")[0].replace(/[`#*]/g, "").trim().slice(0, 40) || "Terraform Chat";
-    if (!conversationId) {
-      conversationId = (0, import_crypto2.randomUUID)();
-      createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
-    } else {
-      const existing = getConversation(conversationId);
-      if (!existing && latestUserMsg) {
+    reply.hijack();
+    try {
+      const userId = request.headers["x-user-id"] || request.body?.userId || "";
+      const reqBody = request.body || {};
+      const {
+        conversationId: incomingConvoId,
+        projectId = "",
+        messages: rawMessages,
+        message: singleMessage,
+        provider = "ollama",
+        model = "",
+        agentId = "agent_tf-devops-expert"
+      } = reqBody;
+      reply.raw.setHeader("Content-Type", "text/event-stream");
+      reply.raw.setHeader("Cache-Control", "no-cache");
+      reply.raw.setHeader("Connection", "keep-alive");
+      const messages = Array.isArray(rawMessages) ? rawMessages : singleMessage ? [{ role: "user", content: String(singleMessage) }] : [];
+      let conversationId = incomingConvoId;
+      const latestUserMsg = messages[messages.length - 1];
+      const rawContent = latestUserMsg?.content?.trim() || "Terraform Project";
+      const cleanTitle = rawContent.split("\n")[0].replace(/[`#*]/g, "").trim().slice(0, 40) || "Terraform Chat";
+      if (!conversationId) {
+        conversationId = (0, import_crypto2.randomUUID)();
         createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
-      }
-    }
-    if (latestUserMsg && latestUserMsg.role === "user") {
-      addMessage((0, import_crypto2.randomUUID)(), conversationId, "user", latestUserMsg.content, userId);
-    }
-    let fullAssistantResponse = "";
-    const streamToken = (token) => {
-      fullAssistantResponse += token;
-      reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}
-
-`);
-    };
-    const sendStatus = (status, phase = "processing") => {
-      reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}
-
-`);
-    };
-    sendStatus("Initializing conversation & agent context...", "init");
-    let projectContext = void 0;
-    if (projectId) {
-      sendStatus("Loading project files & workspace context...", "context");
-      try {
-        const proj = getProjectById(projectId);
-        const files = await listWorkspaceFiles();
-        if (proj) {
-          projectContext = {
-            name: proj.name,
-            description: proj.description,
-            files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
-          };
+      } else {
+        const existing = getConversation(conversationId);
+        if (!existing && latestUserMsg) {
+          createConversation(conversationId, cleanTitle, provider, model, projectId, userId);
         }
-      } catch (e) {
-        fastify2.log.warn({ err: e }, "Could not load project workspace files for agent context");
       }
-    }
-    const settings = getAllSettings();
-    const systemPrompt = buildSystemPrompt(agentId, projectContext);
-    const geminiKey = settings["gemini_api_key"] || process.env.GEMINI_API_KEY;
-    const openaiKey = settings["openai_api_key"] || process.env.OPENAI_API_KEY;
-    const anthropicKey = settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY;
-    const hasAnyCloudKey = Boolean(geminiKey || openaiKey || anthropicKey);
-    let activeProvider = provider;
-    if (activeProvider === "ollama") {
-      sendStatus("Connecting to Ollama daemon (port 11434)...", "connecting");
-      let ollamaActive = false;
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2e3);
-        const check = await fetch("http://127.0.0.1:11434/api/version", { signal: controller.signal });
-        clearTimeout(timeout);
-        ollamaActive = check.ok;
-      } catch {
-        ollamaActive = false;
+      if (latestUserMsg && latestUserMsg.role === "user") {
+        addMessage((0, import_crypto2.randomUUID)(), conversationId, "user", latestUserMsg.content, userId);
       }
-      if (!ollamaActive) {
-        sendStatus("Attempting to launch local Ollama background service...", "starting");
+      let fullAssistantResponse = "";
+      const streamToken = (token) => {
+        fullAssistantResponse += token;
+        reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}
+
+`);
+      };
+      const sendStatus = (status, phase = "processing") => {
+        reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}
+
+`);
+      };
+      sendStatus("Initializing conversation & agent context...", "init");
+      let projectContext = void 0;
+      if (projectId) {
+        sendStatus("Loading project files & workspace context...", "context");
         try {
-          const { startOllamaDaemon: startOllamaDaemon2, isOllamaRunning: isOllamaRunning2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
-          await startOllamaDaemon2();
-          ollamaActive = await isOllamaRunning2();
-        } catch {
+          const proj = getProjectById(projectId);
+          const files = await listWorkspaceFiles();
+          if (proj) {
+            projectContext = {
+              name: proj.name,
+              description: proj.description,
+              files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))
+            };
+          }
+        } catch (e) {
+          fastify2.log.warn({ err: e }, "Could not load project workspace files for agent context");
         }
       }
-      if (!ollamaActive) {
-        streamToken(
-          `> \u26A0\uFE0F **Ollama is offline or unreachable on port 11434.**
+      const settings = getAllSettings();
+      const systemPrompt = buildSystemPrompt(agentId, projectContext);
+      const geminiKey = settings["gemini_api_key"] || process.env.GEMINI_API_KEY;
+      const openaiKey = settings["openai_api_key"] || process.env.OPENAI_API_KEY;
+      const anthropicKey = settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY;
+      const hasAnyCloudKey = Boolean(geminiKey || openaiKey || anthropicKey);
+      let activeProvider = provider;
+      if (activeProvider === "ollama") {
+        sendStatus("Connecting to Ollama daemon (port 11434)...", "connecting");
+        let ollamaActive = false;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2e3);
+          const check = await fetch("http://127.0.0.1:11434/api/version", { signal: controller.signal });
+          clearTimeout(timeout);
+          ollamaActive = check.ok;
+        } catch {
+          ollamaActive = false;
+        }
+        if (!ollamaActive) {
+          sendStatus("Attempting to launch local Ollama background service...", "starting");
+          try {
+            const { startOllamaDaemon: startOllamaDaemon2, isOllamaRunning: isOllamaRunning2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
+            await startOllamaDaemon2();
+            ollamaActive = await isOllamaRunning2();
+          } catch {
+          }
+        }
+        if (!ollamaActive) {
+          streamToken(
+            `> \u26A0\uFE0F **Ollama is offline or unreachable on port 11434.**
 
 TerraMind could not connect to your local Ollama daemon. Please start it using:
 
@@ -78930,294 +78932,318 @@ ollama serve
 \`\`\`
 
 Once started, send your message again. Or switch to **Cloud AI** in the model menu if you prefer.`
-        );
-        reply.raw.write(`data: [DONE]
+          );
+          reply.raw.write(`data: [DONE]
 
 `);
-        reply.raw.end();
-        return;
-      }
-      let targetModel = model;
-      sendStatus("Verifying local model availability...", "resolving");
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2e3);
-        const tagsRes = await fetch("http://127.0.0.1:11434/api/tags", { signal: controller.signal });
-        clearTimeout(timeout);
-        if (tagsRes.ok) {
-          const tagsData = await tagsRes.json();
-          const available = (tagsData.models || []).map((m) => m.name);
-          if (available.length > 0) {
-            if (!targetModel || !available.includes(targetModel)) {
-              targetModel = available[0];
-            }
-          }
+          reply.raw.end();
+          return;
         }
-      } catch (e) {
-        fastify2.log.warn({ err: e }, "Could not query Ollama tags for model fallback");
-      }
-      if (!targetModel) {
-        targetModel = "qwen2.5-coder:1.5b";
-      }
-      sendStatus(`Processing prompt with '${targetModel}'...`, "generating");
-      try {
-        const ollamaRes = await fetch("http://127.0.0.1:11434/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [{ role: "system", content: systemPrompt }, ...messages],
-            stream: true
-          })
-        });
-        if (!ollamaRes.ok) {
-          const errText = await ollamaRes.text();
-          streamToken(
-            `> \u26A0\uFE0F **Ollama Error (${ollamaRes.status}):**
-
-${errText}
-
-Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel}\`.`
-          );
-        } else if (ollamaRes.body) {
-          const reader = ollamaRes.body.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            const lines = chunk.split("\n").filter(Boolean);
-            for (const line of lines) {
-              try {
-                const data = JSON.parse(line);
-                if (data.message?.content) {
-                  streamToken(data.message.content);
-                }
-              } catch {
-              }
-            }
-          }
-        }
-      } catch (err) {
-        streamToken(`> \u26A0\uFE0F **Failed to stream from Ollama:** ${err.message}`);
-      }
-    }
-    if (activeProvider === "cloud") {
-      let targetModel = model;
-      if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey) {
-        if (geminiKey) targetModel = "gemini-3.6-flash";
-        else if (openaiKey) targetModel = "gpt-4o";
-        else if (anthropicKey) targetModel = "claude-3-5-sonnet-20241022";
-        else targetModel = "gemini-3.6-flash";
-      }
-      const isGemini = targetModel.startsWith("gemini");
-      const isAnthropic = targetModel.startsWith("claude");
-      const isOpenAI = targetModel.startsWith("gpt") || targetModel.startsWith("o1") || targetModel.startsWith("o3");
-      if (isGemini && !geminiKey) {
-        streamToken(
-          `> \u{1F511} **Gemini API Key Missing**
-
-Please add your Google Gemini API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
-        );
-      } else if (isOpenAI && !openaiKey) {
-        streamToken(
-          `> \u{1F511} **OpenAI API Key Missing**
-
-Please add your OpenAI API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
-        );
-      } else if (isAnthropic && !anthropicKey) {
-        streamToken(
-          `> \u{1F511} **Anthropic API Key Missing**
-
-Please add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
-        );
-      } else if (isGemini && geminiKey) {
-        sendStatus(`Connecting to Google Gemini (${targetModel})...`, "connecting");
-        const streamGemini = async (modelToUse, isFallback = false) => {
-          try {
-            sendStatus(`Generating response with Google Gemini (${modelToUse})...`, "generating");
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-            const contents = messages.map((m) => ({
-              role: m.role === "assistant" ? "model" : "user",
-              parts: [{ text: m.content }]
-            }));
-            const res = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents
-              })
-            });
-            if (!res.ok) {
-              const err = await res.text();
-              if (!isFallback && (res.status === 503 || res.status === 429 || res.status === 404) && modelToUse !== "gemini-3.6-flash") {
-                streamToken(
-                  `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${res.status} High Demand). Automatically switching to stable \`gemini-3.6-flash\`...*
-
-`
-                );
-                return await streamGemini("gemini-3.6-flash", true);
-              }
-              streamToken(`> \u26A0\uFE0F **Gemini Error (${res.status}):** ${err}`);
-              return false;
-            }
-            if (res.body) {
-              const reader = res.body.getReader();
-              const decoder = new TextDecoder();
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const chunk = decoder.decode(value);
-                const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
-                for (const line of lines) {
-                  const raw = line.replace("data: ", "").trim();
-                  try {
-                    const data = JSON.parse(raw);
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text) streamToken(text);
-                  } catch {
-                  }
-                }
-              }
-              return true;
-            }
-            return false;
-          } catch (e) {
-            if (!isFallback && modelToUse !== "gemini-3.6-flash") {
-              streamToken(
-                `> \u2139\uFE0F *Connection to \`${modelToUse}\` failed. Automatically retrying with \`gemini-3.6-flash\`...*
-
-`
-              );
-              return await streamGemini("gemini-3.6-flash", true);
-            }
-            streamToken(`> \u26A0\uFE0F **Gemini request failed:** ${e.message}`);
-            return false;
-          }
-        };
-        await streamGemini(targetModel);
-      } else if (isOpenAI && openaiKey) {
-        sendStatus(`Generating response with OpenAI (${targetModel})...`, "generating");
+        let targetModel = model;
+        sendStatus("Verifying local model availability...", "resolving");
         try {
-          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2e3);
+          const tagsRes = await fetch("http://127.0.0.1:11434/api/tags", { signal: controller.signal });
+          clearTimeout(timeout);
+          if (tagsRes.ok) {
+            const tagsData = await tagsRes.json();
+            const available = (tagsData.models || []).map((m) => m.name);
+            if (available.length > 0) {
+              if (!targetModel || !available.includes(targetModel)) {
+                targetModel = available[0];
+              }
+            }
+          }
+        } catch (e) {
+          fastify2.log.warn({ err: e }, "Could not query Ollama tags for model fallback");
+        }
+        if (!targetModel) {
+          targetModel = "qwen2.5-coder:1.5b";
+        }
+        sendStatus(`Processing prompt with '${targetModel}'...`, "generating");
+        try {
+          const ollamaRes = await fetch("http://127.0.0.1:11434/api/chat", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${openaiKey}`
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               model: targetModel,
               messages: [{ role: "system", content: systemPrompt }, ...messages],
               stream: true
             })
           });
-          if (!res.ok) {
-            const err = await res.text();
-            let errMsg = err;
-            try {
-              const parsed = JSON.parse(err);
-              if (parsed.error?.message) errMsg = parsed.error.message;
-            } catch {
-            }
-            streamToken(`> \u26A0\uFE0F **OpenAI Error (${res.status}):**
+          if (!ollamaRes.ok) {
+            const errText = await ollamaRes.text();
+            streamToken(
+              `> \u26A0\uFE0F **Ollama Error (${ollamaRes.status}):**
 
-${errMsg}
+${errText}
 
-Please check or update your OpenAI API key in **Settings > API Keys**.`);
-          } else if (res.body) {
-            const reader = res.body.getReader();
+Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel}\`.`
+            );
+          } else if (ollamaRes.body) {
+            const reader = ollamaRes.body.getReader();
             const decoder = new TextDecoder();
-            let chunkBuffer = "";
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              chunkBuffer += decoder.decode(value, { stream: true });
-              const lines = chunkBuffer.split("\n");
-              chunkBuffer = lines.pop() || "";
+              const chunk = decoder.decode(value);
+              const lines = chunk.split("\n").filter(Boolean);
               for (const line of lines) {
-                const raw = line.replace("data: ", "").trim();
-                if (raw === "[DONE]") break;
                 try {
-                  const data = JSON.parse(raw);
-                  const token = data.choices?.[0]?.delta?.content;
-                  if (token) streamToken(token);
-                } catch {
-                }
-              }
-            }
-          }
-        } catch (e) {
-          streamToken(`> \u26A0\uFE0F **OpenAI request failed:** ${e.message}`);
-        }
-      } else if (isAnthropic && anthropicKey) {
-        sendStatus(`Generating response with Anthropic (${targetModel})...`, "generating");
-        try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": anthropicKey,
-              "anthropic-version": "2023-06-01"
-            },
-            body: JSON.stringify({
-              model: targetModel,
-              system: systemPrompt,
-              messages: messages.map((m) => ({
-                role: m.role === "assistant" ? "assistant" : "user",
-                content: m.content
-              })),
-              max_tokens: 4096,
-              stream: true
-            })
-          });
-          if (!res.ok) {
-            const err = await res.text();
-            let errMsg = err;
-            try {
-              const parsed = JSON.parse(err);
-              if (parsed.error?.message) errMsg = parsed.error.message;
-            } catch {
-            }
-            streamToken(`> \u26A0\uFE0F **Anthropic Error (${res.status}):**
-
-${errMsg}
-
-Please check or update your Anthropic API key in **Settings > API Keys**.`);
-          } else if (res.body) {
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let chunkBuffer = "";
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunkBuffer += decoder.decode(value, { stream: true });
-              const lines = chunkBuffer.split("\n");
-              chunkBuffer = lines.pop() || "";
-              for (const line of lines) {
-                const raw = line.replace("data: ", "").trim();
-                try {
-                  const data = JSON.parse(raw);
-                  if (data.type === "content_block_delta" && data.delta?.text) {
-                    streamToken(data.delta.text);
+                  const data = JSON.parse(line);
+                  if (data.message?.content) {
+                    streamToken(data.message.content);
                   }
                 } catch {
                 }
               }
             }
           }
-        } catch (e) {
-          streamToken(`> \u26A0\uFE0F **Anthropic request failed:** ${e.message}`);
+        } catch (err) {
+          streamToken(`> \u26A0\uFE0F **Failed to stream from Ollama:** ${err.message}`);
+        }
+      }
+      if (activeProvider === "cloud") {
+        let targetModel = model;
+        if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey) {
+          if (geminiKey) targetModel = "gemini-3.6-flash";
+          else if (openaiKey) targetModel = "gpt-4o";
+          else if (anthropicKey) targetModel = "claude-3-5-sonnet-20241022";
+          else targetModel = "gemini-3.6-flash";
+        }
+        const isGemini = targetModel.startsWith("gemini");
+        const isAnthropic = targetModel.startsWith("claude");
+        const isOpenAI = targetModel.startsWith("gpt") || targetModel.startsWith("o1") || targetModel.startsWith("o3");
+        if (isGemini && !geminiKey) {
+          streamToken(
+            `> \u{1F511} **Gemini API Key Missing**
+
+Please add your Google Gemini API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+          );
+        } else if (isOpenAI && !openaiKey) {
+          streamToken(
+            `> \u{1F511} **OpenAI API Key Missing**
+
+Please add your OpenAI API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+          );
+        } else if (isAnthropic && !anthropicKey) {
+          streamToken(
+            `> \u{1F511} **Anthropic API Key Missing**
+
+Please add your Anthropic API key in **Settings > API Keys** (gear icon in sidebar or composer) to enable cloud generation with \`${targetModel}\`.`
+          );
+        } else if (isGemini && geminiKey) {
+          sendStatus(`Connecting to Google Gemini (${targetModel})...`, "connecting");
+          const streamGemini = async (modelToUse, isFallback = false) => {
+            try {
+              sendStatus(`Generating response with Google Gemini (${modelToUse})...`, "generating");
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+              const contents = messages.map((m) => ({
+                role: m.role === "assistant" ? "model" : "user",
+                parts: [{ text: m.content }]
+              }));
+              const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents
+                })
+              });
+              if (!res.ok) {
+                const err = await res.text();
+                if (!isFallback && (res.status === 503 || res.status === 429 || res.status === 404) && modelToUse !== "gemini-3.6-flash") {
+                  streamToken(
+                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${res.status} High Demand). Automatically switching to stable \`gemini-3.6-flash\`...*
+
+`
+                  );
+                  return await streamGemini("gemini-3.6-flash", true);
+                }
+                streamToken(`> \u26A0\uFE0F **Gemini Error (${res.status}):** ${err}`);
+                return false;
+              }
+              if (res.body) {
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  const chunk = decoder.decode(value);
+                  const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+                  for (const line of lines) {
+                    const raw = line.replace("data: ", "").trim();
+                    try {
+                      const data = JSON.parse(raw);
+                      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                      if (text) streamToken(text);
+                    } catch {
+                    }
+                  }
+                }
+                return true;
+              }
+              return false;
+            } catch (e) {
+              if (!isFallback && modelToUse !== "gemini-3.6-flash") {
+                streamToken(
+                  `> \u2139\uFE0F *Connection to \`${modelToUse}\` failed. Automatically retrying with \`gemini-3.6-flash\`...*
+
+`
+                );
+                return await streamGemini("gemini-3.6-flash", true);
+              }
+              streamToken(`> \u26A0\uFE0F **Gemini request failed:** ${e.message}`);
+              return false;
+            }
+          };
+          await streamGemini(targetModel);
+        } else if (isOpenAI && openaiKey) {
+          sendStatus(`Generating response with OpenAI (${targetModel})...`, "generating");
+          try {
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${openaiKey}`
+              },
+              body: JSON.stringify({
+                model: targetModel,
+                messages: [{ role: "system", content: systemPrompt }, ...messages],
+                stream: true
+              })
+            });
+            if (!res.ok) {
+              const err = await res.text();
+              let errMsg = err;
+              try {
+                const parsed = JSON.parse(err);
+                if (parsed.error?.message) errMsg = parsed.error.message;
+              } catch {
+              }
+              streamToken(`> \u26A0\uFE0F **OpenAI Error (${res.status}):**
+
+${errMsg}
+
+Please check or update your OpenAI API key in **Settings > API Keys**.`);
+            } else if (res.body) {
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let chunkBuffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunkBuffer += decoder.decode(value, { stream: true });
+                const lines = chunkBuffer.split("\n");
+                chunkBuffer = lines.pop() || "";
+                for (const line of lines) {
+                  const raw = line.replace("data: ", "").trim();
+                  if (raw === "[DONE]") break;
+                  try {
+                    const data = JSON.parse(raw);
+                    const token = data.choices?.[0]?.delta?.content;
+                    if (token) streamToken(token);
+                  } catch {
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            streamToken(`> \u26A0\uFE0F **OpenAI request failed:** ${e.message}`);
+          }
+        } else if (isAnthropic && anthropicKey) {
+          sendStatus(`Generating response with Anthropic (${targetModel})...`, "generating");
+          try {
+            const res = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": anthropicKey,
+                "anthropic-version": "2023-06-01"
+              },
+              body: JSON.stringify({
+                model: targetModel,
+                system: systemPrompt,
+                messages: messages.map((m) => ({
+                  role: m.role === "assistant" ? "assistant" : "user",
+                  content: m.content
+                })),
+                max_tokens: 4096,
+                stream: true
+              })
+            });
+            if (!res.ok) {
+              const err = await res.text();
+              let errMsg = err;
+              try {
+                const parsed = JSON.parse(err);
+                if (parsed.error?.message) errMsg = parsed.error.message;
+              } catch {
+              }
+              streamToken(`> \u26A0\uFE0F **Anthropic Error (${res.status}):**
+
+${errMsg}
+
+Please check or update your Anthropic API key in **Settings > API Keys**.`);
+            } else if (res.body) {
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let chunkBuffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunkBuffer += decoder.decode(value, { stream: true });
+                const lines = chunkBuffer.split("\n");
+                chunkBuffer = lines.pop() || "";
+                for (const line of lines) {
+                  const raw = line.replace("data: ", "").trim();
+                  try {
+                    const data = JSON.parse(raw);
+                    if (data.type === "content_block_delta" && data.delta?.text) {
+                      streamToken(data.delta.text);
+                    }
+                  } catch {
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            streamToken(`> \u26A0\uFE0F **Anthropic request failed:** ${e.message}`);
+          }
+        }
+      }
+      if (fullAssistantResponse.trim()) {
+        try {
+          addMessage((0, import_crypto2.randomUUID)(), conversationId, "assistant", fullAssistantResponse, userId);
+        } catch (dbErr) {
+          fastify2.log.warn({ err: dbErr }, "Failed to save assistant message");
+        }
+      }
+      reply.raw.write(`data: [DONE]
+
+`);
+      reply.raw.end();
+    } catch (err) {
+      fastify2.log.error({ err }, "Error in /api/chat stream handler");
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { "Content-Type": "application/json" });
+        reply.raw.end(JSON.stringify({ error: err.message || "Internal Server Error" }));
+      } else {
+        try {
+          reply.raw.write(`data: ${JSON.stringify({ content: `
+
+> \u26A0\uFE0F **Error:** ${err.message}` })}
+
+`);
+          reply.raw.write(`data: [DONE]
+
+`);
+          reply.raw.end();
+        } catch {
         }
       }
     }
-    if (fullAssistantResponse.trim()) {
-      addMessage((0, import_crypto2.randomUUID)(), conversationId, "assistant", fullAssistantResponse, userId);
-    }
-    reply.raw.write(`data: [DONE]
-
-`);
-    reply.raw.end();
   });
 }
 
@@ -79432,6 +79458,26 @@ if (webDistPath) {
     `);
   });
 }
+server.setErrorHandler((error, request, reply) => {
+  if (reply.raw.headersSent) {
+    server.log.warn({ err: error }, "Handled error after headers were already sent to client");
+    try {
+      reply.raw.end();
+    } catch {
+    }
+    return;
+  }
+  reply.status(error.statusCode || 500).send({
+    error: error.name || "Internal Server Error",
+    message: error.message
+  });
+});
+process.on("uncaughtException", (err) => {
+  console.error("[TerraMind] Uncaught Exception:", err.message);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[TerraMind] Unhandled Rejection:", reason?.message || reason);
+});
 var start = async () => {
   try {
     console.log("Database initialized in WAL mode");
