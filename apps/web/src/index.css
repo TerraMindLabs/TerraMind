@@ -1,34 +1,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* LibreChat Deep Charcoal & Blue Accents */
-  --primary: #3B82F6;
-  --primary-hover: #2563EB;
-  --primary-glow: rgba(59, 130, 246, 0.25);
-  --primary-subtle: rgba(59, 130, 246, 0.12);
+  /* Clean White & Black Theme with Green Accents */
+  --primary: #10B981;
+  --primary-hover: #059669;
+  --primary-glow: rgba(16, 185, 129, 0.25);
+  --primary-subtle: rgba(16, 185, 129, 0.12);
 
-  --surface-canvas: #0D1117;
-  --surface-panel: #161B22;
-  --surface-card: #21262D;
-  --surface-elevated: #30363D;
-  --surface-hover: #282E39;
+  --surface-canvas: #FFFFFF;
+  --surface-panel: #F9FAFB;
+  --surface-card: #FFFFFF;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #F3F4F6;
 
-  --border-subtle: #21262D;
-  --border-strong: #30363D;
-  --border-focus: #3B82F6;
+  --border-subtle: #E5E7EB;
+  --border-strong: #D1D5DB;
+  --border-focus: #10B981;
 
-  --text-primary: #F0F6FC;
-  --text-secondary: #8B949E;
-  --text-muted: #6E7681;
+  --text-primary: #111827;
+  --text-secondary: #4B5563;
+  --text-muted: #6B7280;
 
   --success: #238636;
   --warning: #D29922;
   --danger: #DA3633;
-  --accent-emerald: #3FB950;
+  --accent-emerald: #10B981;
   --accent-amber: #F0883E;
 
-  --code-bg: #090D13;
-  --user-bubble: #1F242C;
+  --code-bg: #F3F4F6;
+  --user-bubble: #10B981;
 
   /* Baseline scale */
   --space-1: 4px;
@@ -222,10 +222,10 @@ code, pre, .mono-font {
 }
 
 .conversation-item.active {
-  background-color: var(--surface-card);
-  color: #fff;
+  background-color: var(--surface-hover);
+  color: var(--text-primary);
   font-weight: 600;
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(16, 185, 129, 0.4);
   border-left: 3px solid var(--primary);
 }
 
@@ -263,7 +263,7 @@ code, pre, .mono-font {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  background-color: rgba(22, 27, 34, 0.95);
+  background-color: var(--surface-panel);
 }
 
 .sidebar-action-btn {
@@ -418,8 +418,8 @@ code, pre, .mono-font {
 
 .agent-tab.active {
   background-color: var(--primary-subtle);
-  color: #93C5FD;
-  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--primary-hover);
+  border-color: rgba(16, 185, 129, 0.4);
   font-weight: 600;
   box-shadow: 0 0 10px var(--primary-glow);
 }
@@ -582,7 +582,7 @@ code, pre, .mono-font {
 }
 
 .code-header {
-  background-color: #121820;
+  background-color: #E5E7EB;
   padding: 0.45rem 1rem;
   display: flex;
   align-items: center;
@@ -630,16 +630,16 @@ code, pre, .mono-font {
   padding: 1rem;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.825rem;
-  color: #E2E8F0;
+  color: #111827;
   overflow-x: auto;
   line-height: 1.55;
-  background-color: #090D13;
+  background-color: #F3F4F6;
 }
 
 /* Chat Input Section */
 .chat-input-wrapper {
   padding: 0.75rem 1.5rem 1.25rem 1.5rem;
-  background: linear-gradient(180deg, rgba(13, 17, 23, 0) 0%, rgba(13, 17, 23, 0.98) 25%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.98) 25%);
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
@@ -689,7 +689,7 @@ code, pre, .mono-font {
 }
 
 .send-btn {
-  background: linear-gradient(135deg, #2563EB, #3B82F6);
+  background: var(--primary);
   color: white;
   border: none;
   border-radius: var(--radius-md);
@@ -747,10 +747,10 @@ code, pre, .mono-font {
 }
 
 .source-pill.active {
-  background-color: var(--surface-panel);
+  background-color: var(--primary);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .model-select-dropdown {

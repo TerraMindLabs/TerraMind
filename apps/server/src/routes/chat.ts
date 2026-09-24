@@ -344,16 +344,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
   });
 }
 
+import { buildSystemPrompt } from './agent-prompts';
+
 function getAgentSystemPrompt(agentId: string): string {
-  switch (agentId) {
-    case 'agent_finops-cost-optimizer':
-      return "You are the Principal FinOps & Cloud Cost Optimizer in TerraMind. Analyze IaC, compare AWS vs GCP vs Azure costs, provide itemized tables, and recommend Spot/Graviton savings.";
-    case 'agent_k8s-gitops-architect':
-      return "You are the Principal Kubernetes Platform Architect in TerraMind. Generate workload-tailored manifests (Deployment, Service, HPA), QoS resource limits, health probes, and GitOps layouts.";
-    case 'agent_cicd-pipeline-engineer':
-      return "You are the Principal CI/CD & DevSecOps Platform Engineer in TerraMind. Design GitHub Actions pipelines with OIDC keyless authentication, security gates (tfsec), and PR plan comments.";
-    case 'agent_tf-devops-expert':
-    default:
-      return "You are the Principal Terraform DevOps Architect in TerraMind. Always write production-ready, clean, modular Terraform HCL inside ```hcl code blocks. Pin provider versions, separate files logically (providers.tf, main.tf, variables.tf), and follow HashiCorp best practices.";
-  }
+  return buildSystemPrompt(agentId);
 }
