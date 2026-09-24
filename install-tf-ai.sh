@@ -20,6 +20,16 @@ if [ ! -t 0 ]; then
     fi
 fi
 
+# Guard against shell starting in a deleted or invalid working directory (prevents uv_cwd / ENOENT error in Node & Git)
+ORIGINAL_PWD=$(pwd 2>/dev/null)
+if [ -z "$ORIGINAL_PWD" ] || [ ! -d "$ORIGINAL_PWD" ]; then
+    if [ -n "$HOME" ] && [ -d "$HOME" ]; then
+        cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
+    else
+        cd /tmp 2>/dev/null || true
+    fi
+fi
+
 # Attempt to resize the console window for a better installer experience
 printf '\e[8;40;120t' 2>/dev/null || true
 
@@ -201,6 +211,11 @@ if [ "$action" == "2" ]; then
     fi
 
     if [ -d "$basePath" ]; then
+        # Ensure shell is not inside the directory being removed
+        local currPwd=$(pwd 2>/dev/null)
+        if [ "$currPwd" = "$basePath" ] || [[ "$currPwd" == "$basePath"/* ]]; then
+            cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
+        fi
         run_with_spinner "Deleting TerraMind installation ($basePath)" "rm -rf \"$basePath\""
     fi
 
@@ -227,10 +242,20 @@ if [ "$IS_LOCAL_REPO" = true ]; then
     basePath="$SCRIPT_DIR"
     echo -e "${GREEN}📁 Detected existing TerraMind repository at:${NC} $basePath"
 else
-    currentDir=$(pwd)
+    currentDir=$(pwd 2>/dev/null)
+    if [ -z "$currentDir" ] || [ "$currentDir" = "/" ] || [ ! -d "$currentDir" ]; then
+        if [ -d "/workspaces" ]; then
+            currentDir="/workspaces"
+        elif [ -n "$HOME" ] && [ -d "$HOME" ]; then
+            currentDir="$HOME"
+        else
+            currentDir="/tmp"
+        fi
+    fi
     defaultPath="$currentDir/TerraMind"
     read -p "Enter installation directory [Default: $defaultPath]: " userPath
     basePath=${userPath:-$defaultPath}
+    basePath="${basePath/#\~/$HOME}"
     mkdir -p "$basePath"
 fi
 
@@ -337,7 +362,9 @@ if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "${RED}Node.js and npm are required. Please install Node.js 18+ (https://nodejs.org/) first!${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ Found Node.js: $(node -v) and npm: $(npm -v)${NC}"
+nodeVer=$(node -v 2>/dev/null || echo "detected")
+npmVer=$(npm -v 2>/dev/null || echo "detected")
+echo -e "${GREEN}✅ Found Node.js: ${nodeVer} and npm: ${npmVer}${NC}"
 
 # Database: SQLite WAL mode - Zero external DB required
 echo -e "${GREEN}✅ Database: SQLite WAL embedded engine ready (zero setup required).${NC}"
@@ -347,15 +374,22 @@ ensure_terraform
 # 3. Deploy TerraMind Codebase if not local
 if [ "$IS_LOCAL_REPO" = false ]; then
     echo -e "\n${YELLOW}📥 Cloning TerraMind codebase from GitHub into $basePath...${NC}"
+    mkdir -p "$basePath"
     tempClone="/tmp/terramind_clone_$$"
-    git clone --depth 1 https://github.com/TerraMindLabs/TerraMind.git "$tempClone"
-    if [ -d "$tempClone" ]; then
-        cp -r "$tempClone"/* "$basePath"/
-        cp "$tempClone"/.gitignore "$basePath"/ 2>/dev/null || true
-        rm -rf "$tempClone"
-        echo -e "${GREEN}✅ TerraMind codebase deployed successfully.${NC}"
+    rm -rf "$tempClone"
+    if (cd /tmp && git clone --depth 1 https://github.com/TerraMindLabs/TerraMind.git "$tempClone"); then
+        if [ -d "$tempClone" ] && [ -f "$tempClone/package.json" ]; then
+            cp -r "$tempClone"/. "$basePath"/
+            rm -rf "$tempClone"
+            echo -e "${GREEN}✅ TerraMind codebase deployed successfully.${NC}"
+        else
+            echo -e "${RED}ERROR: Cloned repository is missing expected files.${NC}"
+            rm -rf "$tempClone"
+            exit 1
+        fi
     else
-        echo -e "${RED}ERROR: Failed to clone TerraMind repository.${NC}"
+        rm -rf "$tempClone"
+        echo -e "${RED}ERROR: Failed to clone TerraMind repository from GitHub.${NC}"
         exit 1
     fi
 fi
