@@ -44715,8 +44715,8 @@ var require_bson = __commonJS({
       return crypto.getRandomValues(nodeJsByteUtils.allocate(byteLength));
     }
     var nodejsRandomBytes = (() => {
-      const { crypto: crypto2 } = globalThis;
-      if (crypto2 != null && typeof crypto2.getRandomValues === "function") {
+      const { crypto: crypto3 } = globalThis;
+      if (crypto3 != null && typeof crypto3.getRandomValues === "function") {
         return nodejsSecureRandomBytes;
       } else {
         return nodejsMathRandomBytes;
@@ -44821,10 +44821,10 @@ var require_bson = __commonJS({
       return webByteUtils.fromNumberArray(Array.from({ length: byteLength }, () => Math.floor(Math.random() * 256)));
     }
     var webRandomBytes = (() => {
-      const { crypto: crypto2 } = globalThis;
-      if (crypto2 != null && typeof crypto2.getRandomValues === "function") {
+      const { crypto: crypto3 } = globalThis;
+      if (crypto3 != null && typeof crypto3.getRandomValues === "function") {
         return (byteLength) => {
-          return crypto2.getRandomValues(webByteUtils.allocate(byteLength));
+          return crypto3.getRandomValues(webByteUtils.allocate(byteLength));
         };
       } else {
         if (isReactNative()) {
@@ -77266,7 +77266,7 @@ var import_path3 = __toESM(require("path"));
 var import_fs = __toESM(require("fs"));
 
 // src/routes/chat.ts
-var import_crypto2 = require("crypto");
+var import_crypto3 = require("crypto");
 
 // src/db/index.ts
 var import_node_sqlite = require("node:sqlite");
@@ -78615,6 +78615,248 @@ async function runTerraformCommand(action) {
   }
 }
 
+// src/services/enterprise-ai.ts
+var import_crypto2 = __toESM(require("crypto"));
+function sha256Hex(data) {
+  return import_crypto2.default.createHash("sha256").update(data).digest("hex");
+}
+function hmac(key, data) {
+  return import_crypto2.default.createHmac("sha256", key).update(data).digest();
+}
+function signAwsRequest(params) {
+  const { method, url, region, service, accessKeyId, secretAccessKey, sessionToken, body } = params;
+  const parsedUrl = new URL(url);
+  const now = /* @__PURE__ */ new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const headers = {
+    host: parsedUrl.host,
+    "x-amz-date": amzDate,
+    "content-type": "application/json",
+    ...params.headers || {}
+  };
+  if (sessionToken) {
+    headers["x-amz-security-token"] = sessionToken;
+  }
+  const payloadHash = sha256Hex(body);
+  headers["x-amz-content-sha256"] = payloadHash;
+  const signedHeadersKeys = Object.keys(headers).map((k) => k.toLowerCase()).sort();
+  const signedHeaders = signedHeadersKeys.join(";");
+  const canonicalHeaders = signedHeadersKeys.map((k) => `${k}:${headers[k].trim()}
+`).join("");
+  const canonicalRequest = [
+    method.toUpperCase(),
+    parsedUrl.pathname,
+    parsedUrl.search.replace(/^\?/, ""),
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join("\n");
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest)
+  ].join("\n");
+  const kDate = hmac(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = import_crypto2.default.createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return {
+    ...headers,
+    Authorization: authHeader
+  };
+}
+async function invokeBedrockConverse(params) {
+  const { region, accessKeyId, secretAccessKey, sessionToken, modelId, systemPrompt, messages, onToken } = params;
+  const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/converse`;
+  const bedrockMessages = [];
+  for (const m of messages) {
+    if (!m.content || !m.content.trim()) continue;
+    const role = m.role === "assistant" ? "assistant" : "user";
+    if (bedrockMessages.length === 0 && role === "assistant") {
+      bedrockMessages.push({ role: "user", content: [{ text: "Initialize architecture consultation." }] });
+    }
+    const lastMsg = bedrockMessages[bedrockMessages.length - 1];
+    if (lastMsg && lastMsg.role === role) {
+      lastMsg.content.push({ text: m.content });
+    } else {
+      bedrockMessages.push({ role, content: [{ text: m.content }] });
+    }
+  }
+  if (bedrockMessages.length === 0) {
+    bedrockMessages.push({ role: "user", content: [{ text: "Hello" }] });
+  }
+  const payloadObj = {
+    system: [{ text: systemPrompt }],
+    messages: bedrockMessages,
+    inferenceConfig: {
+      maxTokens: 4096,
+      temperature: 0.7
+    }
+  };
+  const bodyStr = JSON.stringify(payloadObj);
+  const signedHeaders = signAwsRequest({
+    method: "POST",
+    url,
+    region,
+    service: "bedrock",
+    accessKeyId,
+    secretAccessKey,
+    sessionToken,
+    body: bodyStr
+  });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: signedHeaders,
+    body: bodyStr
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    let parsedErr = errText;
+    try {
+      const j = JSON.parse(errText);
+      parsedErr = j.message || errText;
+    } catch {
+    }
+    throw new Error(`AWS Bedrock Error (${res.status}): ${parsedErr}`);
+  }
+  const data = await res.json();
+  const replyText = data.output?.message?.content?.[0]?.text || data.output?.text || "";
+  if (!replyText) {
+    throw new Error("AWS Bedrock returned an empty response.");
+  }
+  const words = replyText.split(/(?<=\s+)/);
+  for (const chunk of words) {
+    onToken(chunk);
+  }
+  return true;
+}
+async function streamAzureFoundry(params) {
+  const { endpoint, apiKey, deploymentName, apiVersion = "2024-06-01", systemPrompt, messages, onToken } = params;
+  let cleanEndpoint = endpoint.trim().replace(/\/+$/, "");
+  let targetUrl = "";
+  if (cleanEndpoint.includes(".services.ai.azure.com")) {
+    targetUrl = `${cleanEndpoint}/chat/completions`;
+  } else {
+    if (!cleanEndpoint.includes("/openai/deployments")) {
+      targetUrl = `${cleanEndpoint}/openai/deployments/${encodeURIComponent(deploymentName)}/chat/completions?api-version=${apiVersion}`;
+    } else {
+      targetUrl = `${cleanEndpoint}/chat/completions?api-version=${apiVersion}`;
+    }
+  }
+  const formattedMessages = [
+    { role: "system", content: systemPrompt },
+    ...messages.map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content || " "
+    }))
+  ];
+  const headers = {
+    "Content-Type": "application/json",
+    "api-key": apiKey,
+    Authorization: `Bearer ${apiKey}`
+  };
+  const res = await fetch(targetUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      messages: formattedMessages,
+      stream: true,
+      max_tokens: 4096
+    })
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    let msg = errText;
+    try {
+      const parsed = JSON.parse(errText);
+      msg = parsed.error?.message || errText;
+    } catch {
+    }
+    throw new Error(`Azure AI Foundry Error (${res.status}): ${msg}`);
+  }
+  if (!res.body) {
+    throw new Error("Azure AI Foundry response body is empty.");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const raw = line.replace("data: ", "").trim();
+      if (!raw || raw === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(raw);
+        const token = parsed.choices?.[0]?.delta?.content;
+        if (token) onToken(token);
+      } catch {
+      }
+    }
+  }
+  return true;
+}
+async function invokeOciGenAi(params) {
+  const { region, compartmentId, apiKey, modelId = "cohere.command-r-plus", systemPrompt, messages, onToken } = params;
+  const url = `https://inference.generativeai.${region || "us-chicago-1"}.oci.oraclecloud.com/20231130/actions/chat`;
+  const latestUser = messages[messages.length - 1]?.content || "Infrastructure request";
+  const history = messages.slice(0, -1).map((m) => ({
+    role: m.role === "assistant" ? "CHATBOT" : "USER",
+    message: m.content
+  }));
+  const payload = {
+    compartmentId,
+    servingMode: {
+      servingType: "ON_DEMAND",
+      modelId
+    },
+    chatRequest: {
+      apiFormat: "GENERIC",
+      message: latestUser,
+      preambleOverride: systemPrompt,
+      chatHistory: history,
+      maxTokens: 4e3,
+      temperature: 0.7
+    }
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    let msg = errText;
+    try {
+      const parsed = JSON.parse(errText);
+      msg = parsed.message || errText;
+    } catch {
+    }
+    throw new Error(`OCI GenAI Error (${res.status}): ${msg}`);
+  }
+  const data = await res.json();
+  const reply = data.chatResponse?.text || data.chatResponse?.message || "";
+  if (!reply) {
+    throw new Error("OCI GenAI returned an empty response.");
+  }
+  const words = reply.split(/(?<=\s+)/);
+  for (const chunk of words) {
+    onToken(chunk);
+  }
+  return true;
+}
+
 // src/routes/chat.ts
 async function chatRoutes(fastify2) {
   fastify2.get("/api/projects", async (request, reply) => {
@@ -78702,7 +78944,7 @@ async function chatRoutes(fastify2) {
     try {
       const userId = request.headers["x-user-id"] || request.body?.userId || "";
       const body = request.body || {};
-      const id = body.id || (0, import_crypto2.randomUUID)();
+      const id = body.id || (0, import_crypto3.randomUUID)();
       const title = body.title || "New Infrastructure Chat";
       const provider = body.provider || "ollama";
       const model = body.model || "";
@@ -78898,11 +79140,31 @@ async function chatRoutes(fastify2) {
         cloudModels.push("claude-3-5-sonnet-20241022");
       }
     }
+    if (settings["azure_openai_endpoint"] && settings["azure_openai_api_key"]) {
+      const dep = settings["azure_openai_deployment"] || "gpt-4o";
+      cloudModels.push(`azure/${dep}`);
+    }
+    if (settings["aws_bedrock_access_key"] && settings["aws_bedrock_secret_key"]) {
+      const bModel = settings["aws_bedrock_model"] || "anthropic.claude-3-5-sonnet-20241022-v2:0";
+      cloudModels.push(`bedrock/${bModel}`);
+      if (!cloudModels.includes("bedrock/amazon.nova-pro-v1:0")) {
+        cloudModels.push("bedrock/amazon.nova-pro-v1:0");
+      }
+    }
+    if (settings["oci_genai_compartment_id"] && settings["oci_genai_api_key"]) {
+      const ociM = settings["oci_genai_model"] || "cohere.command-r-plus";
+      cloudModels.push(`oci/${ociM}`);
+    }
     return {
       ollamaOnline,
       localModels,
       cloudModels,
-      hasKeys
+      hasKeys: {
+        ...hasKeys,
+        azure: Boolean(settings["azure_openai_endpoint"] && settings["azure_openai_api_key"]),
+        bedrock: Boolean(settings["aws_bedrock_access_key"] && settings["aws_bedrock_secret_key"]),
+        oci: Boolean(settings["oci_genai_compartment_id"] && settings["oci_genai_api_key"])
+      }
     };
   });
   fastify2.post("/api/models/ollama/pull", async (request, reply) => {
@@ -79030,7 +79292,7 @@ async function chatRoutes(fastify2) {
       const rawContent = latestUserMsg?.content?.trim() || "Terraform Project";
       const cleanTitle = rawContent.split("\n")[0].replace(/[`#*]/g, "").trim().slice(0, 40) || "Terraform Chat";
       if (!conversationId) {
-        conversationId = (0, import_crypto2.randomUUID)();
+        conversationId = (0, import_crypto3.randomUUID)();
         createConversation(conversationId, cleanTitle, provider, model, projectId, userId, agentId);
       } else {
         const existing = getConversation(conversationId);
@@ -79041,7 +79303,7 @@ async function chatRoutes(fastify2) {
         }
       }
       if (latestUserMsg && latestUserMsg.role === "user") {
-        addMessage((0, import_crypto2.randomUUID)(), conversationId, "user", latestUserMsg.content, userId);
+        addMessage((0, import_crypto3.randomUUID)(), conversationId, "user", latestUserMsg.content, userId);
       }
       let fullAssistantResponse = "";
       const streamToken = (token) => {
@@ -79192,10 +79454,16 @@ Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel
       }
       if (activeProvider === "cloud") {
         let targetModel = model;
-        if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey) {
+        const hasAzure = Boolean(settings["azure_openai_endpoint"] && settings["azure_openai_api_key"]);
+        const hasBedrock = Boolean(settings["aws_bedrock_access_key"] && settings["aws_bedrock_secret_key"]);
+        const hasOci = Boolean(settings["oci_genai_compartment_id"] && settings["oci_genai_api_key"]);
+        if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey || targetModel.startsWith("azure") && !hasAzure || targetModel.startsWith("bedrock") && !hasBedrock || targetModel.startsWith("oci") && !hasOci) {
           if (geminiKey) targetModel = "gemini-2.5-flash";
           else if (openaiKey) targetModel = "gpt-4o";
           else if (anthropicKey) targetModel = "claude-3-5-sonnet-20241022";
+          else if (hasAzure) targetModel = `azure/${settings["azure_openai_deployment"] || "gpt-4o"}`;
+          else if (hasBedrock) targetModel = `bedrock/${settings["aws_bedrock_model"] || "anthropic.claude-3-5-sonnet-20241022-v2:0"}`;
+          else if (hasOci) targetModel = `oci/${settings["oci_genai_model"] || "cohere.command-r-plus"}`;
           else targetModel = "gemini-2.5-flash";
         }
         if (targetModel.startsWith("gemini") && (targetModel === "gemini-3.6-flash" || targetModel === "gemini-3-flash-preview")) {
@@ -79204,6 +79472,9 @@ Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel
         const isGemini = targetModel.startsWith("gemini");
         const isAnthropic = targetModel.startsWith("claude");
         const isOpenAI = targetModel.startsWith("gpt") || targetModel.startsWith("o1") || targetModel.startsWith("o3");
+        const isAzure = targetModel.startsWith("azure/") || targetModel.startsWith("azure-");
+        const isBedrock = targetModel.startsWith("bedrock/") || targetModel.startsWith("bedrock-");
+        const isOci = targetModel.startsWith("oci/") || targetModel.startsWith("oci-");
         if (isGemini && !geminiKey) {
           streamToken(
             `> \u{1F511} **Gemini API Key Missing**
@@ -79415,6 +79686,89 @@ Please check or update your Anthropic API key in **Settings > API Keys**.`);
           } catch (e) {
             streamToken(`> \u26A0\uFE0F **Anthropic request failed:** ${e.message}`);
           }
+        } else if (isAzure) {
+          sendStatus(`Connecting to Azure AI Foundry (${targetModel})...`, "connecting");
+          const endpoint = settings["azure_openai_endpoint"] || process.env.AZURE_OPENAI_ENDPOINT;
+          const apiKey = settings["azure_openai_api_key"] || process.env.AZURE_OPENAI_API_KEY;
+          const deploymentName = targetModel.replace(/^azure\//, "").replace(/^azure-/, "") || settings["azure_openai_deployment"] || "gpt-4o";
+          const apiVersion = settings["azure_openai_api_version"] || "2024-06-01";
+          if (!endpoint || !apiKey) {
+            streamToken(
+              `> \u{1F511} **Azure AI Foundry Configuration Missing**
+
+Please configure your Azure Endpoint and API Key in **Settings > Enterprise Cloud**.`
+            );
+          } else {
+            try {
+              await streamAzureFoundry({
+                endpoint,
+                apiKey,
+                deploymentName,
+                apiVersion,
+                systemPrompt,
+                messages,
+                onToken: streamToken
+              });
+            } catch (e) {
+              streamToken(`> \u26A0\uFE0F **Azure AI Foundry error:** ${e.message}`);
+            }
+          }
+        } else if (isBedrock) {
+          sendStatus(`Connecting to AWS Bedrock (${targetModel})...`, "connecting");
+          const region = settings["aws_bedrock_region"] || process.env.AWS_REGION || "us-east-1";
+          const accessKeyId = settings["aws_bedrock_access_key"] || process.env.AWS_ACCESS_KEY_ID;
+          const secretAccessKey = settings["aws_bedrock_secret_key"] || process.env.AWS_SECRET_ACCESS_KEY;
+          const sessionToken = settings["aws_bedrock_session_token"] || process.env.AWS_SESSION_TOKEN;
+          const modelId = targetModel.replace(/^bedrock\//, "").replace(/^bedrock-/, "") || settings["aws_bedrock_model"] || "anthropic.claude-3-5-sonnet-20241022-v2:0";
+          if (!accessKeyId || !secretAccessKey) {
+            streamToken(
+              `> \u{1F511} **AWS Bedrock Credentials Missing**
+
+Please configure your AWS Access Key, Secret Key, and Region in **Settings > Enterprise Cloud**.`
+            );
+          } else {
+            try {
+              await invokeBedrockConverse({
+                region,
+                accessKeyId,
+                secretAccessKey,
+                sessionToken,
+                modelId,
+                systemPrompt,
+                messages,
+                onToken: streamToken
+              });
+            } catch (e) {
+              streamToken(`> \u26A0\uFE0F **AWS Bedrock error:** ${e.message}`);
+            }
+          }
+        } else if (isOci) {
+          sendStatus(`Connecting to OCI Generative AI (${targetModel})...`, "connecting");
+          const region = settings["oci_genai_region"] || "us-chicago-1";
+          const compartmentId = settings["oci_genai_compartment_id"] || process.env.OCI_COMPARTMENT_ID;
+          const apiKey = settings["oci_genai_api_key"] || process.env.OCI_GENAI_API_KEY;
+          const modelId = targetModel.replace(/^oci\//, "").replace(/^oci-/, "") || settings["oci_genai_model"] || "cohere.command-r-plus";
+          if (!compartmentId || !apiKey) {
+            streamToken(
+              `> \u{1F511} **OCI GenAI Credentials Missing**
+
+Please configure your OCI Compartment ID and Auth Key in **Settings > Enterprise Cloud**.`
+            );
+          } else {
+            try {
+              await invokeOciGenAi({
+                region,
+                compartmentId,
+                apiKey,
+                modelId,
+                systemPrompt,
+                messages,
+                onToken: streamToken
+              });
+            } catch (e) {
+              streamToken(`> \u26A0\uFE0F **OCI Generative AI error:** ${e.message}`);
+            }
+          }
         }
       }
       const codeBlockRegex = /```(?:hcl|terraform|yaml|yml|json|bash|sh|markdown)?\s*\n([\s\S]*?)```/g;
@@ -79478,7 +79832,7 @@ ${validationReports.join("\n\n")}
       }
       if (fullAssistantResponse.trim()) {
         try {
-          addMessage((0, import_crypto2.randomUUID)(), conversationId, "assistant", fullAssistantResponse, userId);
+          addMessage((0, import_crypto3.randomUUID)(), conversationId, "assistant", fullAssistantResponse, userId);
         } catch (dbErr) {
           fastify2.log.warn({ err: dbErr }, "Failed to save assistant message");
         }
@@ -79608,9 +79962,9 @@ async function workspaceRoutes(fastify2) {
 }
 
 // src/routes/auth.ts
-var import_crypto3 = require("crypto");
+var import_crypto4 = require("crypto");
 function hashPassword(password) {
-  return (0, import_crypto3.createHash)("sha256").update(password).digest("hex");
+  return (0, import_crypto4.createHash)("sha256").update(password).digest("hex");
 }
 async function authAndSettingsRoutes(fastify2) {
   fastify2.get("/api/auth/status", async (request, reply) => {
@@ -79631,7 +79985,7 @@ async function authAndSettingsRoutes(fastify2) {
     if (user.password_hash !== hashPassword(password)) {
       return reply.status(401).send({ error: "Invalid username or password" });
     }
-    const sessionToken = (0, import_crypto3.randomUUID)();
+    const sessionToken = (0, import_crypto4.randomUUID)();
     recordUserSession(user.id, user.username, sessionToken);
     logUserActivity(user.id, "user_logged_in", { username: user.username });
     return {
@@ -79649,8 +80003,8 @@ async function authAndSettingsRoutes(fastify2) {
     if (existing) {
       return reply.status(400).send({ error: "Username already exists" });
     }
-    const newUser = createUser((0, import_crypto3.randomUUID)(), username, hashPassword(password));
-    const sessionToken = (0, import_crypto3.randomUUID)();
+    const newUser = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(password));
+    const sessionToken = (0, import_crypto4.randomUUID)();
     recordUserSession(newUser.id, newUser.username, sessionToken);
     return {
       success: true,
@@ -79664,9 +80018,9 @@ async function authAndSettingsRoutes(fastify2) {
       const username = email || (name ? `${name.toLowerCase().replace(/\s+/g, "_")}_${provider.toLowerCase()}` : `${provider.toLowerCase()}_user`);
       let user = getUserByUsername(username);
       if (!user) {
-        user = createUser((0, import_crypto3.randomUUID)(), username, hashPassword(`sso_${provider}_${(0, import_crypto3.randomUUID)()}`));
+        user = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(`sso_${provider}_${(0, import_crypto4.randomUUID)()}`));
       }
-      const sessionToken = (0, import_crypto3.randomUUID)();
+      const sessionToken = (0, import_crypto4.randomUUID)();
       recordUserSession(user.id, user.username, sessionToken);
       logUserActivity(user.id, "sso_login", { provider, username: user.username });
       return {
@@ -79687,7 +80041,30 @@ async function authAndSettingsRoutes(fastify2) {
       anthropicApiKey: settings["anthropic_api_key"] ? maskKey(settings["anthropic_api_key"]) : "",
       hasOpenaiKey: Boolean(settings["openai_api_key"] || process.env.OPENAI_API_KEY),
       hasGeminiKey: Boolean(settings["gemini_api_key"] || process.env.GEMINI_API_KEY),
-      hasAnthropicKey: Boolean(settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY)
+      hasAnthropicKey: Boolean(settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
+      // Azure AI Foundry / Azure OpenAI
+      azureOpenaiEndpoint: settings["azure_openai_endpoint"] || process.env.AZURE_OPENAI_ENDPOINT || "",
+      azureOpenaiApiKey: settings["azure_openai_api_key"] ? maskKey(settings["azure_openai_api_key"]) : "",
+      azureOpenaiDeployment: settings["azure_openai_deployment"] || process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
+      azureOpenaiApiVersion: settings["azure_openai_api_version"] || "2024-06-01",
+      hasAzureOpenai: Boolean((settings["azure_openai_api_key"] || process.env.AZURE_OPENAI_API_KEY) && (settings["azure_openai_endpoint"] || process.env.AZURE_OPENAI_ENDPOINT)),
+      // AWS Bedrock
+      awsBedrockRegion: settings["aws_bedrock_region"] || process.env.AWS_REGION || "us-east-1",
+      awsBedrockAccessKey: settings["aws_bedrock_access_key"] ? maskKey(settings["aws_bedrock_access_key"]) : "",
+      awsBedrockSecretKey: settings["aws_bedrock_secret_key"] ? maskKey(settings["aws_bedrock_secret_key"]) : "",
+      awsBedrockSessionToken: settings["aws_bedrock_session_token"] ? maskKey(settings["aws_bedrock_session_token"]) : "",
+      awsBedrockModel: settings["aws_bedrock_model"] || "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      hasAwsBedrock: Boolean(
+        (settings["aws_bedrock_access_key"] || process.env.AWS_ACCESS_KEY_ID) && (settings["aws_bedrock_secret_key"] || process.env.AWS_SECRET_ACCESS_KEY)
+      ),
+      // OCI GenAI
+      ociGenaiRegion: settings["oci_genai_region"] || "us-chicago-1",
+      ociGenaiCompartmentId: settings["oci_genai_compartment_id"] ? maskKey(settings["oci_genai_compartment_id"]) : "",
+      ociGenaiApiKey: settings["oci_genai_api_key"] ? maskKey(settings["oci_genai_api_key"]) : "",
+      ociGenaiModel: settings["oci_genai_model"] || "cohere.command-r-plus",
+      hasOciGenai: Boolean(
+        (settings["oci_genai_compartment_id"] || process.env.OCI_COMPARTMENT_ID) && (settings["oci_genai_api_key"] || process.env.OCI_GENAI_API_KEY)
+      )
     };
   });
   fastify2.post("/api/settings", async (request, reply) => {
@@ -79701,6 +80078,45 @@ async function authAndSettingsRoutes(fastify2) {
     if (body.anthropicApiKey !== void 0 && !body.anthropicApiKey.includes("\u2022\u2022\u2022\u2022")) {
       setSetting("anthropic_api_key", body.anthropicApiKey.trim());
     }
+    if (body.azureOpenaiEndpoint !== void 0) {
+      setSetting("azure_openai_endpoint", body.azureOpenaiEndpoint.trim());
+    }
+    if (body.azureOpenaiApiKey !== void 0 && !body.azureOpenaiApiKey.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("azure_openai_api_key", body.azureOpenaiApiKey.trim());
+    }
+    if (body.azureOpenaiDeployment !== void 0) {
+      setSetting("azure_openai_deployment", body.azureOpenaiDeployment.trim());
+    }
+    if (body.azureOpenaiApiVersion !== void 0) {
+      setSetting("azure_openai_api_version", body.azureOpenaiApiVersion.trim());
+    }
+    if (body.awsBedrockRegion !== void 0) {
+      setSetting("aws_bedrock_region", body.awsBedrockRegion.trim());
+    }
+    if (body.awsBedrockAccessKey !== void 0 && !body.awsBedrockAccessKey.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("aws_bedrock_access_key", body.awsBedrockAccessKey.trim());
+    }
+    if (body.awsBedrockSecretKey !== void 0 && !body.awsBedrockSecretKey.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("aws_bedrock_secret_key", body.awsBedrockSecretKey.trim());
+    }
+    if (body.awsBedrockSessionToken !== void 0 && !body.awsBedrockSessionToken.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("aws_bedrock_session_token", body.awsBedrockSessionToken.trim());
+    }
+    if (body.awsBedrockModel !== void 0) {
+      setSetting("aws_bedrock_model", body.awsBedrockModel.trim());
+    }
+    if (body.ociGenaiRegion !== void 0) {
+      setSetting("oci_genai_region", body.ociGenaiRegion.trim());
+    }
+    if (body.ociGenaiCompartmentId !== void 0 && !body.ociGenaiCompartmentId.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("oci_genai_compartment_id", body.ociGenaiCompartmentId.trim());
+    }
+    if (body.ociGenaiApiKey !== void 0 && !body.ociGenaiApiKey.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("oci_genai_api_key", body.ociGenaiApiKey.trim());
+    }
+    if (body.ociGenaiModel !== void 0) {
+      setSetting("oci_genai_model", body.ociGenaiModel.trim());
+    }
     return { success: true };
   });
   fastify2.delete("/api/settings/keys/:provider", async (request, reply) => {
@@ -79709,6 +80125,18 @@ async function authAndSettingsRoutes(fastify2) {
     if (p === "openai") setSetting("openai_api_key", "");
     else if (p === "gemini") setSetting("gemini_api_key", "");
     else if (p === "anthropic") setSetting("anthropic_api_key", "");
+    else if (p === "azure") {
+      setSetting("azure_openai_endpoint", "");
+      setSetting("azure_openai_api_key", "");
+      setSetting("azure_openai_deployment", "");
+    } else if (p === "bedrock") {
+      setSetting("aws_bedrock_access_key", "");
+      setSetting("aws_bedrock_secret_key", "");
+      setSetting("aws_bedrock_session_token", "");
+    } else if (p === "oci") {
+      setSetting("oci_genai_compartment_id", "");
+      setSetting("oci_genai_api_key", "");
+    }
     return { success: true };
   });
 }

@@ -9,7 +9,7 @@ interface SettingsModalProps {
   initialTab?: TabType;
 }
 
-type TabType = 'keys' | 'ollama';
+type TabType = 'keys' | 'enterprise' | 'ollama';
 
 interface PullProgressState {
   percent: number;
@@ -37,6 +37,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [hasAnthropic, setHasAnthropic] = useState(false);
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysSaved, setKeysSaved] = useState(false);
+
+  // Enterprise Cloud AI State (AWS Bedrock, Azure Foundry, OCI GenAI)
+  const [azureEndpoint, setAzureEndpoint] = useState('');
+  const [azureKey, setAzureKey] = useState('');
+  const [azureDeployment, setAzureDeployment] = useState('gpt-4o');
+  const [azureApiVersion, setAzureApiVersion] = useState('2024-06-01');
+  const [hasAzure, setHasAzure] = useState(false);
+
+  const [bedrockRegion, setBedrockRegion] = useState('us-east-1');
+  const [bedrockAccessKey, setBedrockAccessKey] = useState('');
+  const [bedrockSecretKey, setBedrockSecretKey] = useState('');
+  const [bedrockSessionToken, setBedrockSessionToken] = useState('');
+  const [bedrockModel, setBedrockModel] = useState('anthropic.claude-3-5-sonnet-20241022-v2:0');
+  const [hasBedrock, setHasBedrock] = useState(false);
+
+  const [ociRegion, setOciRegion] = useState('us-chicago-1');
+  const [ociCompartmentId, setOciCompartmentId] = useState('');
+  const [ociKey, setOciKey] = useState('');
+  const [ociModel, setOciModel] = useState('cohere.command-r-plus');
+  const [hasOci, setHasOci] = useState(false);
 
   // Ollama Models & Service state
   const [ollamaOnline, setOllamaOnline] = useState(false);
@@ -74,6 +94,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setHasOpenai(Boolean(data.hasOpenaiKey));
         setHasGemini(Boolean(data.hasGeminiKey));
         setHasAnthropic(Boolean(data.hasAnthropicKey));
+
+        // Enterprise Cloud AI
+        if (data.azureOpenaiEndpoint) setAzureEndpoint(data.azureOpenaiEndpoint);
+        if (data.azureOpenaiApiKey) setAzureKey(data.azureOpenaiApiKey);
+        if (data.azureOpenaiDeployment) setAzureDeployment(data.azureOpenaiDeployment);
+        if (data.azureOpenaiApiVersion) setAzureApiVersion(data.azureOpenaiApiVersion);
+        setHasAzure(Boolean(data.hasAzureOpenai));
+
+        if (data.awsBedrockRegion) setBedrockRegion(data.awsBedrockRegion);
+        if (data.awsBedrockAccessKey) setBedrockAccessKey(data.awsBedrockAccessKey);
+        if (data.awsBedrockSecretKey) setBedrockSecretKey(data.awsBedrockSecretKey);
+        if (data.awsBedrockSessionToken) setBedrockSessionToken(data.awsBedrockSessionToken);
+        if (data.awsBedrockModel) setBedrockModel(data.awsBedrockModel);
+        setHasBedrock(Boolean(data.hasAwsBedrock));
+
+        if (data.ociGenaiRegion) setOciRegion(data.ociGenaiRegion);
+        if (data.ociGenaiCompartmentId) setOciCompartmentId(data.ociGenaiCompartmentId);
+        if (data.ociGenaiApiKey) setOciKey(data.ociGenaiApiKey);
+        if (data.ociGenaiModel) setOciModel(data.ociGenaiModel);
+        setHasOci(Boolean(data.hasOciGenai));
       })
       .catch(console.error);
 
@@ -126,7 +166,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         body: JSON.stringify({
           openaiApiKey: openaiKey,
           geminiApiKey: geminiKey,
-          anthropicApiKey: anthropicKey
+          anthropicApiKey: anthropicKey,
+          azureOpenaiEndpoint: azureEndpoint,
+          azureOpenaiApiKey: azureKey,
+          azureOpenaiDeployment: azureDeployment,
+          azureOpenaiApiVersion: azureApiVersion,
+          awsBedrockRegion: bedrockRegion,
+          awsBedrockAccessKey: bedrockAccessKey,
+          awsBedrockSecretKey: bedrockSecretKey,
+          awsBedrockSessionToken: bedrockSessionToken,
+          awsBedrockModel: bedrockModel,
+          ociGenaiRegion: ociRegion,
+          ociGenaiCompartmentId: ociCompartmentId,
+          ociGenaiApiKey: ociKey,
+          ociGenaiModel: ociModel
         })
       });
 
@@ -136,7 +189,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         loadData();
         setTimeout(() => setKeysSaved(false), 2000);
       } else {
-        setActionError('Failed to save API keys.');
+        setActionError('Failed to save settings.');
       }
     } catch (e: any) {
       setActionError(e.message || 'Error saving settings');
@@ -146,7 +199,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Handle Delete/Clear Single Key
-  const handleDeleteKey = async (provider: 'openai' | 'gemini' | 'anthropic') => {
+  const handleDeleteKey = async (provider: 'openai' | 'gemini' | 'anthropic' | 'azure' | 'bedrock' | 'oci') => {
     try {
       await fetch(`/api/settings/keys/${provider}`, { method: 'DELETE' });
       if (provider === 'openai') {
@@ -158,6 +211,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else if (provider === 'anthropic') {
         setAnthropicKey('');
         setHasAnthropic(false);
+      } else if (provider === 'azure') {
+        setAzureKey('');
+        setAzureEndpoint('');
+        setHasAzure(false);
+      } else if (provider === 'bedrock') {
+        setBedrockAccessKey('');
+        setBedrockSecretKey('');
+        setBedrockSessionToken('');
+        setHasBedrock(false);
+      } else if (provider === 'oci') {
+        setOciCompartmentId('');
+        setOciKey('');
+        setHasOci(false);
       }
       if (onSave) onSave();
       loadData();
@@ -464,6 +530,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <button
             type="button"
+            className={`tab-btn ${activeTab === 'enterprise' ? 'active' : ''}`}
+            onClick={() => setActiveTab('enterprise')}
+            style={{
+              padding: '6px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              borderRadius: '6px',
+              border: 'none',
+              background: activeTab === 'enterprise' ? 'var(--hover)' : 'transparent',
+              color: activeTab === 'enterprise' ? 'var(--text)' : 'var(--muted)',
+              cursor: 'pointer'
+            }}
+          >
+            ☁️ Enterprise Cloud (AWS / Azure / OCI)
+          </button>
+
+          <button
+            type="button"
             className={`tab-btn ${activeTab === 'ollama' ? 'active' : ''}`}
             onClick={() => setActiveTab('ollama')}
             style={{
@@ -664,7 +748,321 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        {/* TAB 2: OLLAMA LOCAL MODELS */}
+        {/* TAB 2: ENTERPRISE CLOUD AI (AWS BEDROCK, AZURE FOUNDRY, OCI GENAI) */}
+        {activeTab === 'enterprise' && (
+          <div>
+            <p style={{ fontSize: '12.5px', color: 'var(--muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+              Connect enterprise cloud intelligence platforms directly. TerraMind uses native IAM / SigV4 authentication for AWS Bedrock, deployment endpoints for Azure AI Foundry, and compartment tokens for Oracle Cloud Infrastructure (OCI).
+            </p>
+
+            <form onSubmit={handleSaveKeys} className="modal-form">
+              {keysSaved && <div className="modal-success" style={{ marginBottom: '14px' }}>✓ Enterprise Cloud configurations saved successfully!</div>}
+
+              {/* SECTION A: AZURE AI FOUNDRY */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  marginBottom: '16px',
+                  background: 'var(--hover)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>🔷</span>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>Azure AI Foundry / Azure OpenAI</strong>
+                    <span
+                      style={{
+                        fontSize: '10.5px',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: hasAzure ? 'rgba(34, 197, 94, 0.15)' : 'var(--border)',
+                        color: hasAzure ? '#22c55e' : 'var(--muted)',
+                        fontWeight: 600
+                      }}
+                    >
+                      {hasAzure ? 'Connected' : 'Not Configured'}
+                    </span>
+                  </div>
+                  {hasAzure && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKey('azure')}
+                      style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      Azure Endpoint URL
+                    </label>
+                    <input
+                      type="text"
+                      value={azureEndpoint}
+                      onChange={(e) => setAzureEndpoint(e.target.value)}
+                      placeholder="https://<resource>.openai.azure.com/"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      Azure API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={azureKey}
+                      onChange={(e) => setAzureKey(e.target.value)}
+                      placeholder="••••••••••••••••"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      Deployment / Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={azureDeployment}
+                      onChange={(e) => setAzureDeployment(e.target.value)}
+                      placeholder="gpt-4o"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      API Version
+                    </label>
+                    <input
+                      type="text"
+                      value={azureApiVersion}
+                      onChange={(e) => setAzureApiVersion(e.target.value)}
+                      placeholder="2024-06-01"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION B: AWS BEDROCK */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  marginBottom: '16px',
+                  background: 'var(--hover)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>🟧</span>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>AWS Bedrock (Converse API)</strong>
+                    <span
+                      style={{
+                        fontSize: '10.5px',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: hasBedrock ? 'rgba(34, 197, 94, 0.15)' : 'var(--border)',
+                        color: hasBedrock ? '#22c55e' : 'var(--muted)',
+                        fontWeight: 600
+                      }}
+                    >
+                      {hasBedrock ? 'Connected' : 'Not Configured'}
+                    </span>
+                  </div>
+                  {hasBedrock && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKey('bedrock')}
+                      style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      AWS Region
+                    </label>
+                    <input
+                      type="text"
+                      value={bedrockRegion}
+                      onChange={(e) => setBedrockRegion(e.target.value)}
+                      placeholder="us-east-1"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      Model ID
+                    </label>
+                    <input
+                      type="text"
+                      value={bedrockModel}
+                      onChange={(e) => setBedrockModel(e.target.value)}
+                      placeholder="anthropic.claude-3-5-sonnet-20241022-v2:0"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      AWS Access Key ID
+                    </label>
+                    <input
+                      type="text"
+                      value={bedrockAccessKey}
+                      onChange={(e) => setBedrockAccessKey(e.target.value)}
+                      placeholder="AKIA..."
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      AWS Secret Access Key
+                    </label>
+                    <input
+                      type="password"
+                      value={bedrockSecretKey}
+                      onChange={(e) => setBedrockSecretKey(e.target.value)}
+                      placeholder="••••••••••••••••"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                    AWS Session Token <span style={{ opacity: 0.7 }}>(Optional / Temporary Credentials)</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={bedrockSessionToken}
+                    onChange={(e) => setBedrockSessionToken(e.target.value)}
+                    placeholder="AQoDYXdz..."
+                    style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                  />
+                </div>
+              </div>
+
+              {/* SECTION C: OCI GENERATIVE AI */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  marginBottom: '16px',
+                  background: 'var(--hover)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>🔴</span>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--text)' }}>Oracle Cloud (OCI) Generative AI</strong>
+                    <span
+                      style={{
+                        fontSize: '10.5px',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: hasOci ? 'rgba(34, 197, 94, 0.15)' : 'var(--border)',
+                        color: hasOci ? '#22c55e' : 'var(--muted)',
+                        fontWeight: 600
+                      }}
+                    >
+                      {hasOci ? 'Connected' : 'Not Configured'}
+                    </span>
+                  </div>
+                  {hasOci && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKey('oci')}
+                      style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      OCI Region
+                    </label>
+                    <input
+                      type="text"
+                      value={ociRegion}
+                      onChange={(e) => setOciRegion(e.target.value)}
+                      placeholder="us-chicago-1"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      OCI Model ID
+                    </label>
+                    <input
+                      type="text"
+                      value={ociModel}
+                      onChange={(e) => setOciModel(e.target.value)}
+                      placeholder="cohere.command-r-plus"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      Compartment OCID
+                    </label>
+                    <input
+                      type="text"
+                      value={ociCompartmentId}
+                      onChange={(e) => setOciCompartmentId(e.target.value)}
+                      placeholder="ocid1.compartment.oc1..."
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginBottom: '4px' }}>
+                      API Auth Token / Key
+                    </label>
+                    <input
+                      type="password"
+                      value={ociKey}
+                      onChange={(e) => setOciKey(e.target.value)}
+                      placeholder="••••••••••••••••"
+                      style={{ width: '100%', padding: '7px 9px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
+                <button type="button" className="cancel-btn" onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" className="submit-btn" style={{ width: 'auto', marginTop: 0 }} disabled={keysLoading}>
+                  {keysLoading ? 'Saving...' : 'Save Enterprise Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* TAB 3: OLLAMA LOCAL MODELS */}
         {activeTab === 'ollama' && (
           <div>
             {/* Status indicator */}

@@ -20,6 +20,7 @@ import {
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
 import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
+import { invokeBedrockConverse, streamAzureFoundry, invokeOciGenAi } from '../services/enterprise-ai';
 
 interface ChatRequestBody {
   conversationId?: string;
@@ -367,11 +368,37 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // Enterprise Cloud AI: Azure AI Foundry
+    if (settings['azure_openai_endpoint'] && settings['azure_openai_api_key']) {
+      const dep = settings['azure_openai_deployment'] || 'gpt-4o';
+      cloudModels.push(`azure/${dep}`);
+    }
+
+    // Enterprise Cloud AI: AWS Bedrock
+    if (settings['aws_bedrock_access_key'] && settings['aws_bedrock_secret_key']) {
+      const bModel = settings['aws_bedrock_model'] || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+      cloudModels.push(`bedrock/${bModel}`);
+      if (!cloudModels.includes('bedrock/amazon.nova-pro-v1:0')) {
+        cloudModels.push('bedrock/amazon.nova-pro-v1:0');
+      }
+    }
+
+    // Enterprise Cloud AI: OCI GenAI
+    if (settings['oci_genai_compartment_id'] && settings['oci_genai_api_key']) {
+      const ociM = settings['oci_genai_model'] || 'cohere.command-r-plus';
+      cloudModels.push(`oci/${ociM}`);
+    }
+
     return {
       ollamaOnline,
       localModels,
       cloudModels,
-      hasKeys
+      hasKeys: {
+        ...hasKeys,
+        azure: Boolean(settings['azure_openai_endpoint'] && settings['azure_openai_api_key']),
+        bedrock: Boolean(settings['aws_bedrock_access_key'] && settings['aws_bedrock_secret_key']),
+        oci: Boolean(settings['oci_genai_compartment_id'] && settings['oci_genai_api_key'])
+      }
     };
   });
 
@@ -697,15 +724,26 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     if (activeProvider === 'cloud') {
       // Intelligently select target model matching available keys
       let targetModel = model;
+
+      const hasAzure = Boolean(settings['azure_openai_endpoint'] && settings['azure_openai_api_key']);
+      const hasBedrock = Boolean(settings['aws_bedrock_access_key'] && settings['aws_bedrock_secret_key']);
+      const hasOci = Boolean(settings['oci_genai_compartment_id'] && settings['oci_genai_api_key']);
+
       if (
         !targetModel ||
         (targetModel.startsWith('gemini') && !geminiKey) ||
         (targetModel.startsWith('gpt') && !openaiKey) ||
-        (targetModel.startsWith('claude') && !anthropicKey)
+        (targetModel.startsWith('claude') && !anthropicKey) ||
+        (targetModel.startsWith('azure') && !hasAzure) ||
+        (targetModel.startsWith('bedrock') && !hasBedrock) ||
+        (targetModel.startsWith('oci') && !hasOci)
       ) {
         if (geminiKey) targetModel = 'gemini-2.5-flash';
         else if (openaiKey) targetModel = 'gpt-4o';
         else if (anthropicKey) targetModel = 'claude-3-5-sonnet-20241022';
+        else if (hasAzure) targetModel = `azure/${settings['azure_openai_deployment'] || 'gpt-4o'}`;
+        else if (hasBedrock) targetModel = `bedrock/${settings['aws_bedrock_model'] || 'anthropic.claude-3-5-sonnet-20241022-v2:0'}`;
+        else if (hasOci) targetModel = `oci/${settings['oci_genai_model'] || 'cohere.command-r-plus'}`;
         else targetModel = 'gemini-2.5-flash';
       }
 
@@ -717,6 +755,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       const isGemini = targetModel.startsWith('gemini');
       const isAnthropic = targetModel.startsWith('claude');
       const isOpenAI = targetModel.startsWith('gpt') || targetModel.startsWith('o1') || targetModel.startsWith('o3');
+      const isAzure = targetModel.startsWith('azure/') || targetModel.startsWith('azure-');
+      const isBedrock = targetModel.startsWith('bedrock/') || targetModel.startsWith('bedrock-');
+      const isOci = targetModel.startsWith('oci/') || targetModel.startsWith('oci-');
 
       if (isGemini && !geminiKey) {
         streamToken(
@@ -918,6 +959,86 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           }
         } catch (e: any) {
           streamToken(`> ⚠️ **Anthropic request failed:** ${e.message}`);
+        }
+      } else if (isAzure) {
+        sendStatus(`Connecting to Azure AI Foundry (${targetModel})...`, 'connecting');
+        const endpoint = settings['azure_openai_endpoint'] || process.env.AZURE_OPENAI_ENDPOINT;
+        const apiKey = settings['azure_openai_api_key'] || process.env.AZURE_OPENAI_API_KEY;
+        const deploymentName = targetModel.replace(/^azure\//, '').replace(/^azure-/, '') || settings['azure_openai_deployment'] || 'gpt-4o';
+        const apiVersion = settings['azure_openai_api_version'] || '2024-06-01';
+
+        if (!endpoint || !apiKey) {
+          streamToken(
+            `> 🔑 **Azure AI Foundry Configuration Missing**\n\nPlease configure your Azure Endpoint and API Key in **Settings > Enterprise Cloud**.`
+          );
+        } else {
+          try {
+            await streamAzureFoundry({
+              endpoint,
+              apiKey,
+              deploymentName,
+              apiVersion,
+              systemPrompt,
+              messages,
+              onToken: streamToken
+            });
+          } catch (e: any) {
+            streamToken(`> ⚠️ **Azure AI Foundry error:** ${e.message}`);
+          }
+        }
+      } else if (isBedrock) {
+        sendStatus(`Connecting to AWS Bedrock (${targetModel})...`, 'connecting');
+        const region = settings['aws_bedrock_region'] || process.env.AWS_REGION || 'us-east-1';
+        const accessKeyId = settings['aws_bedrock_access_key'] || process.env.AWS_ACCESS_KEY_ID;
+        const secretAccessKey = settings['aws_bedrock_secret_key'] || process.env.AWS_SECRET_ACCESS_KEY;
+        const sessionToken = settings['aws_bedrock_session_token'] || process.env.AWS_SESSION_TOKEN;
+        const modelId = targetModel.replace(/^bedrock\//, '').replace(/^bedrock-/, '') || settings['aws_bedrock_model'] || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+
+        if (!accessKeyId || !secretAccessKey) {
+          streamToken(
+            `> 🔑 **AWS Bedrock Credentials Missing**\n\nPlease configure your AWS Access Key, Secret Key, and Region in **Settings > Enterprise Cloud**.`
+          );
+        } else {
+          try {
+            await invokeBedrockConverse({
+              region,
+              accessKeyId,
+              secretAccessKey,
+              sessionToken,
+              modelId,
+              systemPrompt,
+              messages,
+              onToken: streamToken
+            });
+          } catch (e: any) {
+            streamToken(`> ⚠️ **AWS Bedrock error:** ${e.message}`);
+          }
+        }
+      } else if (isOci) {
+        sendStatus(`Connecting to OCI Generative AI (${targetModel})...`, 'connecting');
+        const region = settings['oci_genai_region'] || 'us-chicago-1';
+        const compartmentId = settings['oci_genai_compartment_id'] || process.env.OCI_COMPARTMENT_ID;
+        const apiKey = settings['oci_genai_api_key'] || process.env.OCI_GENAI_API_KEY;
+        const modelId = targetModel.replace(/^oci\//, '').replace(/^oci-/, '') || settings['oci_genai_model'] || 'cohere.command-r-plus';
+
+        if (!compartmentId || !apiKey) {
+          streamToken(
+            `> 🔑 **OCI GenAI Credentials Missing**\n\nPlease configure your OCI Compartment ID and Auth Key in **Settings > Enterprise Cloud**.`
+          );
+        } else {
+          try {
+            await invokeOciGenAi({
+              region,
+              compartmentId,
+              apiKey,
+              modelId,
+              systemPrompt,
+              messages,
+              onToken: streamToken
+            });
+          } catch (e: any) {
+            streamToken(`> ⚠️ **OCI Generative AI error:** ${e.message}`);
+          }
         }
       }
     }

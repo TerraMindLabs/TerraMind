@@ -99,7 +99,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Get Settings (API keys)
+  // Get Settings (API keys & Enterprise Cloud AI)
   fastify.get('/api/settings', async (request, reply) => {
     const settings = getAllSettings();
     return {
@@ -108,13 +108,42 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
       anthropicApiKey: settings['anthropic_api_key'] ? maskKey(settings['anthropic_api_key']) : '',
       hasOpenaiKey: Boolean(settings['openai_api_key'] || process.env.OPENAI_API_KEY),
       hasGeminiKey: Boolean(settings['gemini_api_key'] || process.env.GEMINI_API_KEY),
-      hasAnthropicKey: Boolean(settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY)
+      hasAnthropicKey: Boolean(settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY),
+
+      // Azure AI Foundry / Azure OpenAI
+      azureOpenaiEndpoint: settings['azure_openai_endpoint'] || process.env.AZURE_OPENAI_ENDPOINT || '',
+      azureOpenaiApiKey: settings['azure_openai_api_key'] ? maskKey(settings['azure_openai_api_key']) : '',
+      azureOpenaiDeployment: settings['azure_openai_deployment'] || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o',
+      azureOpenaiApiVersion: settings['azure_openai_api_version'] || '2024-06-01',
+      hasAzureOpenai: Boolean((settings['azure_openai_api_key'] || process.env.AZURE_OPENAI_API_KEY) && (settings['azure_openai_endpoint'] || process.env.AZURE_OPENAI_ENDPOINT)),
+
+      // AWS Bedrock
+      awsBedrockRegion: settings['aws_bedrock_region'] || process.env.AWS_REGION || 'us-east-1',
+      awsBedrockAccessKey: settings['aws_bedrock_access_key'] ? maskKey(settings['aws_bedrock_access_key']) : '',
+      awsBedrockSecretKey: settings['aws_bedrock_secret_key'] ? maskKey(settings['aws_bedrock_secret_key']) : '',
+      awsBedrockSessionToken: settings['aws_bedrock_session_token'] ? maskKey(settings['aws_bedrock_session_token']) : '',
+      awsBedrockModel: settings['aws_bedrock_model'] || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      hasAwsBedrock: Boolean(
+        (settings['aws_bedrock_access_key'] || process.env.AWS_ACCESS_KEY_ID) &&
+        (settings['aws_bedrock_secret_key'] || process.env.AWS_SECRET_ACCESS_KEY)
+      ),
+
+      // OCI GenAI
+      ociGenaiRegion: settings['oci_genai_region'] || 'us-chicago-1',
+      ociGenaiCompartmentId: settings['oci_genai_compartment_id'] ? maskKey(settings['oci_genai_compartment_id']) : '',
+      ociGenaiApiKey: settings['oci_genai_api_key'] ? maskKey(settings['oci_genai_api_key']) : '',
+      ociGenaiModel: settings['oci_genai_model'] || 'cohere.command-r-plus',
+      hasOciGenai: Boolean(
+        (settings['oci_genai_compartment_id'] || process.env.OCI_COMPARTMENT_ID) &&
+        (settings['oci_genai_api_key'] || process.env.OCI_GENAI_API_KEY)
+      )
     };
   });
 
-  // Save Settings (API keys)
+  // Save Settings (API keys & Enterprise Cloud AI)
   fastify.post('/api/settings', async (request, reply) => {
     const body = (request.body as any) || {};
+
     if (body.openaiApiKey !== undefined && !body.openaiApiKey.includes('••••')) {
       setSetting('openai_api_key', body.openaiApiKey.trim());
     }
@@ -124,16 +153,74 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     if (body.anthropicApiKey !== undefined && !body.anthropicApiKey.includes('••••')) {
       setSetting('anthropic_api_key', body.anthropicApiKey.trim());
     }
+
+    // Azure AI Foundry
+    if (body.azureOpenaiEndpoint !== undefined) {
+      setSetting('azure_openai_endpoint', body.azureOpenaiEndpoint.trim());
+    }
+    if (body.azureOpenaiApiKey !== undefined && !body.azureOpenaiApiKey.includes('••••')) {
+      setSetting('azure_openai_api_key', body.azureOpenaiApiKey.trim());
+    }
+    if (body.azureOpenaiDeployment !== undefined) {
+      setSetting('azure_openai_deployment', body.azureOpenaiDeployment.trim());
+    }
+    if (body.azureOpenaiApiVersion !== undefined) {
+      setSetting('azure_openai_api_version', body.azureOpenaiApiVersion.trim());
+    }
+
+    // AWS Bedrock
+    if (body.awsBedrockRegion !== undefined) {
+      setSetting('aws_bedrock_region', body.awsBedrockRegion.trim());
+    }
+    if (body.awsBedrockAccessKey !== undefined && !body.awsBedrockAccessKey.includes('••••')) {
+      setSetting('aws_bedrock_access_key', body.awsBedrockAccessKey.trim());
+    }
+    if (body.awsBedrockSecretKey !== undefined && !body.awsBedrockSecretKey.includes('••••')) {
+      setSetting('aws_bedrock_secret_key', body.awsBedrockSecretKey.trim());
+    }
+    if (body.awsBedrockSessionToken !== undefined && !body.awsBedrockSessionToken.includes('••••')) {
+      setSetting('aws_bedrock_session_token', body.awsBedrockSessionToken.trim());
+    }
+    if (body.awsBedrockModel !== undefined) {
+      setSetting('aws_bedrock_model', body.awsBedrockModel.trim());
+    }
+
+    // OCI GenAI
+    if (body.ociGenaiRegion !== undefined) {
+      setSetting('oci_genai_region', body.ociGenaiRegion.trim());
+    }
+    if (body.ociGenaiCompartmentId !== undefined && !body.ociGenaiCompartmentId.includes('••••')) {
+      setSetting('oci_genai_compartment_id', body.ociGenaiCompartmentId.trim());
+    }
+    if (body.ociGenaiApiKey !== undefined && !body.ociGenaiApiKey.includes('••••')) {
+      setSetting('oci_genai_api_key', body.ociGenaiApiKey.trim());
+    }
+    if (body.ociGenaiModel !== undefined) {
+      setSetting('oci_genai_model', body.ociGenaiModel.trim());
+    }
+
     return { success: true };
   });
 
-  // Delete a specific API key
+  // Delete a specific provider configuration
   fastify.delete('/api/settings/keys/:provider', async (request, reply) => {
     const { provider } = request.params as { provider: string };
     const p = String(provider).toLowerCase();
     if (p === 'openai') setSetting('openai_api_key', '');
     else if (p === 'gemini') setSetting('gemini_api_key', '');
     else if (p === 'anthropic') setSetting('anthropic_api_key', '');
+    else if (p === 'azure') {
+      setSetting('azure_openai_endpoint', '');
+      setSetting('azure_openai_api_key', '');
+      setSetting('azure_openai_deployment', '');
+    } else if (p === 'bedrock') {
+      setSetting('aws_bedrock_access_key', '');
+      setSetting('aws_bedrock_secret_key', '');
+      setSetting('aws_bedrock_session_token', '');
+    } else if (p === 'oci') {
+      setSetting('oci_genai_compartment_id', '');
+      setSetting('oci_genai_api_key', '');
+    }
     return { success: true };
   });
 }

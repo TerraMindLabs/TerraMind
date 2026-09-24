@@ -138,9 +138,20 @@ const AGENT_CARDS: Record<string, SuggestionCard[]> = {
   ]
 };
 
-function formatModelName(modelName: string): string {
-  if (!modelName) return '';
-  return modelName
+function formatModelName(modelId: string): string {
+  if (!modelId) return '';
+  if (modelId.startsWith('azure/')) {
+    return `Azure / ${modelId.slice(6)}`;
+  }
+  if (modelId.startsWith('bedrock/')) {
+    const raw = modelId.slice(8);
+    return `Bedrock / ${raw.replace('anthropic.', '').replace('amazon.', '').replace('meta.', '')}`;
+  }
+  if (modelId.startsWith('oci/')) {
+    return `OCI / ${modelId.slice(4)}`;
+  }
+
+  return modelId
     .replace('gemini-3.6-flash', 'Gemini 3.6 Flash')
     .replace('gemini-3-flash-preview', 'Gemini 3 Flash (Preview)')
     .replace('gemini-3.5-flash-lite', 'Gemini 3.5 Flash Lite')
@@ -171,7 +182,16 @@ function isSupportedCloudModel(modelId: string): boolean {
   const lower = modelId.toLowerCase();
   const unsupported = ['tts', 'image', 'imagen', 'audio', 'realtime', 'embedding', 'embed', 'aqa', 'whisper', 'dall-e', 'transcribe'];
   if (unsupported.some((u) => lower.includes(u))) return false;
-  return lower.startsWith('gemini-') || lower.startsWith('gpt-') || lower.startsWith('o1') || lower.startsWith('o3') || lower.startsWith('claude-');
+  return (
+    lower.startsWith('gemini-') ||
+    lower.startsWith('gpt-') ||
+    lower.startsWith('o1') ||
+    lower.startsWith('o3') ||
+    lower.startsWith('claude-') ||
+    lower.startsWith('azure/') ||
+    lower.startsWith('bedrock/') ||
+    lower.startsWith('oci/')
+  );
 }
 
 function App() {
@@ -212,7 +232,7 @@ function App() {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'keys' | 'ollama'>('keys');
+  const [settingsTab, setSettingsTab] = useState<'keys' | 'enterprise' | 'ollama'>('keys');
   const [authOpen, setAuthOpen] = useState(false);
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -807,6 +827,9 @@ function App() {
                       </div>
                     ) : (
                       cloudModels.map((cm) => {
+                        const isAzure = cm.startsWith('azure/');
+                        const isBedrock = cm.startsWith('bedrock/');
+                        const isOci = cm.startsWith('oci/');
                         const isFlash = cm.includes('flash') || cm.includes('mini') || cm.includes('haiku');
                         const isPro = cm.includes('pro') || cm.includes('o1') || cm.includes('o3') || cm.includes('opus') || cm.includes('sonnet');
                         return (
@@ -824,13 +847,22 @@ function App() {
                                 {formatModelName(cm)}
                               </span>
                               <div className="menu-item-badges">
+                                {isAzure && <span className="menu-badge pro">Azure</span>}
+                                {isBedrock && <span className="menu-badge pro">Bedrock</span>}
+                                {isOci && <span className="menu-badge pro">OCI</span>}
                                 {isFlash && <span className="menu-badge fast">Fast</span>}
-                                {isPro && <span className="menu-badge pro">Reasoning</span>}
+                                {isPro && !isAzure && !isBedrock && !isOci && <span className="menu-badge pro">Reasoning</span>}
                                 <span className="menu-badge verified">Verified</span>
                               </div>
                             </div>
                             <span className="menu-item-desc">
-                              {isFlash
+                              {isAzure
+                                ? 'Azure AI Foundry enterprise-grade model endpoint'
+                                : isBedrock
+                                ? 'AWS Bedrock IAM/SigV4 managed foundation model'
+                                : isOci
+                                ? 'Oracle Cloud Infrastructure Generative AI inference'
+                                : isFlash
                                 ? 'Ultra-fast, cost-effective everyday responses'
                                 : isPro
                                 ? 'High-capacity logic, deep reasoning & code analysis'
@@ -842,7 +874,7 @@ function App() {
                     )}
                   </div>
 
-                  <div className="menu-footer">
+                  <div className="menu-footer" style={{ display: 'flex', gap: '8px' }}>
                     <button
                       type="button"
                       className="menu-footer-btn"
@@ -851,8 +883,21 @@ function App() {
                         setSettingsTab('keys');
                         setSettingsOpen(true);
                       }}
+                      style={{ flex: 1 }}
                     >
-                      <span>⚙️</span> Manage API Keys
+                      <span>🔑</span> API Keys
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-footer-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSettingsTab('enterprise');
+                        setSettingsOpen(true);
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <span>🏢</span> Enterprise Cloud
                     </button>
                   </div>
                 </>
