@@ -77,6 +77,12 @@ export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: s
     desc: 'Oracle Cloud Infrastructure Generative AI',
     icon: '🔴',
     logoUrl: '/icons/oci.png'
+  },
+  {
+    id: 'mcp',
+    title: 'Model Context Protocol (MCP)',
+    desc: 'Configure external tool servers, status & agent abilities',
+    icon: '🔌'
   }
 ];
 

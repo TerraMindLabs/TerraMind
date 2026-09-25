@@ -29,12 +29,14 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(AGENT_PROMPTS['agent_cicd-pipeline-engineer'].instructions, /CI\/CD|pipelines/i);
   });
 
-  test('2. Global Workspace prompt enforces Rule #2: Folder/Project confirmation before code generation', () => {
+  test('2. Global Workspace prompt enforces Rule #2: Folder & Architecture inquiry before code generation', () => {
     const prompt = buildSystemPrompt('agent_k8s-gitops-architect');
 
     assert.match(prompt, /Global Workspace/i);
-    assert.match(prompt, /PROJECT \/ FOLDER CONFIRMATION/i);
+    assert.match(prompt, /PRE-GENERATION INQUIRY/i);
     assert.match(prompt, /Would you like to store this in a dedicated project or folder name/i);
+    assert.match(prompt, /Direct Resource-level code/i);
+    assert.match(prompt, /Reusable Module-level code/i);
   });
 
   test('3. Project workspace prompt injects active project context and target directory', () => {
@@ -56,9 +58,53 @@ describe('Agent Prompts & Execution Rules Tests', () => {
   test('4. Anti-looping and anti-fragmentation rules are strictly enforced in system prompt', () => {
     const prompt = buildSystemPrompt('agent_tf-devops-expert');
 
-    assert.match(prompt, /ONE COMPLETE FILE PER CODE BLOCK \(NO LOOPS\)/i);
+    assert.match(prompt, /ONE COMPLETE FILE PER CODE BLOCK/i);
     assert.match(prompt, /NEVER write '\(continued\)' blocks/i);
     assert.match(prompt, /NEVER output duplicate files/i);
     assert.match(prompt, /CONCISE & TARGETED SCOPE/i);
+  });
+
+  test('5. Terraform DevOps Expert enforces strict multi-file standards (forbids monolithic main.tf)', () => {
+    const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
+
+    assert.match(tfPrompt, /STRICT MULTI-FILE ARCHITECTURE/i);
+    assert.match(tfPrompt, /FORBID MONOLITHIC main\.tf/i);
+    assert.match(tfPrompt, /providers\.tf/);
+    assert.match(tfPrompt, /variables\.tf/);
+    assert.match(tfPrompt, /main\.tf/);
+    assert.match(tfPrompt, /outputs\.tf/);
+    assert.match(tfPrompt, /terraform\.tfvars\.example/);
+  });
+
+  test('6. Terraform DevOps prompt enforces mandatory inquiry for Folder and Resource vs Module level', () => {
+    const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
+
+    assert.match(tfPrompt, /Project Folder/i);
+    assert.match(tfPrompt, /Direct Resource-level code/i);
+    assert.match(tfPrompt, /Reusable Module-level code/i);
+  });
+
+  test('7. System prompt injects active Model Context Protocol (MCP) servers and tools', () => {
+    const testMcpServers = [
+      {
+        id: 'terraform-registry',
+        name: 'Terraform Registry MCP',
+        description: 'Official HashiCorp Terraform Registry connector',
+        transport: 'stdio' as const,
+        enabled: true,
+        status: 'active' as const,
+        tools: [
+          { name: 'search_modules', description: 'Search Terraform Registry' },
+          { name: 'get_provider_schema', description: 'Retrieve HCL schema' }
+        ]
+      }
+    ];
+
+    const prompt = buildSystemPrompt('agent_tf-devops-expert', undefined, testMcpServers);
+
+    assert.match(prompt, /ACTIVE MODEL CONTEXT PROTOCOL \(MCP\) INTEGRATIONS/);
+    assert.match(prompt, /Terraform Registry MCP/);
+    assert.match(prompt, /search_modules/);
+    assert.match(prompt, /get_provider_schema/);
   });
 });

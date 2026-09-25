@@ -7,7 +7,8 @@ export type SettingsSection =
   | 'ollama'
   | 'bedrock'
   | 'azure'
-  | 'oci';
+  | 'oci'
+  | 'mcp';
 
 interface SettingsViewProps {
   activeSection: SettingsSection;
@@ -82,6 +83,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [ociLoading, setOciLoading] = useState(false);
   const [ociSaved, setOciSaved] = useState(false);
 
+  // 8. Model Context Protocol (MCP) state
+  const [mcpServers, setMcpServers] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    transport: 'stdio' | 'sse';
+    command?: string;
+    args?: string[];
+    url?: string;
+    enabled: boolean;
+    status: 'active' | 'offline' | 'error';
+    tools: Array<{ name: string; description: string }>;
+    last_checked?: string;
+  }>>([]);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [pingingId, setPingingId] = useState<string | null>(null);
+  const [pingingAll, setPingingAll] = useState(false);
+  const [mcpNotice, setMcpNotice] = useState<string | null>(null);
+  const [showAddMcpModal, setShowAddMcpModal] = useState(false);
+  const [expandedToolsId, setExpandedToolsId] = useState<string | null>(null);
+
+  // New MCP form state
+  const [newMcpId, setNewMcpId] = useState('');
+  const [newMcpName, setNewMcpName] = useState('');
+  const [newMcpDesc, setNewMcpDesc] = useState('');
+  const [newMcpTransport, setNewMcpTransport] = useState<'stdio' | 'sse'>('stdio');
+  const [newMcpCmd, setNewMcpCmd] = useState('npx');
+  const [newMcpArgs, setNewMcpArgs] = useState('');
+  const [newMcpUrl, setNewMcpUrl] = useState('');
+
   // Load backend configuration
   useEffect(() => {
     fetch('/api/settings')
@@ -126,7 +157,146 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setInstalledModels(data.localModels || data.local || []);
       })
       .catch(() => {});
+
+    fetchMcpServers();
   }, []);
+
+  const fetchMcpServers = async () => {
+    setMcpLoading(true);
+    try {
+      const res = await fetch('/api/mcp/servers');
+      if (res.ok) {
+        const data = await res.json();
+        setMcpServers(data.servers || []);
+      }
+    } catch (e) {
+      console.error('Failed to load MCP servers', e);
+    } finally {
+      setMcpLoading(false);
+    }
+  };
+
+  const handleToggleMcp = async (id: string, currentEnabled: boolean) => {
+    try {
+      const res = await fetch(`/api/mcp/servers/${id}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !currentEnabled })
+      });
+      if (res.ok) {
+        setMcpServers((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, enabled: !currentEnabled } : s))
+        );
+      }
+    } catch (e) {
+      console.error('Failed to toggle MCP server', e);
+    }
+  };
+
+  const handlePingMcp = async (id: string) => {
+    setPingingId(id);
+    try {
+      const res = await fetch(`/api/mcp/servers/${id}/ping`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.server) {
+          setMcpServers((prev) =>
+            prev.map((s) => (s.id === id ? data.server : s))
+          );
+        }
+        setMcpNotice(`Connection test for "${id}" succeeded (${data.latencyMs || 15}ms). Status: Active.`);
+        setTimeout(() => setMcpNotice(null), 4000);
+      } else {
+        const err = await res.json();
+        setMcpNotice(`Connection test for "${id}" failed: ${err.error || 'Server error'}`);
+        setTimeout(() => setMcpNotice(null), 5000);
+      }
+    } catch (e: any) {
+      setMcpNotice(`Error pinging "${id}": ${e.message}`);
+      setTimeout(() => setMcpNotice(null), 5000);
+    } finally {
+      setPingingId(null);
+    }
+  };
+
+  const handlePingAll = async () => {
+    setPingingAll(true);
+    try {
+      const res = await fetch('/api/mcp/ping-all', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.servers) {
+          setMcpServers(data.servers);
+        }
+        setMcpNotice(`All active MCP servers verified successfully (${data.activeCount} connected).`);
+        setTimeout(() => setMcpNotice(null), 4000);
+      }
+    } catch (e: any) {
+      setMcpNotice(`Error verifying all servers: ${e.message}`);
+      setTimeout(() => setMcpNotice(null), 4000);
+    } finally {
+      setPingingAll(false);
+    }
+  };
+
+  const handleAddMcpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMcpId.trim() || !newMcpName.trim()) return;
+
+    try {
+      const parsedArgs = newMcpArgs.trim()
+        ? newMcpArgs.trim().split(/\s+/).filter(Boolean)
+        : undefined;
+
+      const res = await fetch('/api/mcp/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newMcpId.trim(),
+          name: newMcpName.trim(),
+          description: newMcpDesc.trim(),
+          transport: newMcpTransport,
+          command: newMcpTransport === 'stdio' ? newMcpCmd.trim() : undefined,
+          args: newMcpTransport === 'stdio' ? parsedArgs : undefined,
+          url: newMcpTransport === 'sse' ? newMcpUrl.trim() : undefined,
+          enabled: true,
+          status: 'active'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.server) {
+          setMcpServers((prev) => [...prev.filter((s) => s.id !== data.server.id), data.server]);
+        }
+        setShowAddMcpModal(false);
+        setNewMcpId('');
+        setNewMcpName('');
+        setNewMcpDesc('');
+        setNewMcpCmd('npx');
+        setNewMcpArgs('');
+        setNewMcpUrl('');
+        setMcpNotice(`MCP server "${data.server?.name}" registered and activated!`);
+        setTimeout(() => setMcpNotice(null), 4000);
+      }
+    } catch (e: any) {
+      alert(`Failed to add MCP server: ${e.message}`);
+    }
+  };
+
+  const handleDeleteMcp = async (id: string) => {
+    if (!confirm(`Are you sure you want to delete MCP server "${id}"?`)) return;
+    try {
+      const res = await fetch(`/api/mcp/servers/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMcpServers((prev) => prev.filter((s) => s.id !== id));
+        setMcpNotice(`MCP server "${id}" removed.`);
+        setTimeout(() => setMcpNotice(null), 3000);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,6 +501,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>Oracle Cloud Infrastructure (OCI GenAI)</span>
               </>
             )}
+            {activeSection === 'mcp' && (
+              <>
+                <span style={{ fontSize: '26px' }}>🔌</span>
+                <span>Model Context Protocol (MCP) Integrations</span>
+              </>
+            )}
           </h1>
           <p style={{ fontSize: '13.5px', color: 'var(--muted)', margin: 0 }}>
             {activeSection === 'profile' && 'Update your identity, full name, email, and display avatar.'}
@@ -340,6 +516,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {activeSection === 'bedrock' && 'Configure IAM credentials, AWS region, and foundation models for AWS Bedrock.'}
             {activeSection === 'azure' && 'Configure private endpoints, API keys, and deployment names for Azure AI Foundry.'}
             {activeSection === 'oci' && 'Configure tenancy OCIDs, compartment credentials, and OCI Generative AI models.'}
+            {activeSection === 'mcp' && 'Control and check external MCP servers, verify live tool connections, and empower TerraMind DevOps agents.'}
           </p>
         </div>
 
@@ -1190,6 +1367,630 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 8. MODEL CONTEXT PROTOCOL (MCP) SECTION */}
+      {activeSection === 'mcp' && (
+        <div style={{ maxWidth: '960px' }}>
+          {/* Notification Banner */}
+          {mcpNotice && (
+            <div
+              style={{
+                marginBottom: '20px',
+                padding: '12px 18px',
+                borderRadius: '8px',
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                color: '#3b82f6',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <span>{mcpNotice}</span>
+              <button
+                type="button"
+                onClick={() => setMcpNotice(null)}
+                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Metrics & Actions Header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '18px 24px',
+              marginBottom: '24px',
+              flexWrap: 'wrap',
+              gap: '16px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Configured MCPs
+                </div>
+                <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text)', marginTop: '2px' }}>
+                  {mcpServers.length}
+                </div>
+              </div>
+              <div style={{ width: '1px', height: '36px', background: 'var(--border)' }} />
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Active & Online
+                </div>
+                <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                  {mcpServers.filter((s) => s.enabled && s.status === 'active').length}
+                </div>
+              </div>
+              <div style={{ width: '1px', height: '36px', background: 'var(--border)' }} />
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Agent Tools Available
+                </div>
+                <div style={{ fontSize: '22px', fontWeight: 700, color: '#6366f1', marginTop: '2px' }}>
+                  {mcpServers.reduce((acc, s) => acc + (s.tools ? s.tools.length : 0), 0)}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={handlePingAll}
+                disabled={pingingAll || mcpLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--hover)',
+                  color: 'var(--text)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: pingingAll ? 'wait' : 'pointer'
+                }}
+              >
+                <span>🔄</span>
+                <span>{pingingAll ? 'Checking All...' : 'Test All Connections'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAddMcpModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#3b82f6',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                <span>+</span>
+                <span>Add MCP Server</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Informational Guidance Banner */}
+          <div
+            style={{
+              padding: '14px 20px',
+              borderRadius: '10px',
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px'
+            }}
+          >
+            <span style={{ fontSize: '20px', lineHeight: 1 }}>🧠</span>
+            <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+              <strong>How TerraMind Agents Utilize Model Context Protocol (MCP):</strong>
+              <div style={{ color: 'var(--muted)', marginTop: '4px' }}>
+                Active MCP servers expose standardized tool schemas to the DevOps agents. When generating infrastructure or validating configuration, agents cross-reference official provider schemas, verify Terraform registry module arguments, check IAM policies, and inspect Kubernetes resources.
+              </div>
+            </div>
+          </div>
+
+          {/* MCP Servers List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {mcpServers.map((server) => {
+              const isPinging = pingingId === server.id;
+              const isExpanded = expandedToolsId === server.id;
+              const isDefault = [
+                'terraform-registry',
+                'filesystem-workspace',
+                'aws-cloud-control',
+                'k8s-cluster-inspector'
+              ].includes(server.id);
+
+              return (
+                <div
+                  key={server.id}
+                  style={{
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    padding: '20px 24px',
+                    transition: 'border-color 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase',
+                          background: !server.enabled
+                            ? 'rgba(234, 179, 8, 0.15)'
+                            : server.status === 'active'
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : 'rgba(239, 68, 68, 0.15)',
+                          color: !server.enabled
+                            ? '#eab308'
+                            : server.status === 'active'
+                            ? '#10b981'
+                            : '#ef4444',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: !server.enabled
+                              ? '#eab308'
+                              : server.status === 'active'
+                              ? '#10b981'
+                              : '#ef4444'
+                          }}
+                        />
+                        {!server.enabled ? 'Disabled' : server.status === 'active' ? 'Active / Connected' : 'Offline'}
+                      </span>
+
+                      <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>
+                        {server.name}
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          background: 'var(--hover)',
+                          color: 'var(--muted)',
+                          border: '1px solid var(--border)',
+                          fontFamily: 'monospace'
+                        }}
+                      >
+                        {server.transport.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Enable / Disable Toggle Switch */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                        {server.enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={server.enabled}
+                        onChange={() => handleToggleMcp(server.id, server.enabled)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                    </label>
+                  </div>
+
+                  <p style={{ fontSize: '13px', color: 'var(--muted)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                    {server.description}
+                  </p>
+
+                  {/* Command / URL preview */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Connection:</span>
+                    <code
+                      style={{
+                        fontSize: '11.5px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: 'var(--hover)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text)'
+                      }}
+                    >
+                      {server.transport === 'stdio'
+                        ? `${server.command || 'npx'} ${(server.args || []).join(' ')}`
+                        : server.url || 'SSE endpoint'}
+                    </code>
+                    {server.last_checked && (
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)', marginLeft: 'auto' }}>
+                        Last checked: {new Date(server.last_checked).toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Card Actions & Tools Toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handlePingMcp(server.id)}
+                        disabled={isPinging || !server.enabled}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--hover)',
+                          color: 'var(--text)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: isPinging || !server.enabled ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <span>⚡</span>
+                        <span>{isPinging ? 'Pinging...' : 'Check Connection'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpandedToolsId(isExpanded ? null : server.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: isExpanded ? 'rgba(59, 130, 246, 0.1)' : 'none',
+                          color: isExpanded ? '#3b82f6' : 'var(--muted)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🛠️ Available Tools ({server.tools ? server.tools.length : 0}) {isExpanded ? '▲' : '▼'}
+                      </button>
+                    </div>
+
+                    {!isDefault && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMcp(server.id)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: 'none',
+                          color: '#ef4444',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🗑️ Delete
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Tools Accordion */}
+                  {isExpanded && (
+                    <div
+                      style={{
+                        marginTop: '14px',
+                        padding: '12px 16px',
+                        borderRadius: '8px',
+                        background: 'var(--hover)',
+                        border: '1px solid var(--border)'
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                        Tools Exposed to AI Agents:
+                      </div>
+                      {(!server.tools || server.tools.length === 0) ? (
+                        <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                          No individual tools registered. Generic execution enabled.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {server.tools.map((t) => (
+                            <div
+                              key={t.name}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'baseline',
+                                gap: '10px',
+                                fontSize: '12.5px'
+                              }}
+                            >
+                              <code
+                                style={{
+                                  fontSize: '11.5px',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#3b82f6',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {t.name}
+                              </code>
+                              <span style={{ color: 'var(--muted)' }}>{t.description}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add Custom MCP Modal */}
+          {showAddMcpModal && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                padding: '20px'
+              }}
+              onClick={() => setShowAddMcpModal(false)}
+            >
+              <div
+                style={{
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '28px',
+                  width: '100%',
+                  maxWidth: '520px',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
+                    🔌 Register External MCP Server
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMcpModal(false)}
+                    style={{ background: 'none', border: 'none', fontSize: '18px', color: 'var(--muted)', cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddMcpSubmit}>
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                      Server Identifier (Slug) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. gitlab-pipelines or datadog-mcp"
+                      value={newMcpId}
+                      onChange={(e) => setNewMcpId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                        color: 'var(--text)',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                      Server Display Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. GitLab CI / CD Server"
+                      value={newMcpName}
+                      onChange={(e) => setNewMcpName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                        color: 'var(--text)',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Accesses GitLab pipelines and MR statuses"
+                      value={newMcpDesc}
+                      onChange={(e) => setNewMcpDesc(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                        color: 'var(--text)',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                      Transport Mode
+                    </label>
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: 'var(--text)' }}>
+                        <input
+                          type="radio"
+                          name="transport"
+                          value="stdio"
+                          checked={newMcpTransport === 'stdio'}
+                          onChange={() => setNewMcpTransport('stdio')}
+                        />
+                        <span>Standard I/O (npx / python / local binary)</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: 'var(--text)' }}>
+                        <input
+                          type="radio"
+                          name="transport"
+                          value="sse"
+                          checked={newMcpTransport === 'sse'}
+                          onChange={() => setNewMcpTransport('sse')}
+                        />
+                        <span>Server-Sent Events (SSE HTTP URL)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {newMcpTransport === 'stdio' ? (
+                    <>
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                          Executable Command
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. npx or python or uvx"
+                          value={newMcpCmd}
+                          onChange={(e) => setNewMcpCmd(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            fontSize: '13px'
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: '18px' }}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                          Arguments (Space-separated)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. -y @modelcontextprotocol/server-gitlab"
+                          value={newMcpArgs}
+                          onChange={(e) => setNewMcpArgs(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            fontSize: '13px'
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ marginBottom: '18px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '5px' }}>
+                        SSE Endpoint URL
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://mcp-server.internal:8000/sse"
+                        value={newMcpUrl}
+                        onChange={(e) => setNewMcpUrl(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg)',
+                          color: 'var(--text)',
+                          fontSize: '13px'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMcpModal(false)}
+                      style={{
+                        padding: '9px 18px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: 'none',
+                        color: 'var(--text)',
+                        fontSize: '13px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '9px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#3b82f6',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Register & Connect
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -5,14 +5,16 @@ import fs from 'fs';
 import chatRoutes from './routes/chat';
 import workspaceRoutes from './routes/workspace';
 import authRoutes from './routes/auth';
+import mcpRoutes from './routes/mcp';
 import db from './db';
 
 const server = fastify({ logger: true });
 
-// Register the chat, workspace and auth routes
+// Register the chat, workspace, auth, and mcp routes
 server.register(chatRoutes);
 server.register(workspaceRoutes);
 server.register(authRoutes);
+server.register(mcpRoutes);
 
 server.get('/health', async (request, reply) => {
   return { status: 'ok' };

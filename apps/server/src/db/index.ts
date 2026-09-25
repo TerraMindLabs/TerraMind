@@ -106,6 +106,23 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id)
   );
+
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    transport TEXT NOT NULL,
+    command TEXT,
+    args TEXT,
+    url TEXT,
+    env TEXT,
+    enabled INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'active',
+    tools TEXT,
+    last_checked DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Migrations for existing tables
@@ -501,6 +518,245 @@ export function upsertMessage(id: string, conversationId: string, role: string, 
 export function addMessage(id: string, conversationId: string, role: string, content: string, userId = ''): Message {
   return upsertMessage(id, conversationId, role, content, userId);
 }
+
+// ---------------------------------------------------------------------
+// Model Context Protocol (MCP) Server Management
+// ---------------------------------------------------------------------
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema?: Record<string, any>;
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  description: string;
+  transport: 'stdio' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  enabled: boolean;
+  status: 'active' | 'offline' | 'error';
+  tools: McpTool[];
+  last_checked?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function parseMcpRow(row: any): McpServer {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    transport: row.transport || 'stdio',
+    command: row.command || '',
+    args: row.args ? JSON.parse(row.args) : [],
+    url: row.url || '',
+    env: row.env ? JSON.parse(row.env) : {},
+    enabled: Boolean(row.enabled),
+    status: row.status || 'offline',
+    tools: row.tools ? JSON.parse(row.tools) : [],
+    last_checked: row.last_checked || undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+
+export function getAllMcpServers(): McpServer[] {
+  const stmt = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at ASC');
+  const rows = stmt.all() as any[];
+  return rows.map(parseMcpRow);
+}
+
+export function getActiveMcpServers(): McpServer[] {
+  const stmt = db.prepare("SELECT * FROM mcp_servers WHERE enabled = 1 AND status = 'active' ORDER BY created_at ASC");
+  const rows = stmt.all() as any[];
+  return rows.map(parseMcpRow);
+}
+
+export function getMcpServerById(id: string): McpServer | undefined {
+  const stmt = db.prepare('SELECT * FROM mcp_servers WHERE id = ?');
+  const row = stmt.get(id) as any;
+  return row ? parseMcpRow(row) : undefined;
+}
+
+export function saveMcpServer(server: {
+  id: string;
+  name: string;
+  description?: string;
+  transport?: 'stdio' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  enabled?: boolean;
+  status?: 'active' | 'offline' | 'error';
+  tools?: McpTool[];
+}): McpServer {
+  const existing = getMcpServerById(server.id);
+  const transport = server.transport || existing?.transport || 'stdio';
+  const desc = server.description !== undefined ? server.description : (existing?.description || '');
+  const cmd = server.command !== undefined ? server.command : (existing?.command || '');
+  const argsJson = JSON.stringify(server.args !== undefined ? server.args : (existing?.args || []));
+  const url = server.url !== undefined ? server.url : (existing?.url || '');
+  const envJson = JSON.stringify(server.env !== undefined ? server.env : (existing?.env || {}));
+  const enabled = server.enabled !== undefined ? (server.enabled ? 1 : 0) : (existing ? (existing.enabled ? 1 : 0) : 1);
+  const status = server.status || existing?.status || 'active';
+  const toolsJson = JSON.stringify(server.tools !== undefined ? server.tools : (existing?.tools || []));
+  const now = new Date().toISOString();
+
+  const stmt = db.prepare(`
+    INSERT INTO mcp_servers (id, name, description, transport, command, args, url, env, enabled, status, tools, last_checked, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      description = excluded.description,
+      transport = excluded.transport,
+      command = excluded.command,
+      args = excluded.args,
+      url = excluded.url,
+      env = excluded.env,
+      enabled = excluded.enabled,
+      status = excluded.status,
+      tools = excluded.tools,
+      last_checked = excluded.last_checked,
+      updated_at = excluded.updated_at
+  `);
+  stmt.run(server.id, server.name, desc, transport, cmd, argsJson, url, envJson, enabled, status, toolsJson, now, now);
+
+  return getMcpServerById(server.id)!;
+}
+
+export function deleteMcpServer(id: string): boolean {
+  const stmt = db.prepare('DELETE FROM mcp_servers WHERE id = ?');
+  stmt.run(id);
+  return true;
+}
+
+export function toggleMcpServer(id: string, enabled: boolean): McpServer | undefined {
+  const stmt = db.prepare('UPDATE mcp_servers SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+  stmt.run(enabled ? 1 : 0, id);
+  return getMcpServerById(id);
+}
+
+export function updateMcpServerStatus(
+  id: string,
+  status: 'active' | 'offline' | 'error',
+  tools?: McpTool[]
+): McpServer | undefined {
+  const now = new Date().toISOString();
+  if (tools !== undefined) {
+    const stmt = db.prepare(`
+      UPDATE mcp_servers
+      SET status = ?, tools = ?, last_checked = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(status, JSON.stringify(tools), now, id);
+  } else {
+    const stmt = db.prepare(`
+      UPDATE mcp_servers
+      SET status = ?, last_checked = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(status, now, id);
+  }
+  return getMcpServerById(id);
+}
+
+// Pre-seed default core DevOps MCP servers if table is empty
+export function seedDefaultMcpServers(): void {
+  try {
+    const countStmt = db.prepare('SELECT COUNT(*) as count FROM mcp_servers');
+    const res = countStmt.get() as { count: number };
+    if (res && res.count === 0) {
+      const defaults = [
+        {
+          id: 'terraform-registry',
+          name: 'Terraform Registry MCP',
+          description: 'Official HashiCorp Terraform Registry connector for provider schemas, verified community modules, and version compatibility.',
+          transport: 'stdio',
+          command: 'npx',
+          args: JSON.stringify(['-y', '@modelcontextprotocol/server-terraform']),
+          url: '',
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: 'active',
+          tools: JSON.stringify([
+            { name: 'search_modules', description: 'Search Terraform Registry for verified public and enterprise modules' },
+            { name: 'get_provider_schema', description: 'Retrieve official HCL schema, arguments, and required attributes for cloud resource types' },
+            { name: 'validate_version_constraints', description: 'Check version compatibility of providers and root modules' }
+          ]),
+          last_checked: new Date().toISOString()
+        },
+        {
+          id: 'filesystem-workspace',
+          name: 'Workspace Filesystem MCP',
+          description: 'Secure local workspace file explorer and code inspector for TerraMind DevOps agents.',
+          transport: 'stdio',
+          command: 'npx',
+          args: JSON.stringify(['-y', '@modelcontextprotocol/server-filesystem', './']),
+          url: '',
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: 'active',
+          tools: JSON.stringify([
+            { name: 'read_workspace_file', description: 'Read and inspect file contents in local project workspaces' },
+            { name: 'list_directory_tree', description: 'Browse directories and folder hierarchies safely' }
+          ]),
+          last_checked: new Date().toISOString()
+        },
+        {
+          id: 'aws-cloud-control',
+          name: 'AWS Cloud Architecture MCP',
+          description: 'AWS Cloud Control API and Well-Architected Framework advisor for security, reliability, and cost.',
+          transport: 'stdio',
+          command: 'npx',
+          args: JSON.stringify(['-y', '@modelcontextprotocol/server-aws']),
+          url: '',
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: 'active',
+          tools: JSON.stringify([
+            { name: 'validate_iam_policy', description: 'Check IAM policies for wildcard permissions and least-privilege violations' },
+            { name: 'estimate_resource_cost', description: 'Compute AWS pricing metrics for EC2, RDS, and EKS topologies' }
+          ]),
+          last_checked: new Date().toISOString()
+        },
+        {
+          id: 'k8s-cluster-inspector',
+          name: 'Kubernetes & Helm MCP',
+          description: 'Kubernetes API schema validator and Helm chart linter for cloud-native deployments.',
+          transport: 'stdio',
+          command: 'npx',
+          args: JSON.stringify(['-y', '@modelcontextprotocol/server-kubernetes']),
+          url: '',
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: 'active',
+          tools: JSON.stringify([
+            { name: 'lint_k8s_manifest', description: 'Validate Kubernetes YAML against OpenAPI specs' },
+            { name: 'inspect_helm_values', description: 'Check Helm chart values and default templating' }
+          ]),
+          last_checked: new Date().toISOString()
+        }
+      ];
+
+      const insertStmt = db.prepare(`
+        INSERT INTO mcp_servers (id, name, description, transport, command, args, url, env, enabled, status, tools, last_checked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const d of defaults) {
+        insertStmt.run(d.id, d.name, d.description, d.transport, d.command, d.args, d.url, d.env, d.enabled, d.status, d.tools, d.last_checked);
+      }
+    }
+  } catch (err) {
+    console.warn('[DB] MCP seed warning:', err);
+  }
+}
+seedDefaultMcpServers();
 
 export { recordUserSession, logUserActivity };
 export default db;

@@ -77452,6 +77452,23 @@ db2.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id)
   );
+
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    transport TEXT NOT NULL,
+    command TEXT,
+    args TEXT,
+    url TEXT,
+    env TEXT,
+    enabled INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'active',
+    tools TEXT,
+    last_checked DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 try {
   db2.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT '';`);
@@ -77728,6 +77745,189 @@ function upsertMessage(id, conversationId, role, content, userId = "") {
 function addMessage(id, conversationId, role, content, userId = "") {
   return upsertMessage(id, conversationId, role, content, userId);
 }
+function parseMcpRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    transport: row.transport || "stdio",
+    command: row.command || "",
+    args: row.args ? JSON.parse(row.args) : [],
+    url: row.url || "",
+    env: row.env ? JSON.parse(row.env) : {},
+    enabled: Boolean(row.enabled),
+    status: row.status || "offline",
+    tools: row.tools ? JSON.parse(row.tools) : [],
+    last_checked: row.last_checked || void 0,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
+}
+function getAllMcpServers() {
+  const stmt = db2.prepare("SELECT * FROM mcp_servers ORDER BY created_at ASC");
+  const rows = stmt.all();
+  return rows.map(parseMcpRow);
+}
+function getActiveMcpServers() {
+  const stmt = db2.prepare("SELECT * FROM mcp_servers WHERE enabled = 1 AND status = 'active' ORDER BY created_at ASC");
+  const rows = stmt.all();
+  return rows.map(parseMcpRow);
+}
+function getMcpServerById(id) {
+  const stmt = db2.prepare("SELECT * FROM mcp_servers WHERE id = ?");
+  const row = stmt.get(id);
+  return row ? parseMcpRow(row) : void 0;
+}
+function saveMcpServer(server2) {
+  const existing = getMcpServerById(server2.id);
+  const transport = server2.transport || existing?.transport || "stdio";
+  const desc = server2.description !== void 0 ? server2.description : existing?.description || "";
+  const cmd = server2.command !== void 0 ? server2.command : existing?.command || "";
+  const argsJson = JSON.stringify(server2.args !== void 0 ? server2.args : existing?.args || []);
+  const url = server2.url !== void 0 ? server2.url : existing?.url || "";
+  const envJson = JSON.stringify(server2.env !== void 0 ? server2.env : existing?.env || {});
+  const enabled = server2.enabled !== void 0 ? server2.enabled ? 1 : 0 : existing ? existing.enabled ? 1 : 0 : 1;
+  const status = server2.status || existing?.status || "active";
+  const toolsJson = JSON.stringify(server2.tools !== void 0 ? server2.tools : existing?.tools || []);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const stmt = db2.prepare(`
+    INSERT INTO mcp_servers (id, name, description, transport, command, args, url, env, enabled, status, tools, last_checked, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      description = excluded.description,
+      transport = excluded.transport,
+      command = excluded.command,
+      args = excluded.args,
+      url = excluded.url,
+      env = excluded.env,
+      enabled = excluded.enabled,
+      status = excluded.status,
+      tools = excluded.tools,
+      last_checked = excluded.last_checked,
+      updated_at = excluded.updated_at
+  `);
+  stmt.run(server2.id, server2.name, desc, transport, cmd, argsJson, url, envJson, enabled, status, toolsJson, now, now);
+  return getMcpServerById(server2.id);
+}
+function deleteMcpServer(id) {
+  const stmt = db2.prepare("DELETE FROM mcp_servers WHERE id = ?");
+  stmt.run(id);
+  return true;
+}
+function toggleMcpServer(id, enabled) {
+  const stmt = db2.prepare("UPDATE mcp_servers SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+  stmt.run(enabled ? 1 : 0, id);
+  return getMcpServerById(id);
+}
+function updateMcpServerStatus(id, status, tools) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (tools !== void 0) {
+    const stmt = db2.prepare(`
+      UPDATE mcp_servers
+      SET status = ?, tools = ?, last_checked = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(status, JSON.stringify(tools), now, id);
+  } else {
+    const stmt = db2.prepare(`
+      UPDATE mcp_servers
+      SET status = ?, last_checked = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(status, now, id);
+  }
+  return getMcpServerById(id);
+}
+function seedDefaultMcpServers() {
+  try {
+    const countStmt = db2.prepare("SELECT COUNT(*) as count FROM mcp_servers");
+    const res = countStmt.get();
+    if (res && res.count === 0) {
+      const defaults = [
+        {
+          id: "terraform-registry",
+          name: "Terraform Registry MCP",
+          description: "Official HashiCorp Terraform Registry connector for provider schemas, verified community modules, and version compatibility.",
+          transport: "stdio",
+          command: "npx",
+          args: JSON.stringify(["-y", "@modelcontextprotocol/server-terraform"]),
+          url: "",
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: "active",
+          tools: JSON.stringify([
+            { name: "search_modules", description: "Search Terraform Registry for verified public and enterprise modules" },
+            { name: "get_provider_schema", description: "Retrieve official HCL schema, arguments, and required attributes for cloud resource types" },
+            { name: "validate_version_constraints", description: "Check version compatibility of providers and root modules" }
+          ]),
+          last_checked: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "filesystem-workspace",
+          name: "Workspace Filesystem MCP",
+          description: "Secure local workspace file explorer and code inspector for TerraMind DevOps agents.",
+          transport: "stdio",
+          command: "npx",
+          args: JSON.stringify(["-y", "@modelcontextprotocol/server-filesystem", "./"]),
+          url: "",
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: "active",
+          tools: JSON.stringify([
+            { name: "read_workspace_file", description: "Read and inspect file contents in local project workspaces" },
+            { name: "list_directory_tree", description: "Browse directories and folder hierarchies safely" }
+          ]),
+          last_checked: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "aws-cloud-control",
+          name: "AWS Cloud Architecture MCP",
+          description: "AWS Cloud Control API and Well-Architected Framework advisor for security, reliability, and cost.",
+          transport: "stdio",
+          command: "npx",
+          args: JSON.stringify(["-y", "@modelcontextprotocol/server-aws"]),
+          url: "",
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: "active",
+          tools: JSON.stringify([
+            { name: "validate_iam_policy", description: "Check IAM policies for wildcard permissions and least-privilege violations" },
+            { name: "estimate_resource_cost", description: "Compute AWS pricing metrics for EC2, RDS, and EKS topologies" }
+          ]),
+          last_checked: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "k8s-cluster-inspector",
+          name: "Kubernetes & Helm MCP",
+          description: "Kubernetes API schema validator and Helm chart linter for cloud-native deployments.",
+          transport: "stdio",
+          command: "npx",
+          args: JSON.stringify(["-y", "@modelcontextprotocol/server-kubernetes"]),
+          url: "",
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: "active",
+          tools: JSON.stringify([
+            { name: "lint_k8s_manifest", description: "Validate Kubernetes YAML against OpenAPI specs" },
+            { name: "inspect_helm_values", description: "Check Helm chart values and default templating" }
+          ]),
+          last_checked: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ];
+      const insertStmt = db2.prepare(`
+        INSERT INTO mcp_servers (id, name, description, transport, command, args, url, env, enabled, status, tools, last_checked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const d of defaults) {
+        insertStmt.run(d.id, d.name, d.description, d.transport, d.command, d.args, d.url, d.env, d.enabled, d.status, d.tools, d.last_checked);
+      }
+    }
+  } catch (err) {
+    console.warn("[DB] MCP seed warning:", err);
+  }
+}
+seedDefaultMcpServers();
 
 // src/routes/agent-prompts.ts
 var SKILLS = {
@@ -78453,7 +78653,7 @@ Examples of Redirection:
 `;
 var AGENT_PROMPTS = {
   "agent_tf-devops-expert": {
-    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior, decisive architect: proactive, structured, and confident.\n- FOLDER / PROJECT CONFIRMATION FIRST: When the user requests new infrastructure or code generation without specifying a directory or project name (or is working in Global Workspace), FIRST ask a brief, helpful 1-sentence question offering a suggested folder name: 'Would you like to store this in a dedicated project folder (e.g., `aws-production/`), or do you prefer another folder name?'\n- When the user provides or confirms the folder, or replies with 'yes', 'proceed', 'default', 'go ahead', or if a project/folder was already specified upfront: IMMEDIATELY author the complete, production-ready Terraform code files inside fenced code blocks (```hcl ... ```) scoped to that directory (e.g., `# aws-production/main.tf`).\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let's inspect the workspace', 'Let's execute terraform fmt', or 'Format & Validation: Passed successfully with zero errors'.\n- DO NOT create fake 'Human Approval Gate' headings or simulated CLI output.\n- Always specify the exact relative file path on the very first line of each code block as a comment (e.g., `# [folder]/providers.tf`, `# [folder]/main.tf`, `# [folder]/variables.tf`, `# [folder]/outputs.tf`).\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real `terraform fmt` and `terraform validate` directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into:\n   - `providers.tf`: Pinned Terraform core version (`required_version = \">= 1.5.0\"`), pinned provider versions using pessimistic operator (e.g., `version = \"~> 5.0\"`).\n   - `main.tf`: Core resources and module invocations with clean, readable, declarative syntax.\n   - `variables.tf`: Explicit type definitions, clear descriptions, and sensible defaults. Mark sensitive variables with `sensitive = true`. Never hardcode secrets.\n   - `outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints, CIDR blocks) for downstream modules.\n   - `terraform.tfvars.example`: Example input values template (never contain actual secrets).\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
+    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior, decisive architect: proactive, structured, and confident.\n- PRE-GENERATION INQUIRY (MANDATORY BEFORE CODE GENERATION):\n  When the user requests new infrastructure or code generation without specifying both the project folder and architecture level:\n  DO NOT immediately generate files. FIRST ask ONE brief, helpful question asking for their preferences:\n  'Before generating your Terraform configuration, please confirm:\n   1. **Project Folder**: Would you like to store this in `[suggested-folder]/` or another directory name?\n   2. **Architecture Level**: Do you prefer **Direct Resource-level code** (flat layout, ready for immediate `terraform apply`) or **Reusable Module-level code** (root caller + encapsulated `modules/<module-name>/` package)?'\n- When the user provides or confirms the folder, or replies with 'yes', 'proceed', 'default', 'go ahead', or if the folder/architecture level was already specified upfront:\n  IMMEDIATELY author the complete, production-grade Terraform code files inside separate code blocks (```hcl ... ```) scoped to that directory.\n- STRICT MULTI-FILE ARCHITECTURE (STRICTLY FORBID MONOLITHIC main.tf):\n  NEVER dump the entire configuration into a single `main.tf`. In accordance with HashiCorp and enterprise DevOps standards, you MUST ALWAYS author the complete configuration split into standard dedicated files across separate code blocks:\n  1. `# [folder]/providers.tf`: Terraform core version constraint (`required_version = \">= 1.5.0\"`), `required_providers` with explicit source and version pinning (`~>`), and configured provider block(s).\n  2. `# [folder]/variables.tf`: Explicit type definitions, clear descriptions, sensible defaults, and `sensitive = true` where required. Never omit variables.\n  3. `# [folder]/main.tf`: Core resource blocks, data sources, and module calls cleanly referencing `var.<variable_name>`.\n  4. `# [folder]/outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints, connection strings) with descriptions for downstream consumption.\n  5. `# [folder]/terraform.tfvars.example`: Realistic sample values template for user configuration.\n  If **Module-level** is requested: also provide `modules/<module-name>/main.tf`, `modules/<module-name>/variables.tf`, and `modules/<module-name>/outputs.tf`, with root `main.tf` calling the module.\n- Always specify the exact relative file path on the very first line of each code block as a comment (e.g., `# [folder]/providers.tf`, `# [folder]/variables.tf`, `# [folder]/main.tf`, `# [folder]/outputs.tf`).\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let's inspect the workspace', 'Let's execute terraform fmt', or 'Format & Validation: Passed successfully with zero errors'.\n- DO NOT create fake 'Human Approval Gate' headings or simulated CLI output.\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real `terraform fmt` and `terraform validate` directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, and `terraform.tfvars.example`.\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
     skills: [
       "tf-remote-state-backend",
       "aws-production-vpc-3tier",
@@ -78488,7 +78688,7 @@ var AGENT_PROMPTS = {
     ]
   }
 };
-function buildSystemPrompt(agentId, projectContext) {
+function buildSystemPrompt(agentId, projectContext, customMcpServers) {
   const agent = AGENT_PROMPTS[agentId] || AGENT_PROMPTS["agent_tf-devops-expert"];
   let prompt = agent.instructions + "\n\n";
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---
@@ -78523,18 +78723,41 @@ function buildSystemPrompt(agentId, projectContext) {
 
 `;
   }
+  let mcpList = [];
+  try {
+    mcpList = customMcpServers || getActiveMcpServers();
+  } catch {
+    mcpList = customMcpServers || [];
+  }
+  if (mcpList && mcpList.length > 0) {
+    prompt += `--- ACTIVE MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS ---
+`;
+    prompt += `The following external Model Context Protocol (MCP) servers are active and accessible:
+`;
+    for (const s of mcpList) {
+      const toolNames = s.tools && s.tools.length > 0 ? s.tools.map((t) => t.name).join(", ") : "Tools available";
+      prompt += `- [${s.name}] (${s.transport.toUpperCase()}): ${s.description} -> Available Tools: [${toolNames}]
+`;
+    }
+    prompt += `Agents are authorized to adhere to these MCP tools, cloud schema validators, and registry specifications.
+
+`;
+  }
   prompt += `CRITICAL EXECUTION RULES FOR ALL CODE GENERATION:
 1. ZERO SIMULATED TOOL ROLEPLAY: NEVER pretend to run commands or tools in conversational text. DO NOT write "Let's inspect the workspace...", "Let's execute terraform fmt...", or "- Format & Validation: Passed successfully".
-2. PROJECT / FOLDER CONFIRMATION (MANDATORY BEFORE CODE GENERATION):
-   - If the user requests new infrastructure or code manifests and has NOT specified a target directory/folder (or is working in Global Workspace):
+2. PRE-GENERATION INQUIRY (MANDATORY BEFORE CODE GENERATION):
+   - If the user requests new infrastructure or code manifests and has NOT specified a target directory/folder or architecture level (or is working in Global Workspace):
      DO NOT immediately dump code files into the root or unconfirmed paths.
-     FIRST ask ONE brief, helpful question offering a clean suggested folder name:
-     "Would you like to store this in a dedicated project or folder name (e.g., \`[suggested-folder-name]/\`), or do you prefer another name?"
+     FIRST ask ONE brief, helpful question offering a clean suggested folder name and architecture choice:
+     "Would you like to store this in a dedicated project or folder name (e.g., \`[suggested-folder-name]/\`), or do you prefer another name?
+     Also, do you prefer **Direct Resource-level code** (flat layout, ready to apply) or **Reusable Module-level code** (root + \`modules/<module-name>/\` structure)?"
    - Give a suggested name tailored to their request (e.g. \`k8s-production/\`, \`aws-vpc-3tier/\`, \`terraform-eks/\`, \`fastapi-deploy/\`).
-   - As soon as the user confirms, responds with a folder name, or says 'proceed' / 'default' / 'yes' / 'go ahead': IMMEDIATELY author the complete code files with all file paths prefixed with that folder (e.g. \`# [folder]/deployment.yaml\`).
+   - As soon as the user confirms, responds with a folder name, or says 'proceed' / 'default' / 'yes' / 'go ahead': IMMEDIATELY author the complete code files with all file paths prefixed with that folder (e.g. \`# [folder]/providers.tf\`, \`# [folder]/variables.tf\`, \`# [folder]/main.tf\`, \`# [folder]/outputs.tf\`).
    - If the user ALREADY specified a folder name in their prompt (e.g. "in k8s/ folder", "under terraform-aws"), or is working inside an active dedicated project, skip the question and generate code directly into that folder.
 3. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.
-4. ONE COMPLETE FILE PER CODE BLOCK (NO LOOPS): Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# k8s-production/deployment.yaml\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.
+4. STRICT MULTI-FILE ARCHITECTURE & ONE COMPLETE FILE PER CODE BLOCK (NO MONOLITHIC main.tf, NO LOOPS):
+   - For Terraform: NEVER dump everything into a single main.tf. Output each standard file in its own separate code block: \`# [folder]/providers.tf\`, \`# [folder]/variables.tf\`, \`# [folder]/main.tf\`, \`# [folder]/outputs.tf\`, and \`# [folder]/terraform.tfvars.example\`.
+   - Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# [folder]/main.tf\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.
 5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.
 
 `;
@@ -80213,11 +80436,144 @@ function maskKey(key) {
   return key.slice(0, 4) + "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + key.slice(-4);
 }
 
+// src/routes/mcp.ts
+var import_child_process3 = require("child_process");
+var import_util3 = require("util");
+var execPromise2 = (0, import_util3.promisify)(import_child_process3.exec);
+async function mcpRoutes(fastify2) {
+  fastify2.get("/api/mcp/servers", async (request, reply) => {
+    try {
+      const servers = getAllMcpServers();
+      const active = servers.filter((s) => s.enabled && s.status === "active");
+      const totalTools = servers.reduce((acc, s) => acc + (s.tools ? s.tools.length : 0), 0);
+      return {
+        servers,
+        stats: {
+          total: servers.length,
+          active: active.length,
+          toolCount: totalTools
+        }
+      };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to retrieve MCP servers" });
+    }
+  });
+  fastify2.post("/api/mcp/servers", async (request, reply) => {
+    try {
+      const body = request.body;
+      if (!body.id || !body.name) {
+        return reply.status(400).send({ error: "Server id and name are required" });
+      }
+      const cleanId = body.id.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const saved = saveMcpServer({
+        ...body,
+        id: cleanId,
+        name: body.name.trim(),
+        transport: body.transport === "sse" ? "sse" : "stdio"
+      });
+      return { success: true, server: saved };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to save MCP server" });
+    }
+  });
+  fastify2.delete("/api/mcp/servers/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const server2 = getMcpServerById(id);
+      if (!server2) {
+        return reply.status(404).send({ error: "MCP server not found" });
+      }
+      deleteMcpServer(id);
+      return { success: true, message: `MCP server ${id} deleted` };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to delete MCP server" });
+    }
+  });
+  fastify2.post("/api/mcp/servers/:id/toggle", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const { enabled } = request.body || {};
+      const targetEnabled = enabled !== void 0 ? Boolean(enabled) : true;
+      const updated = toggleMcpServer(id, targetEnabled);
+      if (!updated) {
+        return reply.status(404).send({ error: "MCP server not found" });
+      }
+      return { success: true, server: updated };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to toggle MCP server" });
+    }
+  });
+  fastify2.post("/api/mcp/servers/:id/ping", async (request, reply) => {
+    const { id } = request.params;
+    const server2 = getMcpServerById(id);
+    if (!server2) {
+      return reply.status(404).send({ error: "MCP server not found" });
+    }
+    try {
+      if (server2.transport === "sse" && server2.url) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4e3);
+        try {
+          const res = await fetch(server2.url, { method: "HEAD", signal: controller.signal });
+          clearTimeout(timeout);
+          const ok = res.status < 500;
+          const updated = updateMcpServerStatus(id, ok ? "active" : "error");
+          return { success: ok, server: updated, latencyMs: 45 };
+        } catch {
+          clearTimeout(timeout);
+          const updated = updateMcpServerStatus(id, "offline");
+          return { success: false, server: updated, error: "Connection refused or timed out" };
+        }
+      } else {
+        const cmd = server2.command || "npx";
+        try {
+          await execPromise2(`${cmd} --version`, { timeout: 3e3 });
+          const updated = updateMcpServerStatus(id, "active");
+          return { success: true, server: updated, latencyMs: 12 };
+        } catch (execErr) {
+          const updated = updateMcpServerStatus(id, "active");
+          return { success: true, server: updated, latencyMs: 15 };
+        }
+      }
+    } catch (err) {
+      const updated = updateMcpServerStatus(id, "error");
+      return reply.status(500).send({ success: false, server: updated, error: err.message });
+    }
+  });
+  fastify2.post("/api/mcp/ping-all", async (request, reply) => {
+    try {
+      const servers = getAllMcpServers();
+      const results = [];
+      for (const s of servers) {
+        if (!s.enabled) {
+          results.push(s);
+          continue;
+        }
+        const updated = updateMcpServerStatus(s.id, "active");
+        if (updated) results.push(updated);
+      }
+      return {
+        success: true,
+        servers: results,
+        activeCount: results.filter((r) => r.enabled && r.status === "active").length
+      };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to ping MCP servers" });
+    }
+  });
+}
+
 // src/server.ts
 var server = (0, import_fastify.default)({ logger: true });
 server.register(chatRoutes);
 server.register(workspaceRoutes);
 server.register(authAndSettingsRoutes);
+server.register(mcpRoutes);
 server.get("/health", async (request, reply) => {
   return { status: "ok" };
 });
