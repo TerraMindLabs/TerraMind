@@ -747,16 +747,18 @@ function App() {
                 title="Change model"
               >
                 <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} />
-                <span>
-                  {provider === 'ollama'
-                    ? '🖥️ '
-                    : model.startsWith('bedrock/')
-                    ? '🟧 '
-                    : model.startsWith('azure/')
-                    ? '🔷 '
-                    : model.startsWith('oci/')
-                    ? '🔴 '
-                    : '☁️ '}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  {provider === 'ollama' ? (
+                    '🖥️ '
+                  ) : model.startsWith('bedrock/') ? (
+                    <img src="/icons/aws.png" alt="AWS" style={{ width: '15px', height: '15px', objectFit: 'contain' }} />
+                  ) : model.startsWith('azure/') ? (
+                    <img src="/icons/azure.png" alt="Azure" style={{ width: '15px', height: '15px', objectFit: 'contain' }} />
+                  ) : model.startsWith('oci/') ? (
+                    <img src="/icons/oci.png" alt="OCI" style={{ width: '15px', height: '15px', objectFit: 'contain' }} />
+                  ) : (
+                    '☁️ '
+                  )}
                   {modelDisplayName}
                 </span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -978,7 +980,7 @@ function App() {
                     {/* 1. AWS Bedrock Card */}
                     <div style={{ marginBottom: '10px' }}>
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>🟧</span> AWS Bedrock
+                        <img src="/icons/aws.png" alt="AWS" style={{ width: '14px', height: '14px', objectFit: 'contain' }} /> AWS Bedrock
                       </div>
                       {enterpriseModels.filter((m) => m.startsWith('bedrock/')).length > 0 ? (
                         enterpriseModels.filter((m) => m.startsWith('bedrock/')).map((bm) => (
@@ -1021,7 +1023,7 @@ function App() {
                     {/* 2. Azure AI Foundry Card */}
                     <div style={{ marginBottom: '10px' }}>
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>🔷</span> Azure AI Foundry
+                        <img src="/icons/azure.png" alt="Azure" style={{ width: '14px', height: '14px', objectFit: 'contain' }} /> Azure AI Foundry
                       </div>
                       {enterpriseModels.filter((m) => m.startsWith('azure/')).length > 0 ? (
                         enterpriseModels.filter((m) => m.startsWith('azure/')).map((am) => (
@@ -1064,7 +1066,7 @@ function App() {
                     {/* 3. OCI GenAI Card */}
                     <div style={{ marginBottom: '10px' }}>
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>🔴</span> OCI Generative AI
+                        <img src="/icons/oci.png" alt="OCI" style={{ width: '14px', height: '14px', objectFit: 'contain' }} /> OCI Generative AI
                       </div>
                       {enterpriseModels.filter((m) => m.startsWith('oci/')).length > 0 ? (
                         enterpriseModels.filter((m) => m.startsWith('oci/')).map((om) => (
@@ -1388,16 +1390,27 @@ function App() {
                       title="Select AI Model"
                     >
                       <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
-                      <span>
-                        {provider === 'ollama'
-                          ? '🖥️ Local'
-                          : model.startsWith('bedrock/')
-                          ? '🟧 AWS Bedrock'
-                          : model.startsWith('azure/')
-                          ? '🔷 Azure AI'
-                          : model.startsWith('oci/')
-                          ? '🔴 OCI GenAI'
-                          : '☁️ Cloud'}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        {provider === 'ollama' ? (
+                          '🖥️ Local'
+                        ) : model.startsWith('bedrock/') ? (
+                          <>
+                            <img src="/icons/aws.png" alt="AWS" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                            <span>AWS Bedrock</span>
+                          </>
+                        ) : model.startsWith('azure/') ? (
+                          <>
+                            <img src="/icons/azure.png" alt="Azure" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                            <span>Azure AI</span>
+                          </>
+                        ) : model.startsWith('oci/') ? (
+                          <>
+                            <img src="/icons/oci.png" alt="OCI" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                            <span>OCI GenAI</span>
+                          </>
+                        ) : (
+                          '☁️ Cloud'
+                        )}
                       </span>
                       <span style={{ opacity: 0.4 }}>•</span>
                       <span>{modelDisplayName}</span>

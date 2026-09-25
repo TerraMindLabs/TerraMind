@@ -29,24 +29,27 @@ export interface WorkspaceFile {
   size: number;
 }
 
-export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: string; icon: string }> = [
+export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: string; icon: string; logoUrl?: string }> = [
   {
     id: 'profile',
     title: 'Profile',
     desc: 'User information, name, email & avatar',
-    icon: '👤'
+    icon: '👤',
+    logoUrl: '/icons/profile.png'
   },
   {
     id: 'workspace',
     title: 'Workspace',
     desc: 'Workspace directory, default region, cloud state',
-    icon: '🏢'
+    icon: '🏢',
+    logoUrl: '/icons/workspace.png'
   },
   {
     id: 'keys',
     title: 'Cloud API Keys',
     desc: 'Google Gemini, OpenAI, Anthropic credentials',
-    icon: '🔑'
+    icon: '🔑',
+    logoUrl: '/icons/api-keys.png'
   },
   {
     id: 'ollama',
@@ -58,19 +61,22 @@ export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: s
     id: 'bedrock',
     title: 'AWS Bedrock',
     desc: 'Amazon Bedrock Claude & Titan foundation models',
-    icon: '🟧'
+    icon: '🟧',
+    logoUrl: '/icons/aws.png'
   },
   {
     id: 'azure',
     title: 'Azure AI Foundry',
     desc: 'Azure OpenAI & Foundry enterprise endpoints',
-    icon: '🔷'
+    icon: '🔷',
+    logoUrl: '/icons/azure.png'
   },
   {
     id: 'oci',
     title: 'OCI GenAI',
     desc: 'Oracle Cloud Infrastructure Generative AI',
-    icon: '🔴'
+    icon: '🔴',
+    logoUrl: '/icons/oci.png'
   }
 ];
 
@@ -216,7 +222,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`nested-nav-item ${isActive ? 'active' : ''}`}
                   onClick={() => onSelectSettingsSection?.(item.id)}
                 >
-                  <span className="nested-nav-icon">{item.icon}</span>
+                  <span className="nested-nav-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {item.logoUrl ? (
+                      <img
+                        src={item.logoUrl}
+                        alt={item.title}
+                        style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      item.icon
+                    )}
+                  </span>
                   <div className="nested-nav-content">
                     <span className="nested-nav-title">{item.title}</span>
                     <span className="nested-nav-desc">{item.desc}</span>

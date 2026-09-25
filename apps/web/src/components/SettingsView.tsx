@@ -289,35 +289,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text)', margin: '0 0 6px 0', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {activeSection === 'profile' && 'Personal Information'}
-            {activeSection === 'workspace' && 'Workspace & Environment'}
-            {activeSection === 'keys' && 'Cloud Provider API Credentials'}
-            {activeSection === 'ollama' && 'Ollama Local Models Engine'}
+            {activeSection === 'profile' && (
+              <>
+                <img src="/icons/profile.png" width="28" height="28" alt="Profile" style={{ objectFit: 'contain' }} />
+                <span>Personal Information</span>
+              </>
+            )}
+            {activeSection === 'workspace' && (
+              <>
+                <img src="/icons/workspace.png" width="28" height="28" alt="Workspace" style={{ objectFit: 'contain' }} />
+                <span>Workspace & Environment</span>
+              </>
+            )}
+            {activeSection === 'keys' && (
+              <>
+                <img src="/icons/api-keys.png" width="28" height="28" alt="Cloud API Keys" style={{ objectFit: 'contain' }} />
+                <span>Cloud Provider API Credentials</span>
+              </>
+            )}
+            {activeSection === 'ollama' && (
+              <>
+                <span style={{ fontSize: '24px' }}>🦙</span>
+                <span>Ollama Local Models Engine</span>
+              </>
+            )}
             {activeSection === 'bedrock' && (
               <>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                  <rect width="24" height="24" rx="6" fill="#FF9900" />
-                  <path d="M6 14.5C8 16 11.5 17 14.5 15.5M16 15L17.5 14L16.5 16" stroke="#232F3E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M7 9.5L9.5 7L12 9.5M13.5 9L15 7.5L16.5 9" stroke="#232F3E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <img src="/icons/aws.png" width="28" height="28" alt="AWS Bedrock" style={{ objectFit: 'contain' }} />
                 <span>Amazon Web Services (AWS Bedrock)</span>
               </>
             )}
             {activeSection === 'azure' && (
               <>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                  <rect width="24" height="24" rx="6" fill="#0078D4" />
-                  <path d="M12.5 5L6.5 14.5H11L9.5 19L17.5 10H13L14.5 5H12.5Z" fill="#FFFFFF" />
-                </svg>
+                <img src="/icons/azure.png" width="28" height="28" alt="Azure AI Foundry" style={{ objectFit: 'contain' }} />
                 <span>Microsoft Azure (Azure AI Foundry)</span>
               </>
             )}
             {activeSection === 'oci' && (
               <>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                  <rect width="24" height="24" rx="6" fill="#C74634" />
-                  <circle cx="12" cy="12" r="5" stroke="#FFFFFF" strokeWidth="2.2" fill="none" />
-                </svg>
+                <img src="/icons/oci.png" width="28" height="28" alt="OCI GenAI" style={{ objectFit: 'contain' }} />
                 <span>Oracle Cloud Infrastructure (OCI GenAI)</span>
               </>
             )}
@@ -832,11 +842,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <form onSubmit={handleSaveBedrock}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                <rect width="24" height="24" rx="6" fill="#FF9900" />
-                <path d="M6 14.5C8 16 11.5 17 14.5 15.5M16 15L17.5 14L16.5 16" stroke="#232F3E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M7 9.5L9.5 7L12 9.5M13.5 9L15 7.5L16.5 9" stroke="#232F3E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <img src="/icons/aws.png" width="36" height="36" alt="AWS Bedrock" style={{ objectFit: 'contain' }} />
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 2px 0', color: 'var(--text)' }}>
                   AWS Bedrock Foundation Models
@@ -966,10 +972,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <form onSubmit={handleSaveAzure}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                <rect width="24" height="24" rx="6" fill="#0078D4" />
-                <path d="M12.5 5L6.5 14.5H11L9.5 19L17.5 10H13L14.5 5H12.5Z" fill="#FFFFFF" />
-              </svg>
+              <img src="/icons/azure.png" width="36" height="36" alt="Azure AI Foundry" style={{ objectFit: 'contain' }} />
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 2px 0', color: 'var(--text)' }}>
                   Microsoft Azure AI Foundry & Azure OpenAI
@@ -1086,10 +1089,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <form onSubmit={handleSaveOci}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                <rect width="24" height="24" rx="6" fill="#C74634" />
-                <circle cx="12" cy="12" r="5" stroke="#FFFFFF" strokeWidth="2.2" fill="none" />
-              </svg>
+              <img src="/icons/oci.png" width="36" height="36" alt="OCI Generative AI" style={{ objectFit: 'contain' }} />
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 2px 0', color: 'var(--text)' }}>
                   Oracle Cloud Infrastructure (OCI Generative AI)

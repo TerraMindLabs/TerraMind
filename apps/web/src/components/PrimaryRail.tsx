@@ -87,11 +87,11 @@ export const PrimaryRail: React.FC<PrimaryRailProps> = ({
           title="TerraMind Home (New Architecture Session)"
         >
           <img
-            src="/logo/only_logo.png"
+            src="/logo/logo.svg"
             alt="TerraMind Logo"
             className="rail-logo-img"
             onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
+              (e.target as HTMLImageElement).src = '/logo/only_logo.png';
             }}
           />
         </button>
