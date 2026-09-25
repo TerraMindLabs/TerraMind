@@ -459,7 +459,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
             try {
               const parsed = JSON.parse(trimmed);
               if (parsed.error) {
-                sendEvent({ error: parsed.error });
+                const isStreamDrop = parsed.error.includes('stream reading error') || parsed.error.includes('wsarecv') || parsed.error.includes('forcibly closed');
+                const cleanError = isStreamDrop
+                  ? 'Registry connection temporarily dropped during download. Click Download again to resume from the cached chunks.'
+                  : parsed.error;
+                sendEvent({ error: cleanError });
                 continue;
               }
               let percent = 0;

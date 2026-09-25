@@ -259,7 +259,22 @@ if ($aiChoice -eq "1" -or $aiChoice -eq "3") {
                 Write-Host " [OK] Model $m is already downloaded!" -ForegroundColor Green
             } else {
                 Write-Host " [ollama] Pulling $m (this may take a few minutes)..." -ForegroundColor Yellow
-                ollama pull $m
+                $attempts = 0
+                $success = $false
+                while (-not $success -and $attempts -lt 3) {
+                    $attempts++
+                    ollama pull $m
+                    if ($LASTEXITCODE -eq 0) {
+                        $success = $true
+                    } else {
+                        if ($attempts -lt 3) {
+                            Write-Host " [!] Intermittent network drop detected ($attempts/3). Resuming download from cache..." -ForegroundColor Yellow
+                            Start-Sleep -Seconds 3
+                        } else {
+                            Write-Host " [!] Download timed out. You can run 'ollama pull $m' anytime to finish downloading." -ForegroundColor Red
+                        }
+                    }
+                }
             }
         }
     }
