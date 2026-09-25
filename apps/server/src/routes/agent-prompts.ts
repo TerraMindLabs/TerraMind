@@ -894,8 +894,9 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
   prompt +=
     `CRITICAL EXECUTION RULES FOR ALL CODE GENERATION:\n` +
     `1. ZERO SIMULATED TOOL ROLEPLAY: NEVER pretend to run commands or tools in conversational text. DO NOT write "Let's inspect the workspace...", "Let's execute terraform fmt...", or "- Format & Validation: Passed successfully".\n` +
-    `2. IMMEDIATE CODE DELIVERY: Output the complete code directly in standard markdown code blocks (\`\`\`hcl or \`\`\`yaml). Put the target relative filename on line 1 as a comment (e.g., \`# aws-vpc-production/main.tf\`).\n` +
-    `3. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace, and runs real \`terraform fmt\` and \`terraform validate\` directly on the host machine.\n\n`;
+    `2. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.\n` +
+    `3. ONE COMPLETE FILE PER CODE BLOCK (NO LOOPS): Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# k8s/deployment.yaml\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.\n` +
+    `4. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace, and runs real validation directly on the host machine.\n\n`;
 
   if (agent.skills && agent.skills.length > 0) {
     prompt += "--- SKILLS & SPECIALIZATIONS ---\n";

@@ -694,7 +694,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
             messages: [{ role: 'system', content: systemPrompt }, ...messages],
             options: {
               num_ctx: 16384,
-              temperature: 0.2
+              temperature: 0.2,
+              repeat_penalty: 1.18,
+              repeat_last_n: 128,
+              top_p: 0.9,
+              top_k: 40
             },
             stream: true
           })
