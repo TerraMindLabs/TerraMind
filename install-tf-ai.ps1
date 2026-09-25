@@ -387,7 +387,7 @@ Write-Host "===========================================================" -Foregr
 
 $startNow = Read-Host "`n 🚀 Start TerraMind server now? (Y/n) [Default: Y]"
 if ([string]::IsNullOrWhiteSpace($startNow) -or $startNow -match "^[yY]$") {
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$batPath`""
+    & "$batPath"
 } else {
     Write-Host "`n To launch TerraMind anytime, double-click TerraMind.bat (or your Desktop shortcut)!" -ForegroundColor Cyan
 }
