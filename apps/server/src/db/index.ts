@@ -448,18 +448,23 @@ export function getMessages(conversationId: string): Message[] {
   return stmt.all(conversationId) as unknown as Message[];
 }
 
-export function addMessage(id: string, conversationId: string, role: string, content: string, userId = ''): Message {
+export function upsertMessage(id: string, conversationId: string, role: string, content: string, userId = ''): Message {
   const stmt = db.prepare(`
     INSERT INTO messages (id, conversation_id, role, content)
     VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET content = excluded.content
   `);
   stmt.run(id, conversationId, role, content);
   touchConversation(conversationId);
 
   const getStmt = db.prepare(`SELECT * FROM messages WHERE id = ?`);
   const msg = getStmt.get(id) as unknown as Message;
-  syncMongoMessage({ ...msg, user_id: userId });
+  if (msg) syncMongoMessage({ ...msg, user_id: userId });
   return msg;
+}
+
+export function addMessage(id: string, conversationId: string, role: string, content: string, userId = ''): Message {
+  return upsertMessage(id, conversationId, role, content, userId);
 }
 
 export { recordUserSession, logUserActivity };

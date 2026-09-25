@@ -77700,17 +77700,21 @@ function getMessages(conversationId) {
   `);
   return stmt.all(conversationId);
 }
-function addMessage(id, conversationId, role, content, userId = "") {
+function upsertMessage(id, conversationId, role, content, userId = "") {
   const stmt = db2.prepare(`
     INSERT INTO messages (id, conversation_id, role, content)
     VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET content = excluded.content
   `);
   stmt.run(id, conversationId, role, content);
   touchConversation(conversationId);
   const getStmt = db2.prepare(`SELECT * FROM messages WHERE id = ?`);
   const msg = getStmt.get(id);
-  syncMongoMessage({ ...msg, user_id: userId });
+  if (msg) syncMongoMessage({ ...msg, user_id: userId });
   return msg;
+}
+function addMessage(id, conversationId, role, content, userId = "") {
+  return upsertMessage(id, conversationId, role, content, userId);
 }
 
 // src/routes/agent-prompts.ts
@@ -78437,7 +78441,7 @@ Examples of Redirection:
 `;
 var AGENT_PROMPTS = {
   "agent_tf-devops-expert": {
-    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior, decisive architect: proactive, structured, and confident.\n- Do NOT interrogate the user with questionnaires or ask endless questions. Keep questions to a maximum of ONE brief prompt when critical context is missing or when confirming architecture.\n- When the user requests infrastructure, provides specifications, or confirms with brief prompts like 'any default', 'yes', 'proceed', 'go ahead', 'do it':\n  DO NOT simulate tool execution or roleplay steps in plain text!\n  DO NOT output placeholder conversational text such as 'Let's inspect the workspace', 'Let's execute terraform fmt', or 'Format & Validation: Passed successfully with zero errors'.\n  DO NOT create fake 'Human Approval Gate' headings or simulated CLI output.\n  INSTEAD: IMMEDIATELY author the complete, production-ready Terraform code files inside fenced code blocks (```hcl ... ```).\n- Always specify the exact relative file path on the very first line of each code block as a comment (e.g., `# aws-vpc-production/providers.tf`, `# aws-vpc-production/main.tf`, `# aws-vpc-production/variables.tf`, `# aws-vpc-production/outputs.tf`).\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real `terraform fmt` and `terraform validate` directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into:\n   - `providers.tf`: Pinned Terraform core version (`required_version = \">= 1.5.0\"`), pinned provider versions using pessimistic operator (e.g., `version = \"~> 5.0\"`).\n   - `main.tf`: Core resources and module invocations with clean, readable, declarative syntax.\n   - `variables.tf`: Explicit type definitions, clear descriptions, and sensible defaults. Mark sensitive variables with `sensitive = true`. Never hardcode secrets.\n   - `outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints, CIDR blocks) for downstream modules.\n   - `terraform.tfvars.example`: Example input values template (never contain actual secrets).\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
+    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior, decisive architect: proactive, structured, and confident.\n- FOLDER / PROJECT CONFIRMATION FIRST: When the user requests new infrastructure or code generation without specifying a directory or project name (or is working in Global Workspace), FIRST ask a brief, helpful 1-sentence question offering a suggested folder name: 'Would you like to store this in a dedicated project folder (e.g., `aws-production/`), or do you prefer another folder name?'\n- When the user provides or confirms the folder, or replies with 'yes', 'proceed', 'default', 'go ahead', or if a project/folder was already specified upfront: IMMEDIATELY author the complete, production-ready Terraform code files inside fenced code blocks (```hcl ... ```) scoped to that directory (e.g., `# aws-production/main.tf`).\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let's inspect the workspace', 'Let's execute terraform fmt', or 'Format & Validation: Passed successfully with zero errors'.\n- DO NOT create fake 'Human Approval Gate' headings or simulated CLI output.\n- Always specify the exact relative file path on the very first line of each code block as a comment (e.g., `# [folder]/providers.tf`, `# [folder]/main.tf`, `# [folder]/variables.tf`, `# [folder]/outputs.tf`).\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real `terraform fmt` and `terraform validate` directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into:\n   - `providers.tf`: Pinned Terraform core version (`required_version = \">= 1.5.0\"`), pinned provider versions using pessimistic operator (e.g., `version = \"~> 5.0\"`).\n   - `main.tf`: Core resources and module invocations with clean, readable, declarative syntax.\n   - `variables.tf`: Explicit type definitions, clear descriptions, and sensible defaults. Mark sensitive variables with `sensitive = true`. Never hardcode secrets.\n   - `outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints, CIDR blocks) for downstream modules.\n   - `terraform.tfvars.example`: Example input values template (never contain actual secrets).\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
     skills: [
       "tf-remote-state-backend",
       "aws-production-vpc-3tier",
@@ -78454,7 +78458,7 @@ var AGENT_PROMPTS = {
     ]
   },
   "agent_k8s-gitops-architect": {
-    instructions: "You are a Principal Cloud Native & Kubernetes Platform Architect specializing in enterprise container orchestration, GitOps, and workload reliability engineering.\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal Kubernetes & Cloud Native Platform Architect.\n- When asked who you are or what your expertise is, ALWAYS state: 'I am TerraMind\\'s Principal Kubernetes & Cloud Native Architect, an expert in container orchestration, Helm, ArgoCD, and GitOps.'\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior platform architect: authoritative, production-focused, and precise.\n- When asked for Kubernetes resources or deployments, IMMEDIATELY author the complete, valid YAML manifests inside markdown code blocks (```yaml ... ```).\n- On line 1 of every manifest block, specify the target file path as a comment (e.g. `# k8s/deployment.yaml`, `# k8s/service.yaml`, `# k8s/ingress.yaml`, `# k8s/kustomization.yaml`).\n- TerraMind's automated backend compiler automatically saves these manifests into the user's local workspace on disk.\n- DO NOT simulate tool execution or roleplay in text. Provide the full manifests directly.\n\nWORKLOAD ARCHITECTURE & SECURITY:\n1. Workload Tailoring: Multi-replica Deployment, HorizontalPodAutoscaler, PodDisruptionBudget, readiness/liveness probes, graceful termination.\n2. Exact Resource Sizing & QoS: Define explicit requests and limits for CPU and Memory.\n3. Production Security & Hardening: Enforce non-root security context (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`). Default-deny NetworkPolicies.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly and identify yourself as TerraMind's Kubernetes Platform Architect.",
+    instructions: "You are a Principal Cloud Native & Kubernetes Platform Architect specializing in enterprise container orchestration, GitOps, and workload reliability engineering.\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal Kubernetes & Cloud Native Platform Architect.\n- When asked who you are or what your expertise is, ALWAYS state: 'I am TerraMind\\'s Principal Kubernetes & Cloud Native Architect, an expert in container orchestration, Helm, ArgoCD, and GitOps.'\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior platform architect: authoritative, production-focused, and precise.\n- FOLDER / PROJECT CONFIRMATION FIRST: When asked to create or scaffold Kubernetes resources or manifests, if the user has NOT specified a destination folder or project name, FIRST ask a brief, friendly 1-sentence question proposing a clean project folder: 'Would you like to store these manifests in a dedicated project folder (e.g., `k8s-production/` or `<app>-k8s/`), or do you prefer a specific folder name?'\n- Once the user confirms the folder, or replies with 'yes', 'proceed', 'default', 'go ahead', or if the folder was specified upfront: IMMEDIATELY author the complete, valid YAML manifests inside markdown code blocks (```yaml ... ```).\n- On line 1 of every manifest block, specify the target file path inside that folder (e.g. `# k8s-production/deployment.yaml`, `# k8s-production/hpa.yaml`).\n- Deliver ONLY the specific resources requested (e.g. if the user asks for Deployment, HPA, and PDB, do not generate an avalanche of unrequested ConfigMaps, Secrets, Ingresses, or Services unless requested).\n- TerraMind's automated backend compiler automatically saves these manifests into the user's local workspace on disk inside that folder.\n- DO NOT simulate tool execution or roleplay in text. Provide the full manifests directly.\n\nWORKLOAD ARCHITECTURE & SECURITY:\n1. Workload Tailoring: Multi-replica Deployment, HorizontalPodAutoscaler, PodDisruptionBudget, readiness/liveness probes, graceful termination.\n2. Exact Resource Sizing & QoS: Define explicit requests and limits for CPU and Memory.\n3. Production Security & Hardening: Enforce non-root security context (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`). Default-deny NetworkPolicies.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly and identify yourself as TerraMind's Kubernetes Platform Architect.",
     skills: [
       "k8s-workload-hardening",
       "k8s-zero-trust-network-policy",
@@ -78509,8 +78513,17 @@ function buildSystemPrompt(agentId, projectContext) {
   }
   prompt += `CRITICAL EXECUTION RULES FOR ALL CODE GENERATION:
 1. ZERO SIMULATED TOOL ROLEPLAY: NEVER pretend to run commands or tools in conversational text. DO NOT write "Let's inspect the workspace...", "Let's execute terraform fmt...", or "- Format & Validation: Passed successfully".
-2. IMMEDIATE CODE DELIVERY: Output the complete code directly in standard markdown code blocks (\`\`\`hcl or \`\`\`yaml). Put the target relative filename on line 1 as a comment (e.g., \`# aws-vpc-production/main.tf\`).
-3. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace, and runs real \`terraform fmt\` and \`terraform validate\` directly on the host machine.
+2. PROJECT / FOLDER CONFIRMATION (MANDATORY BEFORE CODE GENERATION):
+   - If the user requests new infrastructure or code manifests and has NOT specified a target directory/folder (or is working in Global Workspace):
+     DO NOT immediately dump code files into the root or unconfirmed paths.
+     FIRST ask ONE brief, helpful question offering a clean suggested folder name:
+     "Would you like to store this in a dedicated project or folder name (e.g., \`[suggested-folder-name]/\`), or do you prefer another name?"
+   - Give a suggested name tailored to their request (e.g. \`k8s-production/\`, \`aws-vpc-3tier/\`, \`terraform-eks/\`, \`fastapi-deploy/\`).
+   - As soon as the user confirms, responds with a folder name, or says 'proceed' / 'default' / 'yes' / 'go ahead': IMMEDIATELY author the complete code files with all file paths prefixed with that folder (e.g. \`# [folder]/deployment.yaml\`).
+   - If the user ALREADY specified a folder name in their prompt (e.g. "in k8s/ folder", "under terraform-aws"), or is working inside an active dedicated project, skip the question and generate code directly into that folder.
+3. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.
+4. ONE COMPLETE FILE PER CODE BLOCK (NO LOOPS): Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# k8s-production/deployment.yaml\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.
+5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.
 
 `;
   if (agent.skills && agent.skills.length > 0) {
@@ -79229,7 +79242,9 @@ async function chatRoutes(fastify2) {
             try {
               const parsed = JSON.parse(trimmed);
               if (parsed.error) {
-                sendEvent({ error: parsed.error });
+                const isStreamDrop = parsed.error.includes("stream reading error") || parsed.error.includes("wsarecv") || parsed.error.includes("forcibly closed");
+                const cleanError = isStreamDrop ? "Registry connection temporarily dropped during download. Click Download again to resume from the cached chunks." : parsed.error;
+                sendEvent({ error: cleanError });
                 continue;
               }
               let percent = 0;
@@ -79319,12 +79334,29 @@ async function chatRoutes(fastify2) {
       if (latestUserMsg && latestUserMsg.role === "user") {
         addMessage((0, import_crypto3.randomUUID)(), conversationId, "user", latestUserMsg.content, userId);
       }
+      const assistantMessageId = (0, import_crypto3.randomUUID)();
       let fullAssistantResponse = "";
+      let tokenCounter = 0;
+      const flushAssistantMessage2 = () => {
+        if (!fullAssistantResponse.trim()) return;
+        try {
+          upsertMessage(assistantMessageId, conversationId, "assistant", fullAssistantResponse, userId);
+        } catch (dbErr) {
+          fastify2.log.warn({ err: dbErr }, "Failed to persist assistant message to database");
+        }
+      };
+      request.raw.on("close", () => {
+        flushAssistantMessage2();
+      });
       const streamToken = (token) => {
         fullAssistantResponse += token;
         reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}
 
 `);
+        tokenCounter++;
+        if (tokenCounter % 15 === 0) {
+          flushAssistantMessage2();
+        }
       };
       const sendStatus = (status, phase = "processing") => {
         reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}
@@ -79433,7 +79465,11 @@ Once started, send your message again. Or switch to **Cloud AI** in the model me
               messages: [{ role: "system", content: systemPrompt }, ...messages],
               options: {
                 num_ctx: 16384,
-                temperature: 0.2
+                temperature: 0.2,
+                repeat_penalty: 1.18,
+                repeat_last_n: 128,
+                top_p: 0.9,
+                top_k: 40
               },
               stream: true
             })
@@ -79848,19 +79884,14 @@ ${validationReports.join("\n\n")}
         streamToken(autoSummary);
         sendStatus("Workspace files updated & validated successfully.", "done");
       }
-      if (fullAssistantResponse.trim()) {
-        try {
-          addMessage((0, import_crypto3.randomUUID)(), conversationId, "assistant", fullAssistantResponse, userId);
-        } catch (dbErr) {
-          fastify2.log.warn({ err: dbErr }, "Failed to save assistant message");
-        }
-      }
+      flushAssistantMessage2();
       reply.raw.write(`data: [DONE]
 
 `);
       reply.raw.end();
     } catch (err) {
       fastify2.log.error({ err }, "Error in /api/chat stream handler");
+      flushAssistantMessage();
       if (!reply.raw.headersSent) {
         reply.raw.writeHead(500, { "Content-Type": "application/json" });
         reply.raw.end(JSON.stringify({ error: err.message || "Internal Server Error" }));
@@ -79878,6 +79909,8 @@ ${validationReports.join("\n\n")}
         } catch {
         }
       }
+    } finally {
+      flushAssistantMessage();
     }
   });
 }

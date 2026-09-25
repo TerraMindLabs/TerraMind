@@ -7,6 +7,7 @@ import {
   getConversation,
   getMessages,
   addMessage,
+  upsertMessage,
   deleteConversation,
   updateConversationTitle,
   getAllSettings,
@@ -575,11 +576,33 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       addMessage(randomUUID(), conversationId, 'user', latestUserMsg.content, userId);
     }
 
+    const assistantMessageId = randomUUID();
     let fullAssistantResponse = '';
+    let tokenCounter = 0;
+
+    const flushAssistantMessage = () => {
+      if (!fullAssistantResponse.trim()) return;
+      try {
+        upsertMessage(assistantMessageId, conversationId, 'assistant', fullAssistantResponse, userId);
+      } catch (dbErr) {
+        fastify.log.warn({ err: dbErr }, 'Failed to persist assistant message to database');
+      }
+    };
+
+    // Guarantee persistence if user stops generation, aborts, or closes connection
+    request.raw.on('close', () => {
+      flushAssistantMessage();
+    });
 
     const streamToken = (token: string) => {
       fullAssistantResponse += token;
       reply.raw.write(`data: ${JSON.stringify({ content: token, conversationId })}\n\n`);
+
+      // Incremental persistence every 15 tokens so partial answers are saved in chat history
+      tokenCounter++;
+      if (tokenCounter % 15 === 0) {
+        flushAssistantMessage();
+      }
     };
 
     const sendStatus = (status: string, phase = 'processing') => {
@@ -1120,19 +1143,15 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         sendStatus('Workspace files updated & validated successfully.', 'done');
       }
 
-      // Save assistant message to SQLite & MongoDB
-      if (fullAssistantResponse.trim()) {
-        try {
-          addMessage(randomUUID(), conversationId, 'assistant', fullAssistantResponse, userId);
-        } catch (dbErr) {
-          fastify.log.warn({ err: dbErr }, 'Failed to save assistant message');
-        }
-      }
+      // Final flush of assistant message to SQLite & MongoDB
+      flushAssistantMessage();
 
       reply.raw.write(`data: [DONE]\n\n`);
       reply.raw.end();
     } catch (err: any) {
       fastify.log.error({ err }, 'Error in /api/chat stream handler');
+      // Guarantee whatever content was streamed so far is preserved in history
+      flushAssistantMessage();
       if (!reply.raw.headersSent) {
         reply.raw.writeHead(500, { 'Content-Type': 'application/json' });
         reply.raw.end(JSON.stringify({ error: err.message || 'Internal Server Error' }));
@@ -1143,6 +1162,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           reply.raw.end();
         } catch {}
       }
+    } finally {
+      flushAssistantMessage();
     }
   });
 }
