@@ -55,6 +55,9 @@ hs_err_pid*
 replay_pid*
 Error.md
 vid.md
+# SQLite & Local Application Data
+data/
 *.db
-*.db-shm
-*.db-wal
+*.db-*
+*.sqlite
+*.sqlite3

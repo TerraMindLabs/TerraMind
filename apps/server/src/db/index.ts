@@ -10,11 +10,42 @@ import {
   deleteMongoConversation
 } from './mongo';
 
+import fs from 'fs';
+
 // Initialize MongoDB in the background
 initMongo().catch((err) => console.warn('[MongoDB] Init error:', err.message));
 
-// Stores DB in the server directory
-const db = new DatabaseSync(path.join(process.cwd(), 'terramind.db'));
+// Protect database file in a dedicated data directory
+const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+  } catch (err) {
+    console.warn('[DB] Failed to create data directory:', err);
+  }
+}
+
+const legacyDbPath = path.join(process.cwd(), 'terramind.db');
+const targetDbPath = process.env.DB_PATH || path.join(dataDir, 'terramind.db');
+
+// Migrate legacy root database into data/ if it exists
+if (!process.env.DB_PATH && fs.existsSync(legacyDbPath) && !fs.existsSync(targetDbPath)) {
+  try {
+    fs.renameSync(legacyDbPath, targetDbPath);
+    if (fs.existsSync(legacyDbPath + '-wal')) fs.renameSync(legacyDbPath + '-wal', targetDbPath + '-wal');
+    if (fs.existsSync(legacyDbPath + '-shm')) fs.renameSync(legacyDbPath + '-shm', targetDbPath + '-shm');
+  } catch {
+    // Fallback if cross-device rename is not permitted
+  }
+}
+
+const activeDbPath = fs.existsSync(targetDbPath)
+  ? targetDbPath
+  : fs.existsSync(legacyDbPath)
+  ? legacyDbPath
+  : targetDbPath;
+
+const db = new DatabaseSync(activeDbPath);
 
 // Write-Ahead Logging for high performance
 db.exec('PRAGMA journal_mode = WAL;');
