@@ -218,6 +218,7 @@ function App() {
 
   const [provider, setProvider] = useState<'ollama' | 'cloud'>('ollama');
   const [model, setModel] = useState('');
+  const [menuTab, setMenuTab] = useState<'ollama' | 'cloud' | 'enterprise'>('ollama');
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [localModels, setLocalModels] = useState<string[]>([]);
@@ -568,6 +569,12 @@ function App() {
       : 'New Chat');
 
   const hasAnyModels = localModels.length > 0 || cloudModels.length > 0;
+  const enterpriseModels = cloudModels.filter(
+    (m) => m.startsWith('azure/') || m.startsWith('bedrock/') || m.startsWith('oci/')
+  );
+  const publicCloudModels = cloudModels.filter(
+    (m) => !m.startsWith('azure/') && !m.startsWith('bedrock/') && !m.startsWith('oci/')
+  );
 
   const modelDisplayName = !hasAnyModels
     ? 'Offline'
@@ -726,57 +733,84 @@ function App() {
                 id="mbtn"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!menuOpen) {
+                    if (model.startsWith('bedrock/') || model.startsWith('azure/') || model.startsWith('oci/')) {
+                      setMenuTab('enterprise');
+                    } else if (provider === 'cloud') {
+                      setMenuTab('cloud');
+                    } else {
+                      setMenuTab('ollama');
+                    }
+                  }
                   setMenuOpen(!menuOpen);
                 }}
                 title="Change model"
               >
                 <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} />
-                <span>{provider === 'ollama' ? '🖥️ ' : '☁️ '}{modelDisplayName}</span>
+                <span>
+                  {provider === 'ollama'
+                    ? '🖥️ '
+                    : model.startsWith('bedrock/')
+                    ? '🟧 '
+                    : model.startsWith('azure/')
+                    ? '🔷 '
+                    : model.startsWith('oci/')
+                    ? '🔴 '
+                    : '☁️ '}
+                  {modelDisplayName}
+                </span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
             )}
 
-            {/* Model selection dropdown menu with separate tabs for Ollama and Cloud */}
+            {/* Model selection dropdown menu with separate tabs for Ollama, Public Cloud, and Enterprise */}
             <div className={`menu ${menuOpen ? 'open' : ''}`} id="menu" onClick={(e) => e.stopPropagation()}>
-              {/* Separate Tabs Header */}
+              {/* 3-Tab Header */}
               <div className="menu-tabs-header">
                 <button
                   type="button"
-                  className={`menu-tab-btn ${provider === 'ollama' ? 'active' : ''}`}
+                  className={`menu-tab-btn ${menuTab === 'ollama' ? 'active' : ''}`}
                   onClick={() => {
-                    setProvider('ollama');
-                    if (localModels.length > 0 && (!model || cloudModels.includes(model))) {
-                      setModel(localModels[0]);
-                    }
+                    setMenuTab('ollama');
                   }}
                   title="Switch to local Ollama models"
                 >
                   <span className={`status-dot ${ollamaOnline ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
-                  <span>🖥️ Ollama Local</span>
+                  <span>🖥️ Local</span>
                   {localModels.length > 0 && <span className="tab-count-badge">{localModels.length}</span>}
                 </button>
 
                 <button
                   type="button"
-                  className={`menu-tab-btn ${provider === 'cloud' ? 'active' : ''}`}
+                  className={`menu-tab-btn ${menuTab === 'cloud' ? 'active' : ''}`}
                   onClick={() => {
-                    setProvider('cloud');
-                    if (cloudModels.length > 0 && (!model || localModels.includes(model))) {
-                      setModel(cloudModels[0]);
-                    }
+                    setMenuTab('cloud');
                   }}
-                  title="Switch to Cloud AI models"
+                  title="Switch to Public Cloud AI models (Gemini, OpenAI, Claude)"
                 >
-                  <span className={`status-dot ${cloudModels.length > 0 ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
-                  <span>☁️ Cloud AI</span>
-                  {cloudModels.length > 0 && <span className="tab-count-badge">{cloudModels.length}</span>}
+                  <span className={`status-dot ${publicCloudModels.length > 0 ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                  <span>☁️ Public Cloud</span>
+                  {publicCloudModels.length > 0 && <span className="tab-count-badge">{publicCloudModels.length}</span>}
+                </button>
+
+                <button
+                  type="button"
+                  className={`menu-tab-btn ${menuTab === 'enterprise' ? 'active' : ''}`}
+                  onClick={() => {
+                    setMenuTab('enterprise');
+                  }}
+                  title="Switch to Enterprise Cloud AI (AWS Bedrock, Azure Foundry, OCI GenAI)"
+                >
+                  <span className={`status-dot ${enterpriseModels.length > 0 ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                  <span>🏢 Enterprise</span>
+                  {enterpriseModels.length > 0 && <span className="tab-count-badge">{enterpriseModels.length}</span>}
                 </button>
               </div>
 
-              {/* SEPARATED SECTION 1: OLLAMA LOCAL MODELS */}
-              {provider === 'ollama' && (
+              {/* TAB 1: OLLAMA LOCAL MODELS */}
+              {menuTab === 'ollama' && (
                 <>
                   <div className="menu-section-title">
                     <span>Local Models (Ollama)</span>
@@ -801,8 +835,8 @@ function App() {
                           className="menu-empty-btn"
                           onClick={() => {
                             setMenuOpen(false);
-                            setSettingsTab('ollama');
-                            setSettingsOpen(true);
+                            setSettingsSection('ollama');
+                            setRailTab('settings');
                           }}
                         >
                           ⚙️ Manage Local Models
@@ -837,8 +871,8 @@ function App() {
                       className="menu-footer-btn"
                       onClick={() => {
                         setMenuOpen(false);
-                        setSettingsTab('ollama');
-                        setSettingsOpen(true);
+                        setSettingsSection('ollama');
+                        setRailTab('settings');
                       }}
                     >
                       <span>🦙</span> Manage Ollama & Pull Models
@@ -847,20 +881,20 @@ function App() {
                 </>
               )}
 
-              {/* SEPARATED SECTION 2: CLOUD AI MODELS */}
-              {provider === 'cloud' && (
+              {/* TAB 2: PUBLIC CLOUD AI MODELS */}
+              {menuTab === 'cloud' && (
                 <>
                   <div className="menu-section-title">
-                    <span>Verified Cloud Models</span>
+                    <span>Public Cloud Models</span>
                     <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'none' }}>
-                      {cloudModels.length} available
+                      {publicCloudModels.length} available
                     </span>
                   </div>
 
                   <div className="menu-models-scroll">
-                    {cloudModels.length === 0 ? (
+                    {publicCloudModels.length === 0 ? (
                       <div className="menu-empty-state">
-                        <div className="menu-empty-title">No Cloud Models Available</div>
+                        <div className="menu-empty-title">No Public Cloud API Keys Configured</div>
                         <p className="menu-empty-desc">
                           Add your Google Gemini, OpenAI, or Anthropic API key to enable high-speed cloud reasoning models.
                         </p>
@@ -869,18 +903,15 @@ function App() {
                           className="menu-empty-btn"
                           onClick={() => {
                             setMenuOpen(false);
-                            setSettingsTab('keys');
-                            setSettingsOpen(true);
+                            setSettingsSection('keys');
+                            setRailTab('settings');
                           }}
                         >
                           🔑 Add API Key
                         </button>
                       </div>
                     ) : (
-                      cloudModels.map((cm) => {
-                        const isAzure = cm.startsWith('azure/');
-                        const isBedrock = cm.startsWith('bedrock/');
-                        const isOci = cm.startsWith('oci/');
+                      publicCloudModels.map((cm) => {
                         const isFlash = cm.includes('flash') || cm.includes('mini') || cm.includes('haiku');
                         const isPro = cm.includes('pro') || cm.includes('o1') || cm.includes('o3') || cm.includes('opus') || cm.includes('sonnet');
                         return (
@@ -898,22 +929,13 @@ function App() {
                                 {formatModelName(cm)}
                               </span>
                               <div className="menu-item-badges">
-                                {isAzure && <span className="menu-badge pro">Azure</span>}
-                                {isBedrock && <span className="menu-badge pro">Bedrock</span>}
-                                {isOci && <span className="menu-badge pro">OCI</span>}
                                 {isFlash && <span className="menu-badge fast">Fast</span>}
-                                {isPro && !isAzure && !isBedrock && !isOci && <span className="menu-badge pro">Reasoning</span>}
+                                {isPro && <span className="menu-badge pro">Reasoning</span>}
                                 <span className="menu-badge verified">Verified</span>
                               </div>
                             </div>
                             <span className="menu-item-desc">
-                              {isAzure
-                                ? 'Azure AI Foundry enterprise-grade model endpoint'
-                                : isBedrock
-                                ? 'AWS Bedrock IAM/SigV4 managed foundation model'
-                                : isOci
-                                ? 'Oracle Cloud Infrastructure Generative AI inference'
-                                : isFlash
+                              {isFlash
                                 ? 'Ultra-fast, cost-effective everyday responses'
                                 : isPro
                                 ? 'High-capacity logic, deep reasoning & code analysis'
@@ -925,30 +947,200 @@ function App() {
                     )}
                   </div>
 
+                  <div className="menu-footer">
+                    <button
+                      type="button"
+                      className="menu-footer-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSettingsSection('keys');
+                        setRailTab('settings');
+                      }}
+                      style={{ width: '100%' }}
+                    >
+                      <span>🔑</span> Manage Cloud API Keys
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* TAB 3: ENTERPRISE CLOUD AI (AWS / Azure / OCI) */}
+              {menuTab === 'enterprise' && (
+                <>
+                  <div className="menu-section-title">
+                    <span>Enterprise Cloud AI</span>
+                    <span style={{ fontSize: '10px', color: 'var(--muted)', textTransform: 'none' }}>
+                      AWS • Azure • OCI
+                    </span>
+                  </div>
+
+                  <div className="menu-models-scroll">
+                    {/* 1. AWS Bedrock Card */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🟧</span> AWS Bedrock
+                      </div>
+                      {enterpriseModels.filter((m) => m.startsWith('bedrock/')).length > 0 ? (
+                        enterpriseModels.filter((m) => m.startsWith('bedrock/')).map((bm) => (
+                          <button
+                            key={bm}
+                            type="button"
+                            className={`menu-item-btn ${provider === 'cloud' && model === bm ? 'active-model' : ''}`}
+                            onClick={() => handleSelectModel('cloud', bm)}
+                          >
+                            <div className="menu-item-header">
+                              <span className="menu-item-name">
+                                {provider === 'cloud' && model === bm && (
+                                  <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                                )}
+                                {formatModelName(bm)}
+                              </span>
+                              <span className="menu-badge pro" style={{ background: 'rgba(255, 153, 0, 0.15)', color: '#FF9900' }}>AWS</span>
+                            </div>
+                            <span className="menu-item-desc">AWS Bedrock IAM / SigV4 foundation model</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div style={{ padding: '10px 12px', borderRadius: '8px', border: '1px dashed var(--border)', background: 'var(--hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Not configured</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setSettingsSection('bedrock');
+                              setRailTab('settings');
+                            }}
+                            style={{ fontSize: '11.5px', color: '#3b82f6', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            Connect AWS Bedrock ➔
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Azure AI Foundry Card */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🔷</span> Azure AI Foundry
+                      </div>
+                      {enterpriseModels.filter((m) => m.startsWith('azure/')).length > 0 ? (
+                        enterpriseModels.filter((m) => m.startsWith('azure/')).map((am) => (
+                          <button
+                            key={am}
+                            type="button"
+                            className={`menu-item-btn ${provider === 'cloud' && model === am ? 'active-model' : ''}`}
+                            onClick={() => handleSelectModel('cloud', am)}
+                          >
+                            <div className="menu-item-header">
+                              <span className="menu-item-name">
+                                {provider === 'cloud' && model === am && (
+                                  <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                                )}
+                                {formatModelName(am)}
+                              </span>
+                              <span className="menu-badge pro" style={{ background: 'rgba(0, 120, 212, 0.15)', color: '#0078D4' }}>Azure</span>
+                            </div>
+                            <span className="menu-item-desc">Azure AI Foundry enterprise OpenAI deployment</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div style={{ padding: '10px 12px', borderRadius: '8px', border: '1px dashed var(--border)', background: 'var(--hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Not configured</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setSettingsSection('azure');
+                              setRailTab('settings');
+                            }}
+                            style={{ fontSize: '11.5px', color: '#3b82f6', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            Connect Azure Foundry ➔
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. OCI GenAI Card */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🔴</span> OCI Generative AI
+                      </div>
+                      {enterpriseModels.filter((m) => m.startsWith('oci/')).length > 0 ? (
+                        enterpriseModels.filter((m) => m.startsWith('oci/')).map((om) => (
+                          <button
+                            key={om}
+                            type="button"
+                            className={`menu-item-btn ${provider === 'cloud' && model === om ? 'active-model' : ''}`}
+                            onClick={() => handleSelectModel('cloud', om)}
+                          >
+                            <div className="menu-item-header">
+                              <span className="menu-item-name">
+                                {provider === 'cloud' && model === om && (
+                                  <span style={{ color: '#10b981', fontSize: '12px' }}>✓</span>
+                                )}
+                                {formatModelName(om)}
+                              </span>
+                              <span className="menu-badge pro" style={{ background: 'rgba(199, 70, 52, 0.15)', color: '#C74634' }}>OCI</span>
+                            </div>
+                            <span className="menu-item-desc">Oracle Cloud Infrastructure Generative AI</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div style={{ padding: '10px 12px', borderRadius: '8px', border: '1px dashed var(--border)', background: 'var(--hover)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Not configured</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setSettingsSection('oci');
+                              setRailTab('settings');
+                            }}
+                            style={{ fontSize: '11.5px', color: '#3b82f6', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            Connect OCI GenAI ➔
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="menu-footer" style={{ display: 'flex', gap: '8px' }}>
                     <button
                       type="button"
                       className="menu-footer-btn"
                       onClick={() => {
                         setMenuOpen(false);
-                        setSettingsTab('keys');
-                        setSettingsOpen(true);
+                        setSettingsSection('bedrock');
+                        setRailTab('settings');
                       }}
                       style={{ flex: 1 }}
                     >
-                      <span>🔑</span> API Keys
+                      <span>🟧</span> AWS
                     </button>
                     <button
                       type="button"
                       className="menu-footer-btn"
                       onClick={() => {
                         setMenuOpen(false);
-                        setSettingsTab('enterprise');
-                        setSettingsOpen(true);
+                        setSettingsSection('azure');
+                        setRailTab('settings');
                       }}
                       style={{ flex: 1 }}
                     >
-                      <span>🏢</span> Enterprise Cloud
+                      <span>🔷</span> Azure
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-footer-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setSettingsSection('oci');
+                        setRailTab('settings');
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <span>🔴</span> OCI
                     </button>
                   </div>
                 </>
@@ -1182,12 +1374,31 @@ function App() {
                       className="composer-pill-btn"
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (!menuOpen) {
+                          if (model.startsWith('bedrock/') || model.startsWith('azure/') || model.startsWith('oci/')) {
+                            setMenuTab('enterprise');
+                          } else if (provider === 'cloud') {
+                            setMenuTab('cloud');
+                          } else {
+                            setMenuTab('ollama');
+                          }
+                        }
                         setMenuOpen(!menuOpen);
                       }}
                       title="Select AI Model"
                     >
                       <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
-                      <span>{provider === 'ollama' ? '🖥️ Local' : '☁️ Cloud'}</span>
+                      <span>
+                        {provider === 'ollama'
+                          ? '🖥️ Local'
+                          : model.startsWith('bedrock/')
+                          ? '🟧 AWS Bedrock'
+                          : model.startsWith('azure/')
+                          ? '🔷 Azure AI'
+                          : model.startsWith('oci/')
+                          ? '🔴 OCI GenAI'
+                          : '☁️ Cloud'}
+                      </span>
                       <span style={{ opacity: 0.4 }}>•</span>
                       <span>{modelDisplayName}</span>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
