@@ -204,7 +204,8 @@ function App() {
     generationStatus,
     conversationId,
     loadConversation,
-    startNewChat
+    startNewChat,
+    stopGenerating
   } = useChatStream();
 
   const [input, setInput] = useState('');
@@ -1097,24 +1098,46 @@ function App() {
 
         {/* Composer - Featuring Local Model / API Selector inside input section */}
         <div className="comp">
-          {isGenerating && generationStatus && (
+          {isGenerating && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
-                padding: '4px 12px',
-                fontSize: '12px',
-                color: 'var(--text)',
-                background: 'var(--hover)',
-                border: '1px solid var(--border)',
-                borderRadius: '20px',
                 margin: '0 auto 8px auto',
                 width: 'fit-content'
               }}
             >
-              <span className="spinner" style={{ width: '12px', height: '12px', flexShrink: 0 }} />
-              <span style={{ fontWeight: 500 }}>{generationStatus}</span>
+              {generationStatus && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '4px 12px',
+                    fontSize: '12px',
+                    color: 'var(--text)',
+                    background: 'var(--hover)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '20px'
+                  }}
+                >
+                  <span className="spinner" style={{ width: '12px', height: '12px', flexShrink: 0 }} />
+                  <span style={{ fontWeight: 500 }}>{generationStatus}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="stop-pill-btn"
+                onClick={stopGenerating}
+                title="Stop AI generation"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <rect width="24" height="24" rx="3" />
+                </svg>
+                <span>Stop Generating</span>
+              </button>
             </div>
           )}
           <div className="box">
@@ -1199,19 +1222,34 @@ function App() {
                 )}
               </div>
 
-              {/* Circular Send Button */}
-              <button
-                className="send"
-                id="send"
-                disabled={!input.trim() || isGenerating || !hasAnyModels}
-                onClick={() => handleSend()}
-                aria-label="Send message"
-                title={!hasAnyModels ? "Configure an API key to send messages" : "Send message"}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
+              {/* Send or Stop Button */}
+              {isGenerating ? (
+                <button
+                  type="button"
+                  className="send stop-btn"
+                  id="stop-generating-btn"
+                  onClick={stopGenerating}
+                  aria-label="Stop generation"
+                  title="Stop generation"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <rect width="24" height="24" rx="3" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  className="send"
+                  id="send"
+                  disabled={!input.trim() || !hasAnyModels}
+                  onClick={() => handleSend()}
+                  aria-label="Send message"
+                  title={!hasAnyModels ? "Configure an API key to send messages" : "Send message"}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
           <div className="note">AI can make mistakes. Check important information.</div>

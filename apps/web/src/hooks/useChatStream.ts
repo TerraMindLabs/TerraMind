@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 export interface ChatMessageData {
   role: 'user' | 'assistant';
@@ -10,6 +10,7 @@ export function useChatStream() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadConversation = useCallback(async (id: string) => {
     try {
@@ -28,8 +29,22 @@ export function useChatStream() {
   }, []);
 
   const startNewChat = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setConversationId(undefined);
     setMessages([]);
+    setGenerationStatus(null);
+    setIsGenerating(false);
+  }, []);
+
+  const stopGenerating = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
     setGenerationStatus(null);
   }, []);
 
@@ -42,6 +57,12 @@ export function useChatStream() {
     onConvoCreated?: (newId: string) => void
   ) => {
     if (!content.trim() || isGenerating) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     const newMsg: ChatMessageData = { role: 'user', content };
     const updatedMessages = [...messages, newMsg];
@@ -62,6 +83,7 @@ export function useChatStream() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           conversationId,
           messages: updatedMessages,
@@ -100,6 +122,8 @@ export function useChatStream() {
       let sseBuffer = '';
 
       while (true) {
+        if (controller.signal.aborted) break;
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -145,11 +169,18 @@ export function useChatStream() {
         }
       }
     } catch (err: any) {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        // User stopped generation intentionally - keep the content streamed so far
+        return;
+      }
       console.error('Streaming error:', err);
       setMessages((prev) => [...prev, { role: 'assistant', content: `> ⚠️ **Connection Error:** ${err?.message || 'Failed to communicate with server'}` }]);
     } finally {
       setIsGenerating(false);
       setGenerationStatus(null);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -160,6 +191,7 @@ export function useChatStream() {
     generationStatus,
     conversationId,
     loadConversation,
-    startNewChat
+    startNewChat,
+    stopGenerating
   };
 }
