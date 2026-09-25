@@ -31,16 +31,16 @@ export interface WorkspaceFile {
 
 export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: string; icon: string }> = [
   {
-    id: 'workspace',
-    title: 'Workspace',
-    desc: 'Workspace name, avatar, email, timezone, etc.',
-    icon: '🏢'
-  },
-  {
     id: 'profile',
     title: 'Profile',
-    desc: 'User information, email, profile photo',
+    desc: 'User information, name, email & avatar',
     icon: '👤'
+  },
+  {
+    id: 'workspace',
+    title: 'Workspace',
+    desc: 'Workspace directory, default region, cloud state',
+    icon: '🏢'
   },
   {
     id: 'keys',
@@ -55,22 +55,22 @@ export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: s
     icon: '🦙'
   },
   {
-    id: 'enterprise',
-    title: 'Enterprise Cloud AI',
-    desc: 'AWS Bedrock, Azure Foundry, OCI GenAI',
-    icon: '☁️'
+    id: 'bedrock',
+    title: 'AWS Bedrock',
+    desc: 'Amazon Bedrock Claude & Titan foundation models',
+    icon: '🟧'
   },
   {
-    id: 'security',
-    title: 'Security',
-    desc: 'User password, devices & local vault',
-    icon: '🔒'
+    id: 'azure',
+    title: 'Azure AI Foundry',
+    desc: 'Azure OpenAI & Foundry enterprise endpoints',
+    icon: '🔷'
   },
   {
-    id: 'notifications',
-    title: 'Notifications',
-    desc: 'Email, mobile, desktop, SMS',
-    icon: '🔔'
+    id: 'oci',
+    title: 'OCI GenAI',
+    desc: 'Oracle Cloud Infrastructure Generative AI',
+    icon: '🔴'
   }
 ];
 
@@ -158,7 +158,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Collapsible section state
   const [projectsOpen, setProjectsOpen] = useState(true);
-  const [agentsOpen, setAgentsOpen] = useState(true);
   const [filesOpen, setFilesOpen] = useState(workspaceFiles.length > 0);
   const [chatsOpen, setChatsOpen] = useState(conversations.length > 0);
 
@@ -371,76 +370,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               );
             })}
-          </div>
-        </div>
-      ) : railTab === 'finops' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          <div className="nested-sidebar-header">
-            <button
-              type="button"
-              className="nested-back-btn"
-              onClick={() => onSelectRailTab?.('chats')}
-              title="Back to Conversations"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              <span>Cost & FinOps</span>
-            </button>
-            <button className="icon" onClick={onToggle} aria-label="Close sidebar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="16" rx="3" />
-                <path d="M9 4v16" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="sidebar-scroll" style={{ padding: '4px 8px' }}>
-            <button
-              type="button"
-              className="nested-nav-item"
-              onClick={() => {
-                onSelectAgent('agent_finops-cost-optimizer');
-                onSelectRailTab?.('chats');
-                onNewChat();
-              }}
-            >
-              <span className="nested-nav-icon">📊</span>
-              <div className="nested-nav-content">
-                <span className="nested-nav-title">Multi-Cloud Pricing Audit</span>
-                <span className="nested-nav-desc">Side-by-side cost: AWS vs GCP vs Azure</span>
-              </div>
-            </button>
-            <button
-              type="button"
-              className="nested-nav-item"
-              onClick={() => {
-                onSelectAgent('agent_finops-cost-optimizer');
-                onSelectRailTab?.('chats');
-                onNewChat();
-              }}
-            >
-              <span className="nested-nav-icon">⚡</span>
-              <div className="nested-nav-content">
-                <span className="nested-nav-title">Compute Rightsizing</span>
-                <span className="nested-nav-desc">Identify idle NATs & over-provisioned nodes</span>
-              </div>
-            </button>
-            <button
-              type="button"
-              className="nested-nav-item"
-              onClick={() => {
-                onSelectAgent('agent_finops-cost-optimizer');
-                onSelectRailTab?.('chats');
-                onNewChat();
-              }}
-            >
-              <span className="nested-nav-icon">💾</span>
-              <div className="nested-nav-content">
-                <span className="nested-nav-title">Storage & Egress Optimization</span>
-                <span className="nested-nav-desc">Save on Glacier transitions & egress routing</span>
-              </div>
-            </button>
           </div>
         </div>
       ) : (
@@ -797,59 +726,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* 2. AI Agents Section with New Agent Icons (Requirement 2) */}
-        <div
-          className={`collapsible-header ${agentsOpen ? 'open' : ''}`}
-          onClick={() => setAgentsOpen(!agentsOpen)}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-            <span>Agents ({TERRAMIND_AGENTS.length})</span>
-          </div>
-        </div>
-
-        {agentsOpen && (
-          <div className="section-items">
-            {TERRAMIND_AGENTS.map((agent) => (
-              <button
-                key={agent.id}
-                className={`row agent-row ${selectedAgentId === agent.id ? 'active' : ''}`}
-                onClick={() => onSelectAgent(agent.id)}
-                title={agent.description}
-              >
-                <img
-                  src={getAgentIcon(agent, theme)}
-                  alt={agent.name}
-                  style={{
-                    width: '22px',
-                    height: '22px',
-                    objectFit: 'contain',
-                    borderRadius: '6px',
-                    flexShrink: 0
-                  }}
-                />
-                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-                  <span
-                    style={{
-                      fontWeight: selectedAgentId === agent.id ? 600 : 400,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      fontSize: '13px'
-                    }}
-                  >
-                    {agent.name}
-                  </span>
-                  <span className="agent-subtitle">
-                    {agent.role}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* 3. Terraform Workspace Files Section */}
         <div

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ThemePillToggle } from './ThemePillToggle';
 
-export type RailTab = 'projects' | 'chats' | 'agents' | 'finops' | 'settings';
+export type RailTab = 'projects' | 'chats' | 'agents' | 'settings';
 
 interface PrimaryRailProps {
   activeTab: RailTab;
@@ -62,19 +62,8 @@ export const PrimaryRail: React.FC<PrimaryRailProps> = ({
       )
     },
     {
-      id: 'finops',
-      label: 'Cost & FinOps Analytics',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="20" x2="18" y2="10" />
-          <line x1="12" y1="20" x2="12" y2="4" />
-          <line x1="6" y1="20" x2="6" y2="14" />
-        </svg>
-      )
-    },
-    {
       id: 'settings',
-      label: 'Settings & Model Engine',
+      label: 'Settings & Cloud Engines',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -105,7 +94,6 @@ export const PrimaryRail: React.FC<PrimaryRailProps> = ({
               (e.target as HTMLElement).style.display = 'none';
             }}
           />
-          <div className="rail-logo-fallback">TM</div>
         </button>
       </div>
 

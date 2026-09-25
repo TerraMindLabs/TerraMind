@@ -688,6 +688,10 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           body: JSON.stringify({
             model: targetModel,
             messages: [{ role: 'system', content: systemPrompt }, ...messages],
+            options: {
+              num_ctx: 16384,
+              temperature: 0.2
+            },
             stream: true
           })
         });
