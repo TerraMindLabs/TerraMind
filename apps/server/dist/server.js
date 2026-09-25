@@ -77396,7 +77396,7 @@ if (!process.env.DB_PATH && import_fs.default.existsSync(legacyDbPath) && !impor
   } catch {
   }
 }
-var activeDbPath = import_fs.default.existsSync(targetDbPath) ? targetDbPath : import_fs.default.existsSync(legacyDbPath) ? legacyDbPath : targetDbPath;
+var activeDbPath = process.env.DB_PATH ? process.env.DB_PATH : import_fs.default.existsSync(targetDbPath) ? targetDbPath : import_fs.default.existsSync(legacyDbPath) ? legacyDbPath : targetDbPath;
 var db2 = new import_node_sqlite.DatabaseSync(activeDbPath);
 db2.exec("PRAGMA journal_mode = WAL;");
 db2.exec(`
@@ -77504,13 +77504,25 @@ function getUserByUsername(username) {
   const stmt = db2.prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
   return stmt.get(username);
 }
-function createUser(id, username, passwordHash, fullName = "", role = "Cloud Architect") {
+function createUser(idOrUsername, usernameOrPasswordHash, passwordHash, fullName = "", role = "Cloud Architect") {
+  let id;
+  let username;
+  let hash;
+  if (passwordHash === void 0) {
+    id = (0, import_crypto.randomUUID)();
+    username = idOrUsername;
+    hash = usernameOrPasswordHash;
+  } else {
+    id = idOrUsername;
+    username = usernameOrPasswordHash;
+    hash = passwordHash;
+  }
   try {
     const stmt = db2.prepare("INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)");
-    stmt.run(id, username, passwordHash, fullName, role);
+    stmt.run(id, username, hash, fullName, role);
   } catch {
     const stmt = db2.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)");
-    stmt.run(id, username, passwordHash);
+    stmt.run(id, username, hash);
   }
   logUserActivity(id, "user_registered", { username, fullName, role });
   return { id, username, created_at: (/* @__PURE__ */ new Date()).toISOString() };
@@ -78546,7 +78558,7 @@ var import_util = require("util");
 var import_path2 = __toESM(require("path"));
 var import_promises = __toESM(require("fs/promises"));
 var execPromise = (0, import_util.promisify)(import_child_process.exec);
-var WORKSPACE_PATH = process.env.TF_WORKSPACE || import_path2.default.resolve(process.cwd(), "..", "..", "Terraform");
+var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || import_path2.default.resolve(process.cwd(), "..", "..", "Terraform");
 async function ensureWorkspace() {
   try {
     await import_promises.default.mkdir(WORKSPACE_PATH, { recursive: true });
@@ -78581,9 +78593,13 @@ async function listWorkspaceFiles() {
 }
 async function writeWorkspaceFile(filename, content) {
   await ensureWorkspace();
-  const cleanRelPath = filename.replace(/^[\\\/]+/, "").replace(/\.\.[\\\/]/g, "");
+  if (filename.includes("..") || filename.includes("/../") || filename.includes("\\..\\")) {
+    throw new Error("Access denied: target path escapes workspace");
+  }
+  const cleanRelPath = filename.replace(/^[\\\/]+/, "");
   const targetPath = import_path2.default.resolve(WORKSPACE_PATH, cleanRelPath);
-  if (!targetPath.startsWith(WORKSPACE_PATH)) {
+  const normalizedWs = import_path2.default.resolve(WORKSPACE_PATH);
+  if (!targetPath.toLowerCase().startsWith(normalizedWs.toLowerCase())) {
     throw new Error("Access denied: target path escapes workspace");
   }
   await import_promises.default.mkdir(import_path2.default.dirname(targetPath), { recursive: true });

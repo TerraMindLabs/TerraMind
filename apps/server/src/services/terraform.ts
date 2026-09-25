@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 
 const execPromise = promisify(exec);
 
-export const WORKSPACE_PATH = process.env.TF_WORKSPACE || path.resolve(process.cwd(), '..', '..', 'Terraform');
+export const WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || path.resolve(process.cwd(), '..', '..', 'Terraform');
 
 export async function ensureWorkspace(): Promise<string> {
   try {
@@ -56,10 +56,17 @@ export async function writeWorkspaceFile(
   content: string
 ): Promise<{ path: string; relPath: string; fmtOutput?: string; validateOutput?: string }> {
   await ensureWorkspace();
-  // Clean filename: remove leading slashes and prevent directory traversal
-  const cleanRelPath = filename.replace(/^[\\\/]+/, '').replace(/\.\.[\\\/]/g, '');
+
+  // Strict Security: Reject any directory traversal sequences (.. or ../ or ..\)
+  if (filename.includes('..') || filename.includes('/../') || filename.includes('\\..\\')) {
+    throw new Error('Access denied: target path escapes workspace');
+  }
+
+  const cleanRelPath = filename.replace(/^[\\\/]+/, '');
   const targetPath = path.resolve(WORKSPACE_PATH, cleanRelPath);
-  if (!targetPath.startsWith(WORKSPACE_PATH)) {
+  const normalizedWs = path.resolve(WORKSPACE_PATH);
+
+  if (!targetPath.toLowerCase().startsWith(normalizedWs.toLowerCase())) {
     throw new Error('Access denied: target path escapes workspace');
   }
 

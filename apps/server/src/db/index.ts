@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import {
   initMongo,
   recordUserSession,
@@ -39,7 +39,9 @@ if (!process.env.DB_PATH && fs.existsSync(legacyDbPath) && !fs.existsSync(target
   }
 }
 
-const activeDbPath = fs.existsSync(targetDbPath)
+const activeDbPath = process.env.DB_PATH
+  ? process.env.DB_PATH
+  : fs.existsSync(targetDbPath)
   ? targetDbPath
   : fs.existsSync(legacyDbPath)
   ? legacyDbPath
@@ -203,21 +205,54 @@ export interface User {
 }
 
 // User Authentication Helpers
+export function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
+}
+
 export function getUserByUsername(username: string): { id: string; username: string; password_hash: string } | undefined {
   const stmt = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?');
   return stmt.get(username) as any;
 }
 
-export function createUser(id: string, username: string, passwordHash: string, fullName: string = '', role: string = 'Cloud Architect'): User {
+export function createUser(
+  idOrUsername: string,
+  usernameOrPasswordHash: string,
+  passwordHash?: string,
+  fullName: string = '',
+  role: string = 'Cloud Architect'
+): User {
+  let id: string;
+  let username: string;
+  let hash: string;
+
+  if (passwordHash === undefined) {
+    id = randomUUID();
+    username = idOrUsername;
+    hash = usernameOrPasswordHash;
+  } else {
+    id = idOrUsername;
+    username = usernameOrPasswordHash;
+    hash = passwordHash;
+  }
+
   try {
     const stmt = db.prepare('INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(id, username, passwordHash, fullName, role);
+    stmt.run(id, username, hash, fullName, role);
   } catch {
     const stmt = db.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)');
-    stmt.run(id, username, passwordHash);
+    stmt.run(id, username, hash);
   }
   logUserActivity(id, 'user_registered', { username, fullName, role });
   return { id, username, created_at: new Date().toISOString() };
+}
+
+export function verifyUser(username: string, rawPassword: string): { id: string; username: string } | null {
+  const user = getUserByUsername(username);
+  if (!user) return null;
+  if (user.password_hash === hashPassword(rawPassword)) {
+    return { id: user.id, username: user.username };
+  }
+  return null;
 }
 
 export function getUserCount(): number {
