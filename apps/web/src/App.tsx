@@ -236,7 +236,7 @@ function App() {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'keys' | 'enterprise' | 'ollama'>('keys');
+  const [settingsTab] = useState<'keys' | 'enterprise' | 'ollama'>('keys');
   const [railTab, setRailTab] = useState<RailTab>('chats');
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
   const [authOpen, setAuthOpen] = useState(false);
@@ -392,7 +392,9 @@ function App() {
     }
 
     if (!localModels.length && !cloudModels.length) {
-      setSettingsOpen(true);
+      setSettingsSection('keys');
+      setRailTab('settings');
+      setSidebarOpen(true);
       return;
     }
 
@@ -718,10 +720,11 @@ function App() {
                 className="status-pill offline"
                 id="mbtn"
                 onClick={() => {
-                  setSettingsTab(provider === 'ollama' ? 'ollama' : 'keys');
-                  setSettingsOpen(true);
+                  setSettingsSection(provider === 'ollama' ? 'ollama' : 'keys');
+                  setRailTab('settings');
+                  setSidebarOpen(true);
                 }}
-                title="All AI models are offline. Click to configure API keys."
+                title="All AI models are offline. Click to configure in Settings."
               >
                 <span className="status-dot offline-dot" />
                 <span>Offline</span>
@@ -1362,8 +1365,12 @@ function App() {
                   <button
                     type="button"
                     className="primary-action-btn"
-                    onClick={() => setSettingsOpen(true)}
-                    title="Configure Cloud API Keys to enable AI generation"
+                    onClick={() => {
+                      setSettingsSection('keys');
+                      setRailTab('settings');
+                      setSidebarOpen(true);
+                    }}
+                    title="Configure Cloud API Keys in Settings"
                   >
                     <span>⚙️</span>
                     <span>Add API Key</span>
@@ -1434,10 +1441,20 @@ function App() {
                       type="button"
                       className="composer-pill-btn"
                       onClick={() => {
-                        setSettingsTab(provider === 'ollama' ? 'ollama' : 'keys');
-                        setSettingsOpen(true);
+                        const targetSection: SettingsSection = provider === 'ollama'
+                          ? 'ollama'
+                          : model.startsWith('bedrock/')
+                          ? 'bedrock'
+                          : model.startsWith('azure/')
+                          ? 'azure'
+                          : model.startsWith('oci/')
+                          ? 'oci'
+                          : 'keys';
+                        setSettingsSection(targetSection);
+                        setRailTab('settings');
+                        setSidebarOpen(true);
                       }}
-                      title={provider === 'ollama' ? 'Manage Ollama Models' : 'Configure Cloud API Keys'}
+                      title="Open Settings in Left Sidebar"
                       style={{ padding: '3px 8px' }}
                     >
                       ⚙️
