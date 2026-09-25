@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 interface AuthModalProps {
   isOpen: boolean;
-  onSuccess: (user: { id: string; username: string }) => void;
+  onSuccess: (user: { id: string; username: string; fullName?: string; role?: string }) => void;
   onClose?: () => void;
   isMandatory?: boolean;
 }
@@ -16,6 +16,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState('Cloud Platform Architect');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -24,14 +27,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (isRegister) {
+      if (!fullName.trim()) {
+        setError('Please enter your full name');
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+      const payload = isRegister
+        ? { username: username.trim(), password, fullName: fullName.trim(), role }
+        : { username: username.trim(), password };
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify(payload)
       });
 
       const text = await res.text();
@@ -43,7 +66,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       if (!res.ok) {
-        setError(data.error || 'Authentication failed');
+        setError(data.error || (isRegister ? 'Registration failed' : 'Authentication failed'));
       } else {
         localStorage.setItem('tm_user', JSON.stringify(data.user));
         if (data.token) {
@@ -93,6 +116,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const passwordsMatch = password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+
   return (
     <div
       className="modal-backdrop"
@@ -100,7 +126,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (!isMandatory && onClose) onClose();
       }}
     >
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal-card ${isRegister ? 'modal-card-wide' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <img
@@ -127,16 +156,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <div style={{ textAlign: 'center', margin: '4px 0 16px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 4px', color: 'var(--text)' }}>
-              {isRegister ? 'Sign Up' : 'Log In to Start Chatting'}
+              {isRegister ? 'Create Your Architect Account' : 'Sign In to Workspace'}
             </h2>
-            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>
+            <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0, lineHeight: 1.4 }}>
               {isRegister
-                ? 'Sign up to access AI Agents and save your cloud projects'
+                ? 'Join TerraMind to orchestrate multi-cloud architecture with local AI agents'
                 : 'Choose an SSO provider or enter your credentials to proceed'}
             </p>
           </div>
 
-          {/* 3 SSO Options: Okta, Google, GitHub */}
+          {/* SSO Options: Contextualized label for Sign Up vs Sign In */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
             {/* 1. Okta SSO */}
             <button
@@ -144,13 +173,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               className="sso-btn"
               onClick={() => handleSsoClick('okta')}
               disabled={loading}
-              title="Sign in with Enterprise Okta SSO"
+              title={isRegister ? 'Sign up with Enterprise Okta SSO' : 'Sign in with Enterprise Okta SSO'}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="#007dc1">
                 <circle cx="12" cy="12" r="10" />
                 <circle cx="12" cy="12" r="4.5" fill="#fff" />
               </svg>
-              <span>Sign in with Okta SSO</span>
+              <span>{isRegister ? 'Sign up with Okta SSO' : 'Sign in with Okta SSO'}</span>
             </button>
 
             {/* 2. Google SSO */}
@@ -159,7 +188,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               className="sso-btn"
               onClick={() => handleSsoClick('google')}
               disabled={loading}
-              title="Sign in with Google"
+              title={isRegister ? 'Sign up with Google' : 'Sign in with Google'}
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path
@@ -167,7 +196,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   fill="#4285F4"
                 />
               </svg>
-              <span>Sign in with Google</span>
+              <span>{isRegister ? 'Sign up with Google' : 'Sign in with Google'}</span>
             </button>
 
             {/* 3. GitHub SSO */}
@@ -176,56 +205,165 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               className="sso-btn"
               onClick={() => handleSsoClick('github')}
               disabled={loading}
-              title="Sign in with GitHub"
+              title={isRegister ? 'Sign up with GitHub' : 'Sign in with GitHub'}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
               </svg>
-              <span>Sign in with GitHub</span>
+              <span>{isRegister ? 'Sign up with GitHub' : 'Sign in with GitHub'}</span>
             </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 14px' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>
-              or with password
+            <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {isRegister ? 'or register with credentials' : 'or with password'}
             </span>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
           </div>
 
-          {/* 4. Simple Username & Password */}
-          <div className="form-group">
-            <label>Username / Email</label>
-            <input
-              type="text"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="name@example.com"
-              autoFocus
-            />
-          </div>
+          {/* Form Fields: Tailored for Sign Up vs Sign In */}
+          {isRegister ? (
+            <>
+              {/* Row 1: Full Name & Primary Role */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Alex Morgan"
+                    autoFocus
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Primary Role</label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                  >
+                    <option value="Cloud Platform Architect">Cloud Architect</option>
+                    <option value="DevOps / SRE Engineer">DevOps / SRE Engineer</option>
+                    <option value="Infrastructure Engineer">Infrastructure Engineer</option>
+                    <option value="Cloud Security Engineer">Security & Compliance</option>
+                    <option value="FinOps Specialist">FinOps Specialist</option>
+                    <option value="Full-Stack Developer">Software Engineer</option>
+                  </select>
+                </div>
+              </div>
 
-          <div className="form-group">
-            <label>Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+              {/* Row 2: Work Email / Username */}
+              <div className="form-group">
+                <label>Work Email or Username</label>
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="alex@company.com"
+                />
+              </div>
+
+              {/* Row 3: Password & Confirm Password */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Password <span style={{ fontSize: '11px', color: 'var(--muted)' }}>(min 6 chars)</span></label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Confirm Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    style={{
+                      borderColor: passwordsMismatch ? '#ef4444' : passwordsMatch ? '#10b981' : undefined
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Live Password Match Feedback */}
+              {passwordsMismatch && (
+                <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '-6px', marginBottom: '10px' }}>
+                  ✕ Passwords do not match
+                </div>
+              )}
+              {passwordsMatch && (
+                <div style={{ fontSize: '12px', color: '#10b981', marginTop: '-6px', marginBottom: '10px' }}>
+                  ✓ Passwords match
+                </div>
+              )}
+
+              {/* Local Security Assurance Callout */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(15, 23, 42, 0.04)',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  fontSize: '11.5px',
+                  color: 'var(--muted)',
+                  marginBottom: '10px'
+                }}
+              >
+                <span>🔒</span>
+                <span>All credentials & project states are stored locally in your private SQLite database.</span>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Sign In Fields: Quick & Simple */}
+              <div className="form-group">
+                <label>Username / Email</label>
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="name@example.com"
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </div>
+            </>
+          )}
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Log In with Password'}
+            {loading
+              ? 'Processing...'
+              : isRegister
+              ? 'Create Account & Start Building ➔'
+              : 'Log In with Password'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '14px', fontSize: '13px', color: 'var(--muted)' }}>
             {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
-              style={{ color: 'var(--text)', fontWeight: 600, textDecoration: 'underline' }}
+              style={{ color: 'var(--text)', fontWeight: 600, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               onClick={() => {
                 setIsRegister(!isRegister);
                 setError(null);

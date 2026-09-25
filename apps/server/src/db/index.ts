@@ -129,6 +129,14 @@ try {
 } catch {}
 
 try {
+  db.exec(`ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT '';`);
+} catch {}
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'Cloud Architect';`);
+} catch {}
+
+try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_members (
       id TEXT PRIMARY KEY,
@@ -200,10 +208,15 @@ export function getUserByUsername(username: string): { id: string; username: str
   return stmt.get(username) as any;
 }
 
-export function createUser(id: string, username: string, passwordHash: string): User {
-  const stmt = db.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)');
-  stmt.run(id, username, passwordHash);
-  logUserActivity(id, 'user_registered', { username });
+export function createUser(id: string, username: string, passwordHash: string, fullName: string = '', role: string = 'Cloud Architect'): User {
+  try {
+    const stmt = db.prepare('INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(id, username, passwordHash, fullName, role);
+  } catch {
+    const stmt = db.prepare('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)');
+    stmt.run(id, username, passwordHash);
+  }
+  logUserActivity(id, 'user_registered', { username, fullName, role });
   return { id, username, created_at: new Date().toISOString() };
 }
 

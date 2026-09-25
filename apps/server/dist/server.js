@@ -77475,6 +77475,14 @@ try {
 } catch {
 }
 try {
+  db2.exec(`ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT '';`);
+} catch {
+}
+try {
+  db2.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'Cloud Architect';`);
+} catch {
+}
+try {
   db2.exec(`
     CREATE TABLE IF NOT EXISTS project_members (
       id TEXT PRIMARY KEY,
@@ -77496,10 +77504,15 @@ function getUserByUsername(username) {
   const stmt = db2.prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
   return stmt.get(username);
 }
-function createUser(id, username, passwordHash) {
-  const stmt = db2.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)");
-  stmt.run(id, username, passwordHash);
-  logUserActivity(id, "user_registered", { username });
+function createUser(id, username, passwordHash, fullName = "", role = "Cloud Architect") {
+  try {
+    const stmt = db2.prepare("INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)");
+    stmt.run(id, username, passwordHash, fullName, role);
+  } catch {
+    const stmt = db2.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)");
+    stmt.run(id, username, passwordHash);
+  }
+  logUserActivity(id, "user_registered", { username, fullName, role });
   return { id, username, created_at: (/* @__PURE__ */ new Date()).toISOString() };
 }
 function getUserCount() {
@@ -80015,7 +80028,7 @@ async function authAndSettingsRoutes(fastify2) {
     };
   });
   fastify2.post("/api/auth/register", async (request, reply) => {
-    const { username, password } = request.body || {};
+    const { username, password, fullName, role } = request.body || {};
     if (!username || !password || password.length < 4) {
       return reply.status(400).send({ error: "Username and password (min 4 chars) are required" });
     }
@@ -80023,7 +80036,7 @@ async function authAndSettingsRoutes(fastify2) {
     if (existing) {
       return reply.status(400).send({ error: "Username already exists" });
     }
-    const newUser = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(password));
+    const newUser = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(password), fullName || "", role || "Cloud Architect");
     const sessionToken = (0, import_crypto4.randomUUID)();
     recordUserSession(newUser.id, newUser.username, sessionToken);
     return {

@@ -52,7 +52,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
 
   // Register / Setup first user
   fastify.post('/api/auth/register', async (request, reply) => {
-    const { username, password } = (request.body as any) || {};
+    const { username, password, fullName, role } = (request.body as any) || {};
     if (!username || !password || password.length < 4) {
       return reply.status(400).send({ error: 'Username and password (min 4 chars) are required' });
     }
@@ -62,7 +62,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Username already exists' });
     }
 
-    const newUser = createUser(randomUUID(), username, hashPassword(password));
+    const newUser = createUser(randomUUID(), username, hashPassword(password), fullName || '', role || 'Cloud Architect');
     const sessionToken = randomUUID();
     recordUserSession(newUser.id, newUser.username, sessionToken);
 
