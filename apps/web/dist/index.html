@@ -9,6 +9,23 @@
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      // Clear any legacy Service Workers or caches from previous apps on this origin
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var reg of registrations) {
+            reg.unregister();
+          }
+        });
+      }
+      if (window.caches) {
+        caches.keys().then(function(names) {
+          for (var name of names) {
+            caches.delete(name);
+          }
+        });
+      }
+    </script>
     <script type="module" crossorigin src="/assets/index-DvBOvCMp.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-Drysxv9W.css">
   </head>

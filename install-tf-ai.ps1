@@ -339,7 +339,7 @@ echo Starting server on http://localhost:3080...
 where ollama >nul 2>nul && (
     curl -s http://127.0.0.1:11434/api/version >nul 2>nul || start /b ollama serve >nul 2>nul
 )
-start "" "http://localhost:3080"
+start /b cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:3080"
 if exist "%~dp0apps\server\dist\server.js" (
     node "%~dp0apps\server\dist\server.js"
 ) else (

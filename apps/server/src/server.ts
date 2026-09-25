@@ -18,6 +18,33 @@ server.get('/health', async (request, reply) => {
   return { status: 'ok' };
 });
 
+// Neutralize any legacy Service Worker from previous apps on port 3080
+const unregisterSwScript = `
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    self.registration.unregister().then(() => self.clients.matchAll({ type: 'window' })).then((clients) => {
+      for (const client of clients) client.navigate(client.url);
+    })
+  );
+});
+self.addEventListener('fetch', (event) => {
+  event.respondWith(fetch(event.request));
+});
+`;
+
+server.get('/sw.js', async (request, reply) => {
+  reply.header('Content-Type', 'application/javascript; charset=utf-8');
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return reply.send(unregisterSwScript);
+});
+
+server.get('/service-worker.js', async (request, reply) => {
+  reply.header('Content-Type', 'application/javascript; charset=utf-8');
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return reply.send(unregisterSwScript);
+});
+
 // Resolve compiled web frontend
 const possibleDistPaths = [
   path.resolve(process.cwd(), 'apps/web/dist'),
@@ -36,11 +63,17 @@ if (webDistPath) {
   });
 
   server.setNotFoundHandler((request, reply) => {
-    if (request.raw.url && request.raw.url.startsWith('/api')) {
-      reply.status(404).send({ error: 'API route not found' });
-    } else {
-      reply.sendFile('index.html');
+    const url = request.raw.url || '';
+    if (url.startsWith('/api')) {
+      return reply.status(404).send({ error: 'API route not found' });
     }
+    // Static asset not found - return 404 instead of HTML to prevent syntax errors
+    if (/\.(js|css|map|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i.test(url.split('?')[0])) {
+      return reply.status(404).send({ error: 'Asset not found' });
+    }
+    // SPA fallback
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return reply.sendFile('index.html');
   });
 } else {
   server.get('/', async (request, reply) => {
