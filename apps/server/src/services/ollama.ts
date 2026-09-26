@@ -39,7 +39,13 @@ export async function isOllamaRunning(customHost?: string): Promise<boolean> {
   return false;
 }
 
-export async function isOllamaInstalled(): Promise<{ installed: boolean; version?: string; path?: string }> {
+export async function isOllamaInstalled(): Promise<{
+  installed: boolean;
+  version?: string;
+  path?: string;
+  muslIncompatible?: boolean;
+  error?: string;
+}> {
   try {
     const isWin = process.platform === 'win32';
     if (!isWin) {
@@ -55,7 +61,16 @@ export async function isOllamaInstalled(): Promise<{ installed: boolean; version
           try {
             const { stdout: verOut } = await execAsync(`"${p}" --version`);
             return { installed: true, version: verOut.trim(), path: p };
-          } catch {
+          } catch (e: any) {
+            const errStr = `${e.stderr || ''} ${e.stdout || ''} ${e.message || ''}`;
+            if (errStr.includes('fcntl64') || errStr.includes('Error relocating') || errStr.includes('symbol not found')) {
+              return {
+                installed: false,
+                path: p,
+                muslIncompatible: true,
+                error: 'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64 symbol not found).'
+              };
+            }
             return { installed: true, path: p };
           }
         }
@@ -69,7 +84,16 @@ export async function isOllamaInstalled(): Promise<{ installed: boolean; version
       try {
         const { stdout: verOut } = await execAsync(`"${ollamaPath}" --version`);
         return { installed: true, version: verOut.trim(), path: ollamaPath };
-      } catch {
+      } catch (e: any) {
+        const errStr = `${e.stderr || ''} ${e.stdout || ''} ${e.message || ''}`;
+        if (errStr.includes('fcntl64') || errStr.includes('Error relocating') || errStr.includes('symbol not found')) {
+          return {
+            installed: false,
+            path: ollamaPath,
+            muslIncompatible: true,
+            error: 'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64 symbol not found).'
+          };
+        }
         return { installed: true, path: ollamaPath };
       }
     }
@@ -79,7 +103,12 @@ export async function isOllamaInstalled(): Promise<{ installed: boolean; version
   }
 }
 
-export function startOllamaDaemon(): Promise<{ success: boolean; running: boolean; error?: string }> {
+export function startOllamaDaemon(): Promise<{
+  success: boolean;
+  running: boolean;
+  error?: string;
+  isMuslError?: boolean;
+}> {
   return new Promise(async (resolve) => {
     // If already running:
     if (await isOllamaRunning()) {
@@ -114,9 +143,36 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
         });
         child.unref();
       } else {
+        // Check if musl libc incompatibility exists before running a crashing binary
+        const installedInfo = await isOllamaInstalled();
+        if (installedInfo.muslIncompatible) {
+          // Attempt to check if Docker is running and can start official container
+          try {
+            const { stdout: dockerOut } = await execAsync('docker ps 2>/dev/null || sudo -n docker ps 2>/dev/null');
+            if (dockerOut) {
+              await execAsync(
+                'docker start terramind-ollama 2>/dev/null || docker start ollama 2>/dev/null || docker run -d -p 11434:11434 -v ollama:/root/.ollama --name terramind-ollama ollama/ollama 2>/dev/null'
+              );
+              for (let d = 0; d < 8; d++) {
+                await new Promise((r) => setTimeout(r, 600));
+                if (await isOllamaRunning()) {
+                  return resolve({ success: true, running: true });
+                }
+              }
+            }
+          } catch {}
+
+          return resolve({
+            success: false,
+            running: false,
+            isMuslError: true,
+            error:
+              'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64: symbol not found). Run Ollama via Docker: "docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama" or configure Host URL to http://host.docker.internal:11434.'
+          });
+        }
+
         // 1. In Linux, first attempt systemctl if available
         try {
-          // If systemd override directory can be created or updated for 0.0.0.0 binding
           await execAsync(
             '(sudo -n mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null && ' +
             'printf "[Service]\\nEnvironment=\\"OLLAMA_HOST=0.0.0.0:11434\\"\\nEnvironment=\\"OLLAMA_ORIGINS=*\\"\\n" | sudo -n tee /etc/systemd/system/ollama.service.d/terramind-bind.conf >/dev/null && ' +
@@ -131,7 +187,6 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
         }
 
         // 2. Locate the actual executable
-        const installedInfo = await isOllamaInstalled();
         const binPath = installedInfo.path || 'ollama';
 
         const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ''}/.local/bin:${process.env.PATH || ''}`;
@@ -169,6 +224,32 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
             try {
               logTail = fs.readFileSync('/tmp/ollama.log', 'utf8').trim().split('\n').slice(-4).join(' ');
             } catch {}
+          }
+
+          if (logTail.includes('fcntl64') || logTail.includes('Error relocating') || logTail.includes('symbol not found')) {
+            // Attempt docker fallback
+            try {
+              const { stdout: dockerOut } = await execAsync('docker ps 2>/dev/null || sudo -n docker ps 2>/dev/null');
+              if (dockerOut) {
+                await execAsync(
+                  'docker start terramind-ollama 2>/dev/null || docker start ollama 2>/dev/null || docker run -d -p 11434:11434 -v ollama:/root/.ollama --name terramind-ollama ollama/ollama 2>/dev/null'
+                );
+                for (let d = 0; d < 8; d++) {
+                  await new Promise((r) => setTimeout(r, 600));
+                  if (await isOllamaRunning()) {
+                    return resolve({ success: true, running: true });
+                  }
+                }
+              }
+            } catch {}
+
+            return resolve({
+              success: false,
+              running: false,
+              isMuslError: true,
+              error:
+                'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64: symbol not found). Run Ollama via Docker: "docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama" or configure Host URL to http://host.docker.internal:11434.'
+            });
           }
 
           return resolve({

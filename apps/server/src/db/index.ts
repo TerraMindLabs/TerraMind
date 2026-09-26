@@ -50,8 +50,9 @@ const activeDbPath = process.env.DB_PATH
 
 const db = new DatabaseSync(activeDbPath);
 
-// Write-Ahead Logging for high performance
+// Write-Ahead Logging for high performance & busy timeout for concurrent threads
 db.exec('PRAGMA journal_mode = WAL;');
+db.exec('PRAGMA busy_timeout = 5000;');
 
 // Database Schema
 db.exec(`

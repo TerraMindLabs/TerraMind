@@ -661,10 +661,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       let ollamaActive = await isOllamaRunning();
 
       const autoStartPref = getSetting('ollama_auto_start') !== 'false';
+      let startDaemonResult: any = null;
       if (!ollamaActive && autoStartPref) {
         sendStatus('⚙️ Ollama is offline. Auto-launching local Ollama server on 0.0.0.0:11434...', 'starting');
         try {
-          await startOllamaDaemon();
+          startDaemonResult = await startOllamaDaemon();
           ollamaActive = await isOllamaRunning();
           if (ollamaActive) {
             sendStatus('✓ Local Ollama daemon started and listening on 0.0.0.0:11434!', 'ready');
@@ -673,17 +674,32 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
 
       if (!ollamaActive) {
-        streamToken(
-          `> ⚠️ **Ollama server is offline or unreachable at \`${baseUrl}\`.**\n\n` +
-            `TerraMind attempted to connect to your Ollama daemon, but the service is not currently responding.\n\n` +
-            `### 🌐 Port Forwarding & Remote Setup:\n` +
-            `If you are running in **Docker**, **WSL2**, **remote Linux**, or a **cloud VM**, ensure Ollama is listening on all interfaces with CORS enabled by running:\n\n` +
-            `\`\`\`bash\nexport OLLAMA_HOST="0.0.0.0:11434"\nexport OLLAMA_ORIGINS="*"\nollama serve\n\`\`\`\n\n` +
-            `### ⚡ Quick Fix Options:\n` +
-            `1. Open **Settings → Local Models (Ollama)** and click **"Start Service"** or **"Install Ollama"**.\n` +
-            `2. If your Ollama server is running on a different port or IP, configure the **Ollama Host URL** in Settings.\n` +
-            `3. Or select **Cloud AI** (Gemini, Claude, OpenAI) in the model menu above to continue immediately.`
-        );
+        if (startDaemonResult?.isMuslError) {
+          streamToken(
+            `> ⚠️ **Alpine Linux / musl libc Incompatibility Detected**\n\n` +
+              `The native Ollama binary requires GNU libc (\`glibc\`), which is not provided by Alpine Linux's musl libc (\`fcntl64: symbol not found\`).\n\n` +
+              `### 🐳 Recommended Solutions:\n` +
+              `1. **Run Ollama via Docker (Runs anywhere):**\n` +
+              `   \`\`\`bash\n   docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama\n   \`\`\`\n\n` +
+              `2. **Connect to Host Machine's Ollama:**\n` +
+              `   If TerraMind is running in Docker or WSL, open **Settings → Local Models** and set **Ollama Host URL** to:\n` +
+              `   \`http://host.docker.internal:11434\`\n\n` +
+              `3. **Switch to Cloud AI:**\n` +
+              `   Select **Google Gemini**, **OpenAI**, or **Claude** in the model dropdown above for zero-dependency cloud reasoning.`
+          );
+        } else {
+          streamToken(
+            `> ⚠️ **Ollama server is offline or unreachable at \`${baseUrl}\`.**\n\n` +
+              `TerraMind attempted to connect to your Ollama daemon, but the service is not currently responding.\n\n` +
+              `### 🌐 Port Forwarding & Remote Setup:\n` +
+              `If you are running in **Docker**, **WSL2**, **remote Linux**, or a **cloud VM**, ensure Ollama is listening on all interfaces with CORS enabled by running:\n\n` +
+              `\`\`\`bash\nexport OLLAMA_HOST="0.0.0.0:11434"\nexport OLLAMA_ORIGINS="*"\nollama serve\n\`\`\`\n\n` +
+              `### ⚡ Quick Fix Options:\n` +
+              `1. Open **Settings → Local Models (Ollama)** and click **"Start Service"** or **"Install Ollama"**.\n` +
+              `2. If your Ollama server is running on a different port or IP, configure the **Ollama Host URL** in Settings.\n` +
+              `3. Or select **Cloud AI** (Gemini, Claude, OpenAI) in the model menu above to continue immediately.`
+          );
+        }
         reply.raw.write(`data: [DONE]\n\n`);
         reply.raw.end();
         return;

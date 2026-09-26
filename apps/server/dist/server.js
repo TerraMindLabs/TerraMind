@@ -77804,6 +77804,7 @@ var init_db = __esm({
     activeDbPath = process.env.DB_PATH ? process.env.DB_PATH : import_fs2.default.existsSync(targetDbPath) ? targetDbPath : import_fs2.default.existsSync(legacyDbPath) ? legacyDbPath : targetDbPath;
     db2 = new import_node_sqlite.DatabaseSync(activeDbPath);
     db2.exec("PRAGMA journal_mode = WAL;");
+    db2.exec("PRAGMA busy_timeout = 5000;");
     db2.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -77983,7 +77984,16 @@ async function isOllamaInstalled() {
           try {
             const { stdout: verOut } = await execAsync(`"${p}" --version`);
             return { installed: true, version: verOut.trim(), path: p };
-          } catch {
+          } catch (e) {
+            const errStr = `${e.stderr || ""} ${e.stdout || ""} ${e.message || ""}`;
+            if (errStr.includes("fcntl64") || errStr.includes("Error relocating") || errStr.includes("symbol not found")) {
+              return {
+                installed: false,
+                path: p,
+                muslIncompatible: true,
+                error: "Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64 symbol not found)."
+              };
+            }
             return { installed: true, path: p };
           }
         }
@@ -77996,7 +78006,16 @@ async function isOllamaInstalled() {
       try {
         const { stdout: verOut } = await execAsync(`"${ollamaPath}" --version`);
         return { installed: true, version: verOut.trim(), path: ollamaPath };
-      } catch {
+      } catch (e) {
+        const errStr = `${e.stderr || ""} ${e.stdout || ""} ${e.message || ""}`;
+        if (errStr.includes("fcntl64") || errStr.includes("Error relocating") || errStr.includes("symbol not found")) {
+          return {
+            installed: false,
+            path: ollamaPath,
+            muslIncompatible: true,
+            error: "Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64 symbol not found)."
+          };
+        }
         return { installed: true, path: ollamaPath };
       }
     }
@@ -78034,6 +78053,30 @@ function startOllamaDaemon() {
         });
         child.unref();
       } else {
+        const installedInfo = await isOllamaInstalled();
+        if (installedInfo.muslIncompatible) {
+          try {
+            const { stdout: dockerOut } = await execAsync("docker ps 2>/dev/null || sudo -n docker ps 2>/dev/null");
+            if (dockerOut) {
+              await execAsync(
+                "docker start terramind-ollama 2>/dev/null || docker start ollama 2>/dev/null || docker run -d -p 11434:11434 -v ollama:/root/.ollama --name terramind-ollama ollama/ollama 2>/dev/null"
+              );
+              for (let d = 0; d < 8; d++) {
+                await new Promise((r) => setTimeout(r, 600));
+                if (await isOllamaRunning()) {
+                  return resolve({ success: true, running: true });
+                }
+              }
+            }
+          } catch {
+          }
+          return resolve({
+            success: false,
+            running: false,
+            isMuslError: true,
+            error: 'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64: symbol not found). Run Ollama via Docker: "docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama" or configure Host URL to http://host.docker.internal:11434.'
+          });
+        }
         try {
           await execAsync(
             '(sudo -n mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null && printf "[Service]\\nEnvironment=\\"OLLAMA_HOST=0.0.0.0:11434\\"\\nEnvironment=\\"OLLAMA_ORIGINS=*\\"\\n" | sudo -n tee /etc/systemd/system/ollama.service.d/terramind-bind.conf >/dev/null && sudo -n systemctl daemon-reload 2>/dev/null) || true; systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null'
@@ -78043,7 +78086,6 @@ function startOllamaDaemon() {
         if (await isOllamaRunning()) {
           return resolve({ success: true, running: true });
         }
-        const installedInfo = await isOllamaInstalled();
         const binPath = installedInfo.path || "ollama";
         const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`;
         const child = (0, import_child_process2.spawn)(
@@ -78078,6 +78120,29 @@ function startOllamaDaemon() {
               logTail = import_fs4.default.readFileSync("/tmp/ollama.log", "utf8").trim().split("\n").slice(-4).join(" ");
             } catch {
             }
+          }
+          if (logTail.includes("fcntl64") || logTail.includes("Error relocating") || logTail.includes("symbol not found")) {
+            try {
+              const { stdout: dockerOut } = await execAsync("docker ps 2>/dev/null || sudo -n docker ps 2>/dev/null");
+              if (dockerOut) {
+                await execAsync(
+                  "docker start terramind-ollama 2>/dev/null || docker start ollama 2>/dev/null || docker run -d -p 11434:11434 -v ollama:/root/.ollama --name terramind-ollama ollama/ollama 2>/dev/null"
+                );
+                for (let d = 0; d < 8; d++) {
+                  await new Promise((r) => setTimeout(r, 600));
+                  if (await isOllamaRunning()) {
+                    return resolve({ success: true, running: true });
+                  }
+                }
+              }
+            } catch {
+            }
+            return resolve({
+              success: false,
+              running: false,
+              isMuslError: true,
+              error: 'Alpine Linux (musl libc) incompatibility: Ollama native binary requires glibc (fcntl64: symbol not found). Run Ollama via Docker: "docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama" or configure Host URL to http://host.docker.internal:11434.'
+            });
           }
           return resolve({
             success: false,
@@ -80388,10 +80453,11 @@ async function chatRoutes(fastify2) {
         sendStatus(`Connecting to Ollama daemon (${baseUrl})...`, "connecting");
         let ollamaActive = await isOllamaRunning();
         const autoStartPref = getSetting("ollama_auto_start") !== "false";
+        let startDaemonResult = null;
         if (!ollamaActive && autoStartPref) {
           sendStatus("\u2699\uFE0F Ollama is offline. Auto-launching local Ollama server on 0.0.0.0:11434...", "starting");
           try {
-            await startOllamaDaemon();
+            startDaemonResult = await startOllamaDaemon();
             ollamaActive = await isOllamaRunning();
             if (ollamaActive) {
               sendStatus("\u2713 Local Ollama daemon started and listening on 0.0.0.0:11434!", "ready");
@@ -80400,8 +80466,28 @@ async function chatRoutes(fastify2) {
           }
         }
         if (!ollamaActive) {
-          streamToken(
-            `> \u26A0\uFE0F **Ollama server is offline or unreachable at \`${baseUrl}\`.**
+          if (startDaemonResult?.isMuslError) {
+            streamToken(
+              `> \u26A0\uFE0F **Alpine Linux / musl libc Incompatibility Detected**
+
+The native Ollama binary requires GNU libc (\`glibc\`), which is not provided by Alpine Linux's musl libc (\`fcntl64: symbol not found\`).
+
+### \u{1F433} Recommended Solutions:
+1. **Run Ollama via Docker (Runs anywhere):**
+   \`\`\`bash
+   docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+   \`\`\`
+
+2. **Connect to Host Machine's Ollama:**
+   If TerraMind is running in Docker or WSL, open **Settings \u2192 Local Models** and set **Ollama Host URL** to:
+   \`http://host.docker.internal:11434\`
+
+3. **Switch to Cloud AI:**
+   Select **Google Gemini**, **OpenAI**, or **Claude** in the model dropdown above for zero-dependency cloud reasoning.`
+            );
+          } else {
+            streamToken(
+              `> \u26A0\uFE0F **Ollama server is offline or unreachable at \`${baseUrl}\`.**
 
 TerraMind attempted to connect to your Ollama daemon, but the service is not currently responding.
 
@@ -80418,7 +80504,8 @@ ollama serve
 1. Open **Settings \u2192 Local Models (Ollama)** and click **"Start Service"** or **"Install Ollama"**.
 2. If your Ollama server is running on a different port or IP, configure the **Ollama Host URL** in Settings.
 3. Or select **Cloud AI** (Gemini, Claude, OpenAI) in the model menu above to continue immediately.`
-          );
+            );
+          }
           reply.raw.write(`data: [DONE]
 
 `);
@@ -80973,6 +81060,8 @@ async function workspaceRoutes(fastify2) {
         installed: info.installed,
         version: info.version,
         path: info.path,
+        muslIncompatible: Boolean(info.muslIncompatible),
+        muslError: info.error || void 0,
         platform: process.platform,
         host,
         autoStart,

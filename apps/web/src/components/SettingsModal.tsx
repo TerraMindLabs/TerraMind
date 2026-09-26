@@ -1305,6 +1305,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
+            {/* Action error banner */}
+            {actionError && (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: 'var(--text)',
+                  fontSize: '12.5px',
+                  marginBottom: '14px'
+                }}
+              >
+                <div style={{ color: '#ef4444', fontWeight: 600, marginBottom: '6px' }}>
+                  ⚠️ {actionError}
+                </div>
+                {(actionError.includes('fcntl64') ||
+                  actionError.includes('symbol not found') ||
+                  actionError.includes('Error relocating') ||
+                  actionError.includes('musl') ||
+                  actionError.includes('Alpine')) && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '12px' }}>
+                    <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>
+                      💡 Alpine Linux / musl libc Incompatibility
+                    </div>
+                    <p style={{ margin: '0 0 8px 0', color: 'var(--muted)' }}>
+                      The native Linux Ollama executable was compiled for GNU <code>glibc</code> and cannot execute directly on Alpine Linux (missing <code>fcntl64</code>).
+                    </p>
+                    <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px', marginBottom: '8px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '3px' }}>
+                        Option 1: Run Ollama in Official Docker Container (Recommended)
+                      </div>
+                      <code style={{ display: 'block', padding: '6px 8px', borderRadius: '4px', background: '#090d16', color: '#38bdf8', fontSize: '11px', wordBreak: 'break-all' }}>
+                        docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+                      </code>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
+                      <span style={{ color: 'var(--muted)', fontSize: '11.5px' }}>
+                        Option 2: Connect to Host Machine's Ollama:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setOllamaHost('http://host.docker.internal:11434')}
+                        style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--hover)', color: 'var(--text)', fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Use http://host.docker.internal:11434
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Install logs terminal output */}
             {showInstallTerminal && (
               <div

@@ -85,6 +85,8 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
         installed: info.installed,
         version: info.version,
         path: info.path,
+        muslIncompatible: Boolean(info.muslIncompatible),
+        muslError: info.error || undefined,
         platform: process.platform,
         host,
         autoStart,

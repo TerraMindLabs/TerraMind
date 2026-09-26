@@ -1043,15 +1043,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               style={{
                 marginBottom: '20px',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                background: ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                border: `1px solid ${ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                color: ollamaStatusMsg.startsWith('✓') ? '#10b981' : '#ef4444',
+                padding: '14px 18px',
+                borderRadius: '10px',
+                background: ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+                border: `1px solid ${ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.25)'}`,
+                color: ollamaStatusMsg.startsWith('✓') ? '#10b981' : 'var(--text)',
                 fontSize: '13px'
               }}
             >
-              {ollamaStatusMsg}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: ollamaStatusMsg.startsWith('✓') ? '#10b981' : '#ef4444' }}>
+                {ollamaStatusMsg}
+              </div>
+
+              {(ollamaStatusMsg.includes('fcntl64') ||
+                ollamaStatusMsg.includes('symbol not found') ||
+                ollamaStatusMsg.includes('Error relocating') ||
+                ollamaStatusMsg.includes('musl') ||
+                ollamaStatusMsg.includes('Alpine')) && (
+                <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13px', color: '#ef4444' }}>
+                    💡 Alpine Linux / musl libc Incompatibility Detected
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)', lineHeight: 1.45 }}>
+                    The native Linux Ollama executable was compiled for GNU <code>glibc</code> and cannot execute directly on Alpine Linux musl libc (missing <code>fcntl64</code>). Here is how to run Ollama seamlessly:
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', marginTop: '4px' }}>
+                    <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' }}>
+                      <div style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--text)', marginBottom: '4px' }}>
+                        🐳 Option 1: Run Ollama via Official Docker Container (Recommended)
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '8px' }}>
+                        The official container packages glibc internally and runs on any Linux distribution:
+                      </div>
+                      <code style={{ display: 'block', padding: '8px 12px', borderRadius: '6px', background: '#090d16', color: '#38bdf8', fontSize: '12px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+                      </code>
+                    </div>
+
+                    <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' }}>
+                      <div style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--text)', marginBottom: '4px' }}>
+                        🖥️ Option 2: Connect to Host Machine's Ollama
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '8px' }}>
+                        If you have Ollama running on your host machine (Windows or macOS):
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOllamaHost('http://host.docker.internal:11434');
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--card-bg, var(--side))',
+                          color: 'var(--text)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Set Host URL to: http://host.docker.internal:11434
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
