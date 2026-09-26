@@ -3,21 +3,45 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+import fs from 'fs';
+
 export async function isOllamaRunning(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch('http://127.0.0.1:11434/api/version', { signal: controller.signal });
-    clearTimeout(timeout);
-    return res.ok;
-  } catch {
-    return false;
+  const hosts = ['http://127.0.0.1:11434', 'http://localhost:11434'];
+  for (const host of hosts) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`${host}/api/version`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) return true;
+    } catch {}
   }
+  return false;
 }
 
 export async function isOllamaInstalled(): Promise<{ installed: boolean; version?: string; path?: string }> {
   try {
     const isWin = process.platform === 'win32';
+    if (!isWin) {
+      // Check standard Linux binary paths directly first
+      const candidatePaths = [
+        '/usr/local/bin/ollama',
+        '/usr/bin/ollama',
+        `${process.env.HOME || ''}/.local/bin/ollama`,
+        '/bin/ollama'
+      ];
+      for (const p of candidatePaths) {
+        if (p && fs.existsSync(p)) {
+          try {
+            const { stdout: verOut } = await execAsync(`"${p}" --version`);
+            return { installed: true, version: verOut.trim(), path: p };
+          } catch {
+            return { installed: true, path: p };
+          }
+        }
+      }
+    }
+
     const cmd = isWin ? 'where ollama' : 'command -v ollama || which ollama';
     const { stdout } = await execAsync(cmd);
     const ollamaPath = stdout.trim().split('\n')[0].trim();
@@ -60,15 +84,34 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
         });
         child.unref();
       } else {
+        // 1. In Linux, first attempt systemctl if available
+        try {
+          await execAsync('systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null');
+        } catch {}
+
+        // Quick check if systemd started it
+        if (await isOllamaRunning()) {
+          return resolve({ success: true, running: true });
+        }
+
+        // 2. Locate the actual executable
+        const installedInfo = await isOllamaInstalled();
+        const binPath = installedInfo.path || 'ollama';
+
+        const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ''}/.local/bin:${process.env.PATH || ''}`;
         const child = spawn(
           'sh',
-          ['-c', 'nohup ollama serve > /tmp/ollama.log 2>&1 &'],
-          { detached: true, stdio: 'ignore' }
+          ['-c', `nohup "${binPath}" serve > /tmp/ollama.log 2>&1 &`],
+          {
+            detached: true,
+            stdio: 'ignore',
+            env: { ...process.env, PATH: envPath }
+          }
         );
         child.unref();
       }
 
-      // Poll up to 6 seconds for Ollama to become responsive
+      // Poll up to 7 seconds for Ollama to become responsive
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
@@ -77,14 +120,23 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
           clearInterval(interval);
           return resolve({ success: true, running: true });
         }
-        if (attempts >= 12) {
+        if (attempts >= 14) {
           clearInterval(interval);
+
+          let logTail = '';
+          if (!isWin && fs.existsSync('/tmp/ollama.log')) {
+            try {
+              logTail = fs.readFileSync('/tmp/ollama.log', 'utf8').trim().split('\n').slice(-4).join(' ');
+            } catch {}
+          }
+
           return resolve({
             success: false,
             running: false,
             error:
+              logTail ||
               stderrOutput.trim() ||
-              'Ollama process launched but port 11434 did not respond within 6 seconds. Try running "Download & Install Ollama".'
+              'Ollama process launched but port 11434 did not respond within 7 seconds. Try running "Download & Install Ollama".'
           });
         }
       }, 500);

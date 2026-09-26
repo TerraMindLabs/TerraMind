@@ -57,6 +57,25 @@ export function loadEnvironment(): void {
   if (!loaded) {
     console.log('[Env] No .env file found in search paths.');
   }
+
+  // Ensure system executable directories (/usr/local/bin, /usr/bin, ~/.local/bin) are in PATH on Unix
+  if (process.platform !== 'win32') {
+    const extraPaths = [
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+      `${process.env.HOME || ''}/.local/bin`
+    ];
+    const currentPaths = (process.env.PATH || '').split(':');
+    for (const p of extraPaths) {
+      if (p && !currentPaths.includes(p)) {
+        currentPaths.unshift(p);
+      }
+    }
+    process.env.PATH = currentPaths.join(':');
+  }
 }
 
 // Automatically load on import

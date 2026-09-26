@@ -175,18 +175,20 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     let ollamaOnline = false;
     let localModels: string[] = [];
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        ollamaOnline = true;
-        localModels = (data.models || []).map((m: any) => m.name);
-      }
-    } catch {
-      ollamaOnline = false;
+    const hosts = ['http://127.0.0.1:11434', 'http://localhost:11434'];
+    for (const host of hosts) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1200);
+        const res = await fetch(`${host}/api/tags`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          ollamaOnline = true;
+          localModels = (data.models || []).map((m: any) => m.name);
+          break;
+        }
+      } catch {}
     }
 
     const settings = getAllSettings();

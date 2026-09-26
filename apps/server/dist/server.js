@@ -4423,7 +4423,7 @@ var require_atomic_sleep = __commonJS({
 var require_sonic_boom = __commonJS({
   "../../node_modules/sonic-boom/index.js"(exports2, module2) {
     "use strict";
-    var fs5 = require("fs");
+    var fs6 = require("fs");
     var EventEmitter = require("events");
     var inherits = require("util").inherits;
     var path5 = require("path");
@@ -4480,20 +4480,20 @@ var require_sonic_boom = __commonJS({
       const mode = sonic.mode;
       if (sonic.sync) {
         try {
-          if (sonic.mkdir) fs5.mkdirSync(path5.dirname(file), { recursive: true });
-          const fd = fs5.openSync(file, flags, mode);
+          if (sonic.mkdir) fs6.mkdirSync(path5.dirname(file), { recursive: true });
+          const fd = fs6.openSync(file, flags, mode);
           fileOpened(null, fd);
         } catch (err) {
           fileOpened(err);
           throw err;
         }
       } else if (sonic.mkdir) {
-        fs5.mkdir(path5.dirname(file), { recursive: true }, (err) => {
+        fs6.mkdir(path5.dirname(file), { recursive: true }, (err) => {
           if (err) return fileOpened(err);
-          fs5.open(file, flags, mode, fileOpened);
+          fs6.open(file, flags, mode, fileOpened);
         });
       } else {
-        fs5.open(file, flags, mode, fileOpened);
+        fs6.open(file, flags, mode, fileOpened);
       }
     }
     function SonicBoom(opts) {
@@ -4534,8 +4534,8 @@ var require_sonic_boom = __commonJS({
         this.flush = flushBuffer;
         this.flushSync = flushBufferSync;
         this._actualWrite = actualWriteBuffer;
-        fsWriteSync = () => fs5.writeSync(this.fd, this._writingBuf);
-        fsWrite = () => fs5.write(this.fd, this._writingBuf, this.release);
+        fsWriteSync = () => fs6.writeSync(this.fd, this._writingBuf);
+        fsWrite = () => fs6.write(this.fd, this._writingBuf, this.release);
       } else if (contentMode === void 0 || contentMode === kContentModeUtf8) {
         this._writingBuf = "";
         this.write = write;
@@ -4544,15 +4544,15 @@ var require_sonic_boom = __commonJS({
         this._actualWrite = actualWrite;
         fsWriteSync = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs5.writeSync(this.fd, this._writingBuf);
+            return fs6.writeSync(this.fd, this._writingBuf);
           }
-          return fs5.writeSync(this.fd, this._writingBuf, "utf8");
+          return fs6.writeSync(this.fd, this._writingBuf, "utf8");
         };
         fsWrite = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs5.write(this.fd, this._writingBuf, this.release);
+            return fs6.write(this.fd, this._writingBuf, this.release);
           }
-          return fs5.write(this.fd, this._writingBuf, "utf8", this.release);
+          return fs6.write(this.fd, this._writingBuf, "utf8", this.release);
         };
       } else {
         throw new Error(`SonicBoom supports "${kContentModeUtf8}" and "${kContentModeBuffer}", but passed ${contentMode}`);
@@ -4609,7 +4609,7 @@ var require_sonic_boom = __commonJS({
           }
         }
         if (this._fsync) {
-          fs5.fsyncSync(this.fd);
+          fs6.fsyncSync(this.fd);
         }
         const len = this._len;
         if (this._reopening) {
@@ -4723,7 +4723,7 @@ var require_sonic_boom = __commonJS({
       const onDrain = () => {
         if (!this._fsync) {
           try {
-            fs5.fsync(this.fd, (err) => {
+            fs6.fsync(this.fd, (err) => {
               this._flushPending = false;
               cb(err);
             });
@@ -4825,7 +4825,7 @@ var require_sonic_boom = __commonJS({
       const fd = this.fd;
       this.once("ready", () => {
         if (fd !== this.fd) {
-          fs5.close(fd, (err) => {
+          fs6.close(fd, (err) => {
             if (err) {
               return this.emit("error", err);
             }
@@ -4874,7 +4874,7 @@ var require_sonic_boom = __commonJS({
           buf = this._bufs[0];
         }
         try {
-          const n = Buffer.isBuffer(buf) ? fs5.writeSync(this.fd, buf) : fs5.writeSync(this.fd, buf, "utf8");
+          const n = Buffer.isBuffer(buf) ? fs6.writeSync(this.fd, buf) : fs6.writeSync(this.fd, buf, "utf8");
           const releasedBufObj = releaseWritingBuf(buf, this._len, n);
           buf = releasedBufObj.writingBuf;
           this._len = releasedBufObj.len;
@@ -4890,7 +4890,7 @@ var require_sonic_boom = __commonJS({
         }
       }
       try {
-        fs5.fsyncSync(this.fd);
+        fs6.fsyncSync(this.fd);
       } catch {
       }
     }
@@ -4911,7 +4911,7 @@ var require_sonic_boom = __commonJS({
           buf = mergeBuf(this._bufs[0], this._lens[0]);
         }
         try {
-          const n = fs5.writeSync(this.fd, buf);
+          const n = fs6.writeSync(this.fd, buf);
           buf = buf.subarray(n);
           this._len = Math.max(this._len - n, 0);
           if (buf.length <= 0) {
@@ -4939,13 +4939,13 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : this._bufs.shift() || "";
       if (this.sync) {
         try {
-          const written = Buffer.isBuffer(this._writingBuf) ? fs5.writeSync(this.fd, this._writingBuf) : fs5.writeSync(this.fd, this._writingBuf, "utf8");
+          const written = Buffer.isBuffer(this._writingBuf) ? fs6.writeSync(this.fd, this._writingBuf) : fs6.writeSync(this.fd, this._writingBuf, "utf8");
           release(null, written);
         } catch (err) {
           release(err);
         }
       } else {
-        fs5.write(this.fd, this._writingBuf, release);
+        fs6.write(this.fd, this._writingBuf, release);
       }
     }
     function actualWriteBuffer() {
@@ -4954,7 +4954,7 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : mergeBuf(this._bufs.shift(), this._lens.shift());
       if (this.sync) {
         try {
-          const written = fs5.writeSync(this.fd, this._writingBuf);
+          const written = fs6.writeSync(this.fd, this._writingBuf);
           release(null, written);
         } catch (err) {
           release(err);
@@ -4963,7 +4963,7 @@ var require_sonic_boom = __commonJS({
         if (kCopyBuffer) {
           this._writingBuf = Buffer.from(this._writingBuf);
         }
-        fs5.write(this.fd, this._writingBuf, release);
+        fs6.write(this.fd, this._writingBuf, release);
       }
     }
     function actualClose(sonic) {
@@ -4979,12 +4979,12 @@ var require_sonic_boom = __commonJS({
       sonic._lens = [];
       assert(typeof sonic.fd === "number", `sonic.fd must be a number, got ${typeof sonic.fd}`);
       try {
-        fs5.fsync(sonic.fd, closeWrapped);
+        fs6.fsync(sonic.fd, closeWrapped);
       } catch {
       }
       function closeWrapped() {
         if (sonic.fd !== 1 && sonic.fd !== 2) {
-          fs5.close(sonic.fd, done);
+          fs6.close(sonic.fd, done);
         } else {
           done();
         }
@@ -22227,12 +22227,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs5, exportName) {
+    function addFormats(ajv, list, fs6, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs5[f]);
+        ajv.addFormat(f, fs6[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -26806,12 +26806,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs5, exportName) {
+    function addFormats(ajv, list, fs6, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = codegen_1._`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs5[f]);
+        ajv.addFormat(f, fs6[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -40045,8 +40045,8 @@ var require_commonjs4 = __commonJS({
        *
        * @internal
        */
-      constructor(cwd = process.cwd(), pathImpl, sep, { nocase, childrenCacheSize = 16 * 1024, fs: fs5 = defaultFS } = {}) {
-        this.#fs = fsFromOption(fs5);
+      constructor(cwd = process.cwd(), pathImpl, sep, { nocase, childrenCacheSize = 16 * 1024, fs: fs6 = defaultFS } = {}) {
+        this.#fs = fsFromOption(fs6);
         if (cwd instanceof URL || cwd.startsWith("file://")) {
           cwd = (0, node_url_1.fileURLToPath)(cwd);
         }
@@ -40605,8 +40605,8 @@ var require_commonjs4 = __commonJS({
       /**
        * @internal
        */
-      newRoot(fs5) {
-        return new PathWin32(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs5 });
+      newRoot(fs6) {
+        return new PathWin32(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs6 });
       }
       /**
        * Return true if the provided path string is an absolute path
@@ -40635,8 +40635,8 @@ var require_commonjs4 = __commonJS({
       /**
        * @internal
        */
-      newRoot(fs5) {
-        return new PathPosix(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs5 });
+      newRoot(fs6) {
+        return new PathPosix(this.rootPath, IFDIR, void 0, this.roots, this.nocase, this.childrenCache(), { fs: fs6 });
       }
       /**
        * Return true if the provided path string is an absolute path
@@ -43021,7 +43021,7 @@ var require_setHeaders = __commonJS({
 var require_SendStream = __commonJS({
   "node_modules/@fastify/send/lib/SendStream.js"(exports2, module2) {
     "use strict";
-    var fs5 = require("node:fs");
+    var fs6 = require("node:fs");
     var path5 = require("node:path");
     var Stream = require("node:stream");
     var util = require("node:util");
@@ -43388,7 +43388,7 @@ var require_SendStream = __commonJS({
       let i = 0;
       const self = this;
       debug('stat "%s"', path6);
-      fs5.stat(path6, function onstat(err, stat) {
+      fs6.stat(path6, function onstat(err, stat) {
         if (err && err.code === "ENOENT" && !extname(path6) && path6[path6.length - 1] !== sep) {
           return next(err);
         }
@@ -43403,7 +43403,7 @@ var require_SendStream = __commonJS({
         }
         const p = path6 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs5.stat(p, function(err2, stat) {
+        fs6.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -43421,7 +43421,7 @@ var require_SendStream = __commonJS({
         }
         const p = join(path6, self._index[i]);
         debug('stat "%s"', p);
-        fs5.stat(p, function(err2, stat) {
+        fs6.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -43433,7 +43433,7 @@ var require_SendStream = __commonJS({
     SendStream.prototype.stream = function stream(path6, options) {
       const self = this;
       const res = this.res;
-      const stream2 = fs5.createReadStream(path6, options);
+      const stream2 = fs6.createReadStream(path6, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       let destroyed = false;
@@ -43884,18 +43884,18 @@ var require_dirList = __commonJS({
     "use strict";
     var os2 = require("node:os");
     var path5 = require("node:path");
-    var fs5 = require("node:fs/promises");
+    var fs6 = require("node:fs/promises");
     var fastq = require_queue();
     var fastqConcurrency = Math.max(1, os2.cpus().length - 1);
     var dirList = {
       _getExtendedInfo: async function(dir, info) {
         const depth = dir.split(path5.sep).length;
-        const files = await fs5.readdir(dir);
+        const files = await fs6.readdir(dir);
         const worker = async (filename) => {
           const filePath = path5.join(dir, filename);
           let stats;
           try {
-            stats = await fs5.stat(filePath);
+            stats = await fs6.stat(filePath);
           } catch {
             return;
           }
@@ -43939,7 +43939,7 @@ var require_dirList = __commonJS({
        */
       list: async function(dir, options, dotfiles) {
         const entries = { dirs: [], files: [] };
-        let files = await fs5.readdir(dir);
+        let files = await fs6.readdir(dir);
         if (dotfiles === "deny" || dotfiles === "ignore") {
           files = files.filter((file) => file.charAt(0) !== ".");
         }
@@ -43949,7 +43949,7 @@ var require_dirList = __commonJS({
         const worker = async (filename) => {
           let stats;
           try {
-            stats = await fs5.stat(path5.join(dir, filename));
+            stats = await fs6.stat(path5.join(dir, filename));
           } catch {
             return;
           }
@@ -66114,7 +66114,7 @@ var require_state_machine = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.StateMachine = void 0;
-    var fs5 = require("fs/promises");
+    var fs6 = require("fs/promises");
     var net = require("net");
     var process2 = require("process");
     var tls = require("tls");
@@ -66436,11 +66436,11 @@ var require_state_machine = __commonJS({
           options.secureContext = tlsOptions.secureContext;
         }
         if (tlsOptions.tlsCertificateKeyFile) {
-          const cert = await fs5.readFile(tlsOptions.tlsCertificateKeyFile);
+          const cert = await fs6.readFile(tlsOptions.tlsCertificateKeyFile);
           options.cert = options.key = cert;
         }
         if (tlsOptions.tlsCAFile) {
-          options.ca = await fs5.readFile(tlsOptions.tlsCAFile);
+          options.ca = await fs6.readFile(tlsOptions.tlsCAFile);
         }
         if (tlsOptions.tlsCertificateKeyFilePassword) {
           options.passphrase = tlsOptions.tlsCertificateKeyFilePassword;
@@ -72559,7 +72559,7 @@ var require_token_machine_workflow = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.tokenMachineCallback = void 0;
-    var fs5 = require("fs");
+    var fs6 = require("fs");
     var process2 = require("process");
     var error_1 = require_error3();
     var TOKEN_MISSING_ERROR = "OIDC_TOKEN_FILE must be set in the environment.";
@@ -72568,7 +72568,7 @@ var require_token_machine_workflow = __commonJS({
       if (!tokenFile) {
         throw new error_1.MongoAWSError(TOKEN_MISSING_ERROR);
       }
-      const token = await fs5.promises.readFile(tokenFile, "utf8");
+      const token = await fs6.promises.readFile(tokenFile, "utf8");
       return { accessToken: token };
     };
     exports2.tokenMachineCallback = tokenMachineCallback;
@@ -77095,19 +77095,40 @@ __export(ollama_exports, {
   startOllamaDaemon: () => startOllamaDaemon
 });
 async function isOllamaRunning() {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch("http://127.0.0.1:11434/api/version", { signal: controller.signal });
-    clearTimeout(timeout);
-    return res.ok;
-  } catch {
-    return false;
+  const hosts = ["http://127.0.0.1:11434", "http://localhost:11434"];
+  for (const host of hosts) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`${host}/api/version`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) return true;
+    } catch {
+    }
   }
+  return false;
 }
 async function isOllamaInstalled() {
   try {
     const isWin = process.platform === "win32";
+    if (!isWin) {
+      const candidatePaths = [
+        "/usr/local/bin/ollama",
+        "/usr/bin/ollama",
+        `${process.env.HOME || ""}/.local/bin/ollama`,
+        "/bin/ollama"
+      ];
+      for (const p of candidatePaths) {
+        if (p && import_fs4.default.existsSync(p)) {
+          try {
+            const { stdout: verOut } = await execAsync(`"${p}" --version`);
+            return { installed: true, version: verOut.trim(), path: p };
+          } catch {
+            return { installed: true, path: p };
+          }
+        }
+      }
+    }
     const cmd = isWin ? "where ollama" : "command -v ollama || which ollama";
     const { stdout } = await execAsync(cmd);
     const ollamaPath = stdout.trim().split("\n")[0].trim();
@@ -77146,10 +77167,24 @@ function startOllamaDaemon() {
         });
         child.unref();
       } else {
+        try {
+          await execAsync("systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null");
+        } catch {
+        }
+        if (await isOllamaRunning()) {
+          return resolve({ success: true, running: true });
+        }
+        const installedInfo = await isOllamaInstalled();
+        const binPath = installedInfo.path || "ollama";
+        const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`;
         const child = (0, import_child_process2.spawn)(
           "sh",
-          ["-c", "nohup ollama serve > /tmp/ollama.log 2>&1 &"],
-          { detached: true, stdio: "ignore" }
+          ["-c", `nohup "${binPath}" serve > /tmp/ollama.log 2>&1 &`],
+          {
+            detached: true,
+            stdio: "ignore",
+            env: { ...process.env, PATH: envPath }
+          }
         );
         child.unref();
       }
@@ -77161,12 +77196,19 @@ function startOllamaDaemon() {
           clearInterval(interval);
           return resolve({ success: true, running: true });
         }
-        if (attempts >= 12) {
+        if (attempts >= 14) {
           clearInterval(interval);
+          let logTail = "";
+          if (!isWin && import_fs4.default.existsSync("/tmp/ollama.log")) {
+            try {
+              logTail = import_fs4.default.readFileSync("/tmp/ollama.log", "utf8").trim().split("\n").slice(-4).join(" ");
+            } catch {
+            }
+          }
           return resolve({
             success: false,
             running: false,
-            error: stderrOutput.trim() || 'Ollama process launched but port 11434 did not respond within 6 seconds. Try running "Download & Install Ollama".'
+            error: logTail || stderrOutput.trim() || 'Ollama process launched but port 11434 did not respond within 7 seconds. Try running "Download & Install Ollama".'
           });
         }
       }, 500);
@@ -77250,11 +77292,12 @@ function installOllama(onLog) {
     }
   });
 }
-var import_child_process2, import_util2, execAsync;
+var import_child_process2, import_util2, import_fs4, execAsync;
 var init_ollama = __esm({
   "src/services/ollama.ts"() {
     import_child_process2 = require("child_process");
     import_util2 = require("util");
+    import_fs4 = __toESM(require("fs"));
     execAsync = (0, import_util2.promisify)(import_child_process2.exec);
   }
 });
@@ -77308,6 +77351,23 @@ function loadEnvironment() {
   if (!loaded) {
     console.log("[Env] No .env file found in search paths.");
   }
+  if (process.platform !== "win32") {
+    const extraPaths = [
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      `${process.env.HOME || ""}/.local/bin`
+    ];
+    const currentPaths = (process.env.PATH || "").split(":");
+    for (const p of extraPaths) {
+      if (p && !currentPaths.includes(p)) {
+        currentPaths.unshift(p);
+      }
+    }
+    process.env.PATH = currentPaths.join(":");
+  }
 }
 loadEnvironment();
 
@@ -77315,7 +77375,7 @@ loadEnvironment();
 var import_fastify = __toESM(require_fastify());
 var import_static = __toESM(require_static());
 var import_path4 = __toESM(require("path"));
-var import_fs4 = __toESM(require("fs"));
+var import_fs5 = __toESM(require("fs"));
 
 // src/routes/chat.ts
 var import_crypto3 = require("crypto");
@@ -79730,18 +79790,21 @@ async function chatRoutes(fastify2) {
   fastify2.get("/api/models", async (request, reply) => {
     let ollamaOnline = false;
     let localModels = [];
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch("http://127.0.0.1:11434/api/tags", { signal: controller.signal });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        ollamaOnline = true;
-        localModels = (data.models || []).map((m) => m.name);
+    const hosts = ["http://127.0.0.1:11434", "http://localhost:11434"];
+    for (const host of hosts) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1200);
+        const res = await fetch(`${host}/api/tags`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json();
+          ollamaOnline = true;
+          localModels = (data.models || []).map((m) => m.name);
+          break;
+        }
+      } catch {
       }
-    } catch {
-      ollamaOnline = false;
     }
     const settings = getAllSettings();
     const geminiKey = settings["gemini_api_key"] || process.env.GEMINI_API_KEY;
@@ -81108,7 +81171,7 @@ var possibleDistPaths = [
   import_path4.default.resolve(__dirname, "../web/dist"),
   import_path4.default.resolve(process.cwd(), "dist")
 ];
-var webDistPath = possibleDistPaths.find((p) => import_fs4.default.existsSync(import_path4.default.join(p, "index.html")));
+var webDistPath = possibleDistPaths.find((p) => import_fs5.default.existsSync(import_path4.default.join(p, "index.html")));
 if (webDistPath) {
   server.register(import_static.default, {
     root: webDistPath,
@@ -81169,6 +81232,24 @@ var start = async () => {
     const port = Number(process.env.PORT) || 3080;
     await server.listen({ port, host: "0.0.0.0" });
     console.log(`TerraMind Server listening on http://localhost:${port}`);
+    setTimeout(async () => {
+      try {
+        const { isOllamaRunning: isOllamaRunning2, isOllamaInstalled: isOllamaInstalled2, startOllamaDaemon: startOllamaDaemon2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
+        const running = await isOllamaRunning2();
+        if (!running) {
+          const installed = await isOllamaInstalled2();
+          if (installed.installed) {
+            console.log("[Ollama] Auto-launching local Ollama background server...");
+            const res = await startOllamaDaemon2();
+            if (res.running) {
+              console.log("[Ollama] Local Ollama daemon started successfully on port 11434.");
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Ollama] Background startup notice:", err.message || err);
+      }
+    }, 1e3);
   } catch (err) {
     server.log.error(err);
     process.exit(1);

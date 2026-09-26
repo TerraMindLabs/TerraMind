@@ -127,6 +127,26 @@ const start = async () => {
     const port = Number(process.env.PORT) || 3080;
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`TerraMind Server listening on http://localhost:${port}`);
+
+    // Auto-detect and start Ollama in background if installed and not yet running
+    setTimeout(async () => {
+      try {
+        const { isOllamaRunning, isOllamaInstalled, startOllamaDaemon } = await import('./services/ollama');
+        const running = await isOllamaRunning();
+        if (!running) {
+          const installed = await isOllamaInstalled();
+          if (installed.installed) {
+            console.log('[Ollama] Auto-launching local Ollama background server...');
+            const res = await startOllamaDaemon();
+            if (res.running) {
+              console.log('[Ollama] Local Ollama daemon started successfully on port 11434.');
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[Ollama] Background startup notice:', err.message || err);
+      }
+    }, 1000);
   } catch (err) {
     server.log.error(err);
     process.exit(1);

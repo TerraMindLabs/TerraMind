@@ -248,16 +248,29 @@ ensure_nodejs() {
     exit 1
 }
 
-export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
 
 ensure_ollama_running() {
-    export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
-    if ! command -v ollama &> /dev/null; then
+    export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+    hash -r 2>/dev/null || true
+
+    local ollamaBin=""
+    if [ -x "/usr/local/bin/ollama" ]; then
+        ollamaBin="/usr/local/bin/ollama"
+    elif [ -x "$HOME/.local/bin/ollama" ]; then
+        ollamaBin="$HOME/.local/bin/ollama"
+    elif command -v ollama &>/dev/null; then
+        ollamaBin=$(command -v ollama)
+    elif [ -x "/usr/bin/ollama" ]; then
+        ollamaBin="/usr/bin/ollama"
+    fi
+
+    if [ -z "$ollamaBin" ]; then
         return 1
     fi
 
     # Verify that the ollama binary is executable (avoid 'required file not found' on minimal/musl containers)
-    if ! ollama --version &> /dev/null; then
+    if ! "$ollamaBin" --version &> /dev/null; then
         echo -e "${YELLOW}⚠️ Ollama binary is present but could not execute (checking container libraries)...${NC}"
         local sudoCmd=""
         [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && sudoCmd="sudo"
@@ -268,40 +281,48 @@ ensure_ollama_running() {
             $sudoCmd apk add --no-cache gcompat libc6-compat 2>/dev/null || true
         fi
 
-        if ! ollama --version &> /dev/null; then
+        if ! "$ollamaBin" --version &> /dev/null; then
             echo -e "${YELLOW}⚠️ Cannot run local Ollama binary in this environment. Skipping local daemon.${NC}"
             echo -e "${YELLOW}💡 Tip: You can select Cloud AI providers (Gemini, OpenAI, Anthropic, Groq, DeepSeek) seamlessly in TerraMind.${NC}"
             return 1
         fi
     fi
 
-    if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+    if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
         echo -e "${GREEN}✅ Ollama daemon is active and listening on port 11434.${NC}"
         return 0
     fi
 
-    echo -e "${YELLOW}⚙️ Starting Ollama daemon in background ('ollama serve')...${NC}"
+    echo -e "${YELLOW}⚙️ Starting Ollama daemon in background...${NC}"
     
+    # 1. Try systemd service if available (standard for official Linux install)
     if [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
-        sudo systemctl start ollama 2>/dev/null || true
+        sudo systemctl start ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
+        for s in {1..6}; do
+            if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
+                echo -e "${GREEN}✅ Ollama daemon started via systemd and listening on port 11434.${NC}"
+                return 0
+            fi
+            sleep 0.5
+        done
     fi
 
-    if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
-        echo -e "${GREEN}✅ Ollama daemon started successfully!${NC}"
-        return 0
-    fi
-
-    local ollamaBin=$(command -v ollama || echo "/usr/local/bin/ollama")
+    # 2. Direct nohup spawn if systemd not present or not active
     nohup "$ollamaBin" serve > /tmp/ollama_terramind.log 2>&1 &
     local ollamaPid=$!
 
-    for i in {1..10}; do
-        if curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+    for i in {1..14}; do
+        if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
             echo -e "${GREEN}✅ Ollama daemon started successfully (PID: $ollamaPid)!${NC}"
             return 0
         fi
-        sleep 1
+        sleep 0.5
     done
+
+    if [ -f /tmp/ollama_terramind.log ]; then
+        echo -e "${YELLOW}⚠️ Ollama log output:${NC}"
+        tail -n 4 /tmp/ollama_terramind.log 2>/dev/null || true
+    fi
 
     return 0
 }
@@ -535,9 +556,14 @@ fi
 declare -a models=()
 
 if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
-    if ! command -v ollama &> /dev/null; then
+    export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+    hash -r 2>/dev/null || true
+
+    if ! command -v ollama &> /dev/null && [ ! -x "/usr/local/bin/ollama" ]; then
         echo -e "\n${YELLOW}⚙️ Ollama is not installed. Attempting automatic installation via official script...${NC}"
         curl -fsSL https://ollama.com/install.sh | sh || true
+        export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+        hash -r 2>/dev/null || true
     fi
 
     ensure_ollama_running
@@ -568,18 +594,29 @@ if [ "$aiChoice" == "1" ] || [ "$aiChoice" == "3" ]; then
     esac
 
     if [ ${#models[@]} -gt 0 ]; then
-        if ollama --version &> /dev/null; then
+        ensure_ollama_running
+
+        local runBin=""
+        if [ -x "/usr/local/bin/ollama" ]; then
+            runBin="/usr/local/bin/ollama"
+        elif command -v ollama &>/dev/null; then
+            runBin=$(command -v ollama)
+        elif [ -x "$HOME/.local/bin/ollama" ]; then
+            runBin="$HOME/.local/bin/ollama"
+        fi
+
+        if [ -n "$runBin" ] && "$runBin" --version &> /dev/null; then
             echo -e "\n${YELLOW}📥 Downloading / Verifying Local AI Models via Ollama...${NC}"
             for model in "${models[@]}"; do
-                if ollama list 2>/dev/null | grep -q "^${model}:\|^${model} "; then
+                if "$runBin" list 2>/dev/null | grep -q "^${model}:\|^${model} "; then
                     echo -e "${GREEN}✅ Model $model is already installed!${NC}"
                 else
                     echo -e "${CYAN}📥 Pulling $model...${NC}"
-                    ollama pull "$model" || echo -e "${YELLOW}⚠️ Could not pull $model automatically. You can run 'ollama pull $model' later.${NC}"
+                    "$runBin" pull "$model" || echo -e "${YELLOW}⚠️ Could not pull $model automatically. You can run '$runBin pull $model' later.${NC}"
                 fi
             done
         else
-            echo -e "\n${YELLOW}⚠️ Ollama is not executable in this container environment. Model download skipped.${NC}"
+            echo -e "\n${YELLOW}⚠️ Ollama binary not found or not executable. Model download skipped.${NC}"
             echo -e "${YELLOW}💡 You can continue setup using Cloud AI models (Gemini, Claude, GPT, Groq, DeepSeek).${NC}"
         fi
     fi
@@ -712,14 +749,25 @@ echo "   TerraMind - AI Cloud & Infrastructure Architect        "
 echo "==========================================================="
 echo " Starting server on http://localhost:3080..."
 
-if command -v ollama &>/dev/null && ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
+export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+
+if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
     echo " Starting local Ollama server..."
     if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then
-        sudo systemctl start ollama 2>/dev/null || true
+        sudo systemctl start ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
     fi
-    if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null; then
-        nohup ollama serve >/dev/null 2>&1 &
-        sleep 2
+    for s in {1..4}; do
+        if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
+            break
+        fi
+        sleep 0.5
+    done
+    if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
+        ollamaBin=$(command -v ollama || [ -x "/usr/local/bin/ollama" ] && echo "/usr/local/bin/ollama" || echo "")
+        if [ -n "$ollamaBin" ]; then
+            nohup "$ollamaBin" serve >/dev/null 2>&1 &
+            sleep 1.5
+        fi
     fi
 fi
 
