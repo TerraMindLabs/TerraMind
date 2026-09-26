@@ -243,8 +243,48 @@ if ($action -eq "2") {
     # Final sanity check immediately before removal
     if (Test-ValidTerraMindDir $basePath) {
         Set-Location $HOME
-        Invoke-CommandWithSpinner -Message "Deleting TerraMind installation ($basePath)" -CommandString "rmdir /s /q `"$basePath`""
-        if (Test-Path $basePath) { Remove-Item -Recurse -Force $basePath -ErrorAction SilentlyContinue }
+        Write-Host "`n[*] Removing TerraMind application files while preserving your Terraform workspace..." -ForegroundColor Cyan
+
+        # Check if Terraform workspace exists inside TerraMind
+        $tfDir = Join-Path $basePath "Terraform"
+        $hasTerraform = Test-Path $tfDir
+
+        # Remove ONLY TerraMind application folders (NEVER delete Terraform directory!)
+        $appFolders = @("apps", "node_modules", ".agents", "skills", "data", ".git")
+        foreach ($folder in $appFolders) {
+            $folderPath = Join-Path $basePath $folder
+            if (Test-Path $folderPath) {
+                Remove-Item -Recurse -Force $folderPath -ErrorAction SilentlyContinue
+            }
+        }
+
+        # Remove ONLY application files
+        $appFiles = @(
+            "package.json", "package-lock.json", ".env", "terramind.db", "terramind.db-shm",
+            "terramind.db-wal", "TerraMind.bat", "Uninstall_TerraMind.bat", "install-tf-ai.ps1",
+            "install-tf-ai.sh", "start-terramind.sh", "uninstall-terramind.sh", "README.md",
+            "SETUP_GUIDE.md", "Next.md", "work_left.md"
+        )
+        foreach ($file in $appFiles) {
+            $filePath = Join-Path $basePath $file
+            if (Test-Path $filePath) {
+                Remove-Item -Force $filePath -ErrorAction SilentlyContinue
+            }
+        }
+
+        # If user's Terraform folder was in the directory, keep it intact
+        if ($hasTerraform) {
+            Write-Host "`n [OK] TerraMind application removed successfully." -ForegroundColor Green
+            Write-Host " [OK] USER DATA PRESERVED: Your generated Terraform workspace is safe at:" -ForegroundColor Green
+            Write-Host "      $tfDir" -ForegroundColor Cyan
+        } else {
+            # Only remove parent folder if empty
+            $remaining = Get-ChildItem -Path $basePath -Force -ErrorAction SilentlyContinue
+            if ($remaining.Count -eq 0) {
+                Remove-Item -Force $basePath -ErrorAction SilentlyContinue
+            }
+            Write-Host "`n [OK] TerraMind application uninstallation complete!" -ForegroundColor Green
+        }
     } else {
         Write-Host "[!] Safety check failed before deletion. Aborting." -ForegroundColor Red
         return
@@ -253,7 +293,6 @@ if ($action -eq "2") {
     $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "TerraMind.lnk"
     Remove-Item $desktopShortcut -Force -ErrorAction SilentlyContinue
 
-    Write-Host "`n[OK] TerraMind uninstallation complete!" -ForegroundColor Green
     return
 }
 
@@ -497,13 +536,38 @@ if not exist "%TARGET_DIR%\apps\server" (
     exit /b 1
 )
 
-echo [WARN] This will completely remove TerraMind from: %TARGET_DIR%
+echo [WARN] This will remove TerraMind application files from: %TARGET_DIR%
+echo [NOTE] Your generated Terraform workspace will be KEPT intact.
 set /p confirm="Are you sure you want to proceed? (y/N): "
 if /i "%confirm%"=="y" (
     taskkill /f /im node.exe >nul 2>nul
     cd /d "%USERPROFILE%"
-    rmdir /s /q "%TARGET_DIR%"
-    echo TerraMind removed successfully.
+    
+    echo [*] Removing TerraMind application folders...
+    if exist "%TARGET_DIR%\apps" rmdir /s /q "%TARGET_DIR%\apps"
+    if exist "%TARGET_DIR%\node_modules" rmdir /s /q "%TARGET_DIR%\node_modules"
+    if exist "%TARGET_DIR%\.agents" rmdir /s /q "%TARGET_DIR%\.agents"
+    if exist "%TARGET_DIR%\skills" rmdir /s /q "%TARGET_DIR%\skills"
+    if exist "%TARGET_DIR%\data" rmdir /s /q "%TARGET_DIR%\data"
+    
+    echo [*] Removing application files...
+    del /f /q "%TARGET_DIR%\package*.json" 2>nul
+    del /f /q "%TARGET_DIR%\.env" 2>nul
+    del /f /q "%TARGET_DIR%\terramind.db*" 2>nul
+    del /f /q "%TARGET_DIR%\TerraMind.bat" 2>nul
+    del /f /q "%TARGET_DIR%\*.md" 2>nul
+    del /f /q "%TARGET_DIR%\install-tf-ai.*" 2>nul
+    del /f /q "%TARGET_DIR%\start-terramind.sh" 2>nul
+    del /f /q "%TARGET_DIR%\uninstall-terramind.sh" 2>nul
+
+    if exist "%TARGET_DIR%\Terraform" (
+        echo.
+        echo [OK] TerraMind app removed. Your Terraform workspace has been preserved at:
+        echo      %TARGET_DIR%\Terraform
+    ) else (
+        rmdir "%TARGET_DIR%" 2>nul
+        echo [OK] TerraMind removed successfully.
+    )
 )
 pause
 "@

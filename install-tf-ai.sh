@@ -342,14 +342,42 @@ if [ "$action" == "2" ]; then
         if [ "$currPwd" = "$basePath" ] || [[ "$currPwd" == "$basePath"/* ]]; then
             cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
         fi
-        run_with_spinner "Deleting TerraMind installation ($basePath)" "rm -rf \"$basePath\""
+
+        echo -e "\n${CYAN}[*] Removing TerraMind application files while preserving your Terraform workspace...${NC}"
+
+        hasTerraform=false
+        if [ -d "$basePath/Terraform" ]; then
+            hasTerraform=true
+            echo -e "${GREEN} [keep] Preserving user Terraform workspace at: $basePath/Terraform${NC}"
+        fi
+
+        # Remove ONLY TerraMind application folders (NEVER delete Terraform directory!)
+        for appDir in "apps" "node_modules" ".agents" "skills" "data" ".git"; do
+            [ -d "$basePath/$appDir" ] && rm -rf "$basePath/$appDir" 2>/dev/null || true
+        done
+
+        # Remove ONLY application files
+        for appFile in "package.json" "package-lock.json" ".env" "TerraMind.bat" "Uninstall_TerraMind.bat" \
+                       "install-tf-ai.ps1" "install-tf-ai.sh" "start-terramind.sh" "uninstall-terramind.sh" \
+                       "README.md" "SETUP_GUIDE.md" "Next.md" "work_left.md"; do
+            [ -f "$basePath/$appFile" ] && rm -f "$basePath/$appFile" 2>/dev/null || true
+        done
+        rm -f "$basePath"/terramind.db* 2>/dev/null || true
+
+        if [ "$hasTerraform" = true ]; then
+            echo -e "\n${GREEN}✅ TerraMind application removed successfully.${NC}"
+            echo -e "${GREEN}✅ USER DATA PRESERVED: Your generated Terraform workspace is safe at:${NC}"
+            echo -e "   ${CYAN}$basePath/Terraform${NC}"
+        else
+            rmdir "$basePath" 2>/dev/null || true
+            echo -e "${GREEN}✅ TerraMind application uninstallation complete!${NC}"
+        fi
     else
         echo -e "${RED}Safety check failed immediately before deletion. Aborting.${NC}"
         exit 1
     fi
 
     rm -f "$HOME/Desktop/TerraMind.desktop" 2>/dev/null || true
-    echo -e "${GREEN}✅ TerraMind uninstallation complete!${NC}"
     exit 0
 elif [ "$action" != "1" ]; then
     echo "Invalid choice. Exiting."
@@ -639,14 +667,34 @@ if [ "$dirName" != "terramind" ] || [ ! -f "$DIR/package.json" ] || [ ! -d "$DIR
     exit 1
 fi
 
-echo -e "\033[0;31m⚠️ WARNING: This will completely remove TerraMind from $DIR!\033[0m"
+echo -e "\033[0;31m⚠️ WARNING: This will remove TerraMind application files from $DIR!\033[0m"
+echo -e "\033[0;32mℹ️ NOTE: Your generated Terraform workspace will be KEPT intact.\033[0m"
 read -p "Are you sure? (y/N): " confirm
 if [[ "$confirm" =~ ^[yY]$ ]]; then
     TM_PID=$(lsof -ti tcp:3080 2>/dev/null || fuser 3080/tcp 2>/dev/null | tr -d ' ')
     [ -n "$TM_PID" ] && kill -9 $TM_PID 2>/dev/null || true
     cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
-    rm -rf "$DIR"
-    echo -e "\033[0;32m✅ TerraMind removed successfully.\033[0m"
+
+    echo " Removing TerraMind application folders..."
+    for appDir in "apps" "node_modules" ".agents" "skills" "data" ".git"; do
+        [ -d "$DIR/$appDir" ] && rm -rf "$DIR/$appDir" 2>/dev/null || true
+    done
+
+    echo " Removing application files..."
+    for appFile in "package.json" "package-lock.json" ".env" "TerraMind.bat" "Uninstall_TerraMind.bat" \
+                   "install-tf-ai.ps1" "install-tf-ai.sh" "start-terramind.sh" "uninstall-terramind.sh" \
+                   "README.md" "SETUP_GUIDE.md" "Next.md" "work_left.md"; do
+        [ -f "$DIR/$appFile" ] && rm -f "$DIR/$appFile" 2>/dev/null || true
+    done
+    rm -f "$DIR"/terramind.db* 2>/dev/null || true
+
+    if [ -d "$DIR/Terraform" ]; then
+        echo -e "\n\033[0;32m✅ TerraMind app removed. Your Terraform workspace has been preserved at:\033[0m"
+        echo -e "   \033[0;36m$DIR/Terraform\033[0m"
+    else
+        rmdir "$DIR" 2>/dev/null || true
+        echo -e "\033[0;32m✅ TerraMind removed successfully.\033[0m"
+    fi
 fi
 EOF
 chmod +x "$uninstallScript"
