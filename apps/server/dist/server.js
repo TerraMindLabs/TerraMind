@@ -78800,7 +78800,7 @@ Examples of Redirection:
 `;
 var AGENT_PROMPTS = {
   "agent_tf-devops-expert": {
-    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- Behave like a senior, decisive architect: proactive, structured, and confident.\n- PRE-GENERATION INQUIRY (MANDATORY BEFORE CODE GENERATION):\n  When the user requests new infrastructure or code generation without specifying both the project folder and architecture level:\n  DO NOT immediately generate files. FIRST ask ONE brief, helpful question asking for their preferences:\n  'Before generating your Terraform configuration, please confirm:\n   1. **Project Folder**: Would you like to store this in `[suggested-folder]/` or another directory name?\n   2. **Architecture Level**: Do you prefer **Direct Resource-level code** (flat layout, ready for immediate `terraform apply`) or **Reusable Module-level code** (root caller + encapsulated `modules/<module-name>/` package)?'\n- When the user provides or confirms the folder, or replies with 'yes', 'proceed', 'default', 'go ahead', or if the folder/architecture level was already specified upfront:\n  IMMEDIATELY author the complete, production-grade Terraform code files inside separate code blocks (```hcl ... ```) scoped to that directory.\n- STRICT MULTI-FILE ARCHITECTURE (STRICTLY FORBID MONOLITHIC main.tf):\n  NEVER dump the entire configuration into a single `main.tf`. In accordance with HashiCorp and enterprise DevOps standards, you MUST ALWAYS author the complete configuration split into standard dedicated files across separate code blocks:\n  1. `# [folder]/providers.tf`: Terraform core version constraint (`required_version = \">= 1.5.0\"`), `required_providers` with explicit source and version pinning (`~>`), and configured provider block(s).\n  2. `# [folder]/variables.tf`: Explicit type definitions, clear descriptions, sensible defaults, and `sensitive = true` where required. Never omit variables.\n  3. `# [folder]/main.tf`: Core resource blocks, data sources, and module calls cleanly referencing `var.<variable_name>`.\n  4. `# [folder]/outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints, connection strings) with descriptions for downstream consumption.\n  5. `# [folder]/terraform.tfvars.example`: Realistic sample values template for user configuration.\n  If **Module-level** is requested: also provide `modules/<module-name>/main.tf`, `modules/<module-name>/variables.tf`, and `modules/<module-name>/outputs.tf`, with root `main.tf` calling the module.\n- Always specify the exact relative file path on the very first line of each code block as a comment (e.g., `# [folder]/providers.tf`, `# [folder]/variables.tf`, `# [folder]/main.tf`, `# [folder]/outputs.tf`).\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let's inspect the workspace', 'Let's execute terraform fmt', or 'Format & Validation: Passed successfully with zero errors'.\n- DO NOT create fake 'Human Approval Gate' headings or simulated CLI output.\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real `terraform fmt` and `terraform validate` directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, and `terraform.tfvars.example`.\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
+    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- ACTION-FIRST IMMEDIATE CODE GENERATION:\n  When the user asks for infrastructure (e.g. 's3 private aws', 'deploy a vpc', 'create an eks cluster'), IMMEDIATELY author the complete, production-grade, secure Terraform configuration.\n  DO NOT stall, interrogate, or ask questionnaire questions before generating code! Users expect working infrastructure immediately.\n- STRUCTURE & FILE SEPARATION:\n  Author clean, standard Terraform files across separate code blocks (```hcl ... ```):\n  1. `# providers.tf`: Terraform core version constraint (>= 1.5.0), required_providers with explicit source and version pinning, and provider block.\n  2. `# variables.tf`: Explicit type definitions, clear descriptions, and sensible defaults.\n  3. `# main.tf`: Complete, production-ready resources implementing the requested infrastructure with security best practices (encryption, private access, logging, tagging).\n  4. `# outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints).\n  Always specify the exact relative file path on the very first line of each code block as a comment (e.g. `# providers.tf`, `# variables.tf`, `# main.tf`, `# outputs.tf`).\n  CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g. aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let\\'s inspect the workspace' or simulated CLI output.\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real terraform fmt and terraform validate directly on the host machine.\n\nARCHITECTURE & CODE STANDARDS:\n1. Project & Directory Organization:\n   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n2. Community-Standard File Layout:\n   Inside every project directory, strictly structure files into `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, and `terraform.tfvars.example`.\n3. Security & State Best Practices:\n   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
     skills: [
       "tf-remote-state-backend",
       "aws-production-vpc-3tier",
@@ -78892,19 +78892,14 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
   }
   prompt += `CRITICAL EXECUTION RULES FOR ALL CODE GENERATION:
 1. ZERO SIMULATED TOOL ROLEPLAY: NEVER pretend to run commands or tools in conversational text. DO NOT write "Let's inspect the workspace...", "Let's execute terraform fmt...", or "- Format & Validation: Passed successfully".
-2. PRE-GENERATION INQUIRY (MANDATORY BEFORE CODE GENERATION):
-   - If the user requests new infrastructure or code manifests and has NOT specified a target directory/folder or architecture level (or is working in Global Workspace):
-     DO NOT immediately dump code files into the root or unconfirmed paths.
-     FIRST ask ONE brief, helpful question offering a clean suggested folder name and architecture choice:
-     "Would you like to store this in a dedicated project or folder name (e.g., \`[suggested-folder-name]/\`), or do you prefer another name?
-     Also, do you prefer **Direct Resource-level code** (flat layout, ready to apply) or **Reusable Module-level code** (root + \`modules/<module-name>/\` structure)?"
-   - Give a suggested name tailored to their request (e.g. \`k8s-production/\`, \`aws-vpc-3tier/\`, \`terraform-eks/\`, \`fastapi-deploy/\`).
-   - As soon as the user confirms, responds with a folder name, or says 'proceed' / 'default' / 'yes' / 'go ahead': IMMEDIATELY author the complete code files with all file paths prefixed with that folder (e.g. \`# [folder]/providers.tf\`, \`# [folder]/variables.tf\`, \`# [folder]/main.tf\`, \`# [folder]/outputs.tf\`).
-   - If the user ALREADY specified a folder name in their prompt (e.g. "in k8s/ folder", "under terraform-aws"), or is working inside an active dedicated project, skip the question and generate code directly into that folder.
+2. ACTION-FIRST IMMEDIATE GENERATION:
+   - When the user asks for infrastructure, code, or manifests (e.g. "s3 private aws", "create a vpc"), IMMEDIATELY author the complete, production-ready, secure configuration.
+   - DO NOT stall or interrogate the user with pre-generation questions. Standardize on dedicated files: \`# providers.tf\`, \`# main.tf\`, \`# variables.tf\`, \`# outputs.tf\` (or under the active project/folder if specified).
+   - CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g., aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!
 3. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.
 4. STRICT MULTI-FILE ARCHITECTURE & ONE COMPLETE FILE PER CODE BLOCK (NO MONOLITHIC main.tf, NO LOOPS):
-   - For Terraform: NEVER dump everything into a single main.tf. Output each standard file in its own separate code block: \`# [folder]/providers.tf\`, \`# [folder]/variables.tf\`, \`# [folder]/main.tf\`, \`# [folder]/outputs.tf\`, and \`# [folder]/terraform.tfvars.example\`.
-   - Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# [folder]/main.tf\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.
+   - For Terraform: Output each standard file in its own separate code block: \`# providers.tf\`, \`# variables.tf\`, \`# main.tf\`, \`# outputs.tf\`, and \`# terraform.tfvars.example\`.
+   - Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# main.tf\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.
 5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.
 
 `;
@@ -79019,12 +79014,48 @@ async function listWorkspaceFiles() {
   await walkDir(WORKSPACE_PATH, "");
   return files;
 }
+async function resolveEffectiveDirectory(targetRelPath) {
+  await ensureWorkspace();
+  if (targetRelPath) {
+    const clean = targetRelPath.replace(/^[\\\/]+/, "");
+    const fullTarget = import_path3.default.resolve(WORKSPACE_PATH, clean);
+    if (import_fs3.default.existsSync(fullTarget)) {
+      const stat = await import_promises.default.stat(fullTarget);
+      return stat.isDirectory() ? fullTarget : import_path3.default.dirname(fullTarget);
+    }
+    const dirCandidate = import_path3.default.dirname(fullTarget);
+    if (import_fs3.default.existsSync(dirCandidate)) {
+      return dirCandidate;
+    }
+  }
+  try {
+    const entries = await import_promises.default.readdir(WORKSPACE_PATH, { withFileTypes: true });
+    if (entries.some((e) => e.isFile() && e.name.endsWith(".tf"))) {
+      return WORKSPACE_PATH;
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules") {
+        const subPath = import_path3.default.join(WORKSPACE_PATH, e.name);
+        try {
+          const subFiles = await import_promises.default.readdir(subPath);
+          if (subFiles.some((f) => f.endsWith(".tf"))) {
+            return subPath;
+          }
+        } catch {
+        }
+      }
+    }
+  } catch {
+  }
+  return WORKSPACE_PATH;
+}
 async function verifyWorkspaceFile(targetRelPath) {
   await ensureWorkspace();
   const env = getAugmentedEnv();
   const tfBin = resolveBinary("terraform");
   const tfsecBin = resolveBinary("tfsec");
   const infracostBin = resolveBinary("infracost");
+  const effectiveDir = await resolveEffectiveDirectory(targetRelPath);
   const cleanTarget = targetRelPath ? targetRelPath.replace(/^[\\\/]+/, "") : "";
   const fileBasename = cleanTarget ? import_path3.default.basename(cleanTarget) : "workspace";
   let fmtSuccess = true;
@@ -79032,7 +79063,7 @@ async function verifyWorkspaceFile(targetRelPath) {
   let fmtOutput = "";
   try {
     const fmtTarget = cleanTarget ? `"${import_path3.default.resolve(WORKSPACE_PATH, cleanTarget)}"` : "";
-    const res = await execPromise(`${tfBin} fmt ${fmtTarget}`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${tfBin} fmt ${fmtTarget}`, { cwd: effectiveDir, env });
     fmtOutput = res.stdout.trim() || "Clean";
     isFormatted = Boolean(res.stdout && res.stdout.includes(fileBasename));
   } catch (e) {
@@ -79044,14 +79075,14 @@ async function verifyWorkspaceFile(targetRelPath) {
   try {
     let valRaw = "";
     try {
-      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
       valRaw = res.stdout;
     } catch (e) {
       valRaw = e.stdout || "";
-      if ((e.stderr || e.stdout || "").includes("init")) {
+      if ((e.stderr || e.stdout || "").includes("init") || (e.stderr || e.stdout || "").includes("Plugin")) {
         try {
-          await execPromise(`${tfBin} init -backend=false`, { cwd: WORKSPACE_PATH, env });
-          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+          await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
           valRaw = retryRes.stdout;
         } catch {
         }
@@ -79121,7 +79152,7 @@ async function verifyWorkspaceFile(targetRelPath) {
   }
   let infracostSummary = { totalMonthlyCost: "$0.00", currency: "USD" };
   try {
-    const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: effectiveDir, env });
     const jsonStart = res.stdout.indexOf("{");
     const jsonEnd = res.stdout.lastIndexOf("}");
     if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -79156,7 +79187,7 @@ async function verifyWorkspaceFile(targetRelPath) {
   let planSuccess = true;
   let planSummary = "Plan ready";
   try {
-    const res = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
     const match = res.stdout.match(/Plan:\s*(\d+\s*to\s*add,\s*\d+\s*to\s*change,\s*\d+\s*to\s*destroy)/i);
     if (match) {
       planSummary = match[1];
@@ -79166,10 +79197,32 @@ async function verifyWorkspaceFile(targetRelPath) {
       planSummary = "Speculative plan complete";
     }
   } catch (e) {
-    planSuccess = false;
     const errOut = (e.stdout || "") + (e.stderr || e.message);
-    const firstLine = errOut.trim().split("\n")[0].slice(0, 80);
-    planSummary = firstLine || "Requires provider credentials for full plan";
+    if (errOut.includes("init") || errOut.includes("Plugin")) {
+      try {
+        await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+        const retry = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
+        const match = retry.stdout.match(/Plan:\s*(\d+\s*to\s*add,\s*\d+\s*to\s*change,\s*\d+\s*to\s*destroy)/i);
+        if (match) {
+          planSummary = match[1];
+          planSuccess = true;
+        } else if (retry.stdout.includes("No changes.")) {
+          planSummary = "No changes (State clean)";
+          planSuccess = true;
+        } else {
+          planSummary = "Speculative plan complete";
+          planSuccess = true;
+        }
+      } catch (retryErr) {
+        planSuccess = false;
+        const retryOut = (retryErr.stdout || "") + (retryErr.stderr || retryErr.message);
+        planSummary = retryOut.trim().split("\n")[0].slice(0, 80) || "Requires provider credentials for full plan";
+      }
+    } else {
+      planSuccess = false;
+      const firstLine = errOut.trim().split("\n")[0].slice(0, 80);
+      planSummary = firstLine || "Requires provider credentials for full plan";
+    }
   }
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const criticalSecCount = securityFindings.filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH").length;
@@ -79225,6 +79278,7 @@ async function runTerraformCommand(action, targetFile) {
   const tfsecBin = resolveBinary("tfsec");
   const infracostBin = resolveBinary("infracost");
   const cleanTarget = targetFile ? targetFile.replace(/^[\\\/]+/, "") : "";
+  const effectiveDir = await resolveEffectiveDirectory(cleanTarget);
   if (action === "verify") {
     const verification = await verifyWorkspaceFile(cleanTarget);
     const summary = `Full Verification Gate (${verification.filename}):
@@ -79247,7 +79301,7 @@ async function runTerraformCommand(action, targetFile) {
     let rawStderr = "";
     let hasError = false;
     try {
-      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e) {
@@ -79299,13 +79353,27 @@ async function runTerraformCommand(action, targetFile) {
     let rawStderr = "";
     let isSuccess = true;
     try {
-      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e) {
       rawStdout = e.stdout || "";
       rawStderr = e.stderr || e.message;
-      isSuccess = false;
+      if (rawStderr.includes("init") || rawStdout.includes("init") || rawStderr.includes("Plugin")) {
+        try {
+          await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
+          rawStdout = retryRes.stdout;
+          rawStderr = retryRes.stderr;
+          isSuccess = true;
+        } catch (retryErr) {
+          rawStdout = retryErr.stdout || "";
+          rawStderr = retryErr.stderr || retryErr.message;
+          isSuccess = false;
+        }
+      } else {
+        isSuccess = false;
+      }
     }
     let validationFindings = [];
     try {
@@ -79344,7 +79412,7 @@ async function runTerraformCommand(action, targetFile) {
     let rawStderr = "";
     let isSuccess = true;
     try {
-      const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e) {
@@ -79408,18 +79476,34 @@ Total Monthly Cost: ${costSummary.totalMonthlyCost} ${costSummary.currency || "U
   } else if (action === "init") {
     cmd = `${tfBin} init -backend=false`;
   } else if (action === "plan") {
-    cmd = `${tfBin} plan -no-color`;
+    cmd = `${tfBin} plan -no-color -compact-warnings`;
   }
   try {
-    const { stdout, stderr } = await execPromise(cmd, { cwd: WORKSPACE_PATH, env });
+    const { stdout, stderr } = await execPromise(cmd, { cwd: effectiveDir, env });
     return {
       success: true,
       output: (stdout + "\n" + (stderr || "")).trim()
     };
   } catch (error) {
+    const errText = (error.stdout || "") + "\n" + (error.stderr || error.message);
+    if (action === "plan" && (errText.includes("init") || errText.includes("Plugin"))) {
+      try {
+        await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+        const retryRes = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
+        return {
+          success: true,
+          output: (retryRes.stdout + "\n" + (retryRes.stderr || "")).trim()
+        };
+      } catch (retryError) {
+        return {
+          success: false,
+          output: (retryError.stdout || "") + "\n" + (retryError.stderr || retryError.message)
+        };
+      }
+    }
     return {
       success: false,
-      output: (error.stdout || "") + "\n" + (error.stderr || error.message)
+      output: errText.trim()
     };
   }
 }
@@ -80252,6 +80336,7 @@ Once started, send your message again. Or switch to **Cloud AI** in the model me
               messages: [{ role: "system", content: systemPrompt }, ...messages],
               options: {
                 num_ctx: 16384,
+                num_predict: 4096,
                 temperature: 0.2,
                 repeat_penalty: 1.18,
                 repeat_last_n: 128,

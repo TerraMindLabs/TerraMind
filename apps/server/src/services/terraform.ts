@@ -183,6 +183,48 @@ export interface TerraformCommandResult {
 }
 
 /**
+ * Resolves the effective working directory where .tf files actually live
+ * (either root WORKSPACE_PATH, or the target subfolder, or first subfolder containing .tf files)
+ */
+export async function resolveEffectiveDirectory(targetRelPath?: string): Promise<string> {
+  await ensureWorkspace();
+  if (targetRelPath) {
+    const clean = targetRelPath.replace(/^[\\\/]+/, '');
+    const fullTarget = path.resolve(WORKSPACE_PATH, clean);
+    if (fsSync.existsSync(fullTarget)) {
+      const stat = await fs.stat(fullTarget);
+      return stat.isDirectory() ? fullTarget : path.dirname(fullTarget);
+    }
+    const dirCandidate = path.dirname(fullTarget);
+    if (fsSync.existsSync(dirCandidate)) {
+      return dirCandidate;
+    }
+  }
+
+  // Check if root WORKSPACE_PATH has .tf files
+  try {
+    const entries = await fs.readdir(WORKSPACE_PATH, { withFileTypes: true });
+    if (entries.some((e) => e.isFile() && e.name.endsWith('.tf'))) {
+      return WORKSPACE_PATH;
+    }
+    // Check first level subdirectories for .tf files
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') {
+        const subPath = path.join(WORKSPACE_PATH, e.name);
+        try {
+          const subFiles = await fs.readdir(subPath);
+          if (subFiles.some((f) => f.endsWith('.tf'))) {
+            return subPath;
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  return WORKSPACE_PATH;
+}
+
+/**
  * Executes full pre-flight verification gate: fmt + validate + tfsec + infracost + speculative plan
  */
 export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileVerificationResult> {
@@ -192,6 +234,7 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   const tfsecBin = resolveBinary('tfsec');
   const infracostBin = resolveBinary('infracost');
 
+  const effectiveDir = await resolveEffectiveDirectory(targetRelPath);
   const cleanTarget = targetRelPath ? targetRelPath.replace(/^[\\\/]+/, '') : '';
   const fileBasename = cleanTarget ? path.basename(cleanTarget) : 'workspace';
 
@@ -201,7 +244,7 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   let fmtOutput = '';
   try {
     const fmtTarget = cleanTarget ? `"${path.resolve(WORKSPACE_PATH, cleanTarget)}"` : '';
-    const res = await execPromise(`${tfBin} fmt ${fmtTarget}`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${tfBin} fmt ${fmtTarget}`, { cwd: effectiveDir, env });
     fmtOutput = res.stdout.trim() || 'Clean';
     isFormatted = Boolean(res.stdout && res.stdout.includes(fileBasename));
   } catch (e: any) {
@@ -215,14 +258,14 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   try {
     let valRaw = '';
     try {
-      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
       valRaw = res.stdout;
     } catch (e: any) {
       valRaw = e.stdout || '';
-      if ((e.stderr || e.stdout || '').includes('init')) {
+      if ((e.stderr || e.stdout || '').includes('init') || (e.stderr || e.stdout || '').includes('Plugin')) {
         try {
-          await execPromise(`${tfBin} init -backend=false`, { cwd: WORKSPACE_PATH, env });
-          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+          await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
           valRaw = retryRes.stdout;
         } catch {}
       }
@@ -297,7 +340,7 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   // 4. infracost check
   let infracostSummary: InfracostSummary = { totalMonthlyCost: '$0.00', currency: 'USD' };
   try {
-    const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: effectiveDir, env });
     const jsonStart = res.stdout.indexOf('{');
     const jsonEnd = res.stdout.lastIndexOf('}');
     if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -334,7 +377,7 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   let planSuccess = true;
   let planSummary = 'Plan ready';
   try {
-    const res = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: WORKSPACE_PATH, env });
+    const res = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
     const match = res.stdout.match(/Plan:\s*(\d+\s*to\s*add,\s*\d+\s*to\s*change,\s*\d+\s*to\s*destroy)/i);
     if (match) {
       planSummary = match[1];
@@ -344,10 +387,32 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
       planSummary = 'Speculative plan complete';
     }
   } catch (e: any) {
-    planSuccess = false;
     const errOut = (e.stdout || '') + (e.stderr || e.message);
-    const firstLine = errOut.trim().split('\n')[0].slice(0, 80);
-    planSummary = firstLine || 'Requires provider credentials for full plan';
+    if (errOut.includes('init') || errOut.includes('Plugin')) {
+      try {
+        await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+        const retry = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
+        const match = retry.stdout.match(/Plan:\s*(\d+\s*to\s*add,\s*\d+\s*to\s*change,\s*\d+\s*to\s*destroy)/i);
+        if (match) {
+          planSummary = match[1];
+          planSuccess = true;
+        } else if (retry.stdout.includes('No changes.')) {
+          planSummary = 'No changes (State clean)';
+          planSuccess = true;
+        } else {
+          planSummary = 'Speculative plan complete';
+          planSuccess = true;
+        }
+      } catch (retryErr: any) {
+        planSuccess = false;
+        const retryOut = (retryErr.stdout || '') + (retryErr.stderr || retryErr.message);
+        planSummary = retryOut.trim().split('\n')[0].slice(0, 80) || 'Requires provider credentials for full plan';
+      }
+    } else {
+      planSuccess = false;
+      const firstLine = errOut.trim().split('\n')[0].slice(0, 80);
+      planSummary = firstLine || 'Requires provider credentials for full plan';
+    }
   }
 
   const errorCount = diagnostics.filter(d => d.severity === 'error').length;
@@ -431,6 +496,8 @@ export async function runTerraformCommand(
 
   const cleanTarget = targetFile ? targetFile.replace(/^[\\\/]+/, '') : '';
 
+  const effectiveDir = await resolveEffectiveDirectory(cleanTarget);
+
   if (action === 'verify') {
     const verification = await verifyWorkspaceFile(cleanTarget);
     const summary = `Full Verification Gate (${verification.filename}):\n` +
@@ -456,7 +523,7 @@ export async function runTerraformCommand(
     let hasError = false;
 
     try {
-      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e: any) {
@@ -514,13 +581,27 @@ export async function runTerraformCommand(
     let isSuccess = true;
 
     try {
-      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e: any) {
       rawStdout = e.stdout || '';
       rawStderr = e.stderr || e.message;
-      isSuccess = false;
+      if (rawStderr.includes('init') || rawStdout.includes('init') || rawStderr.includes('Plugin')) {
+        try {
+          await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: effectiveDir, env });
+          rawStdout = retryRes.stdout;
+          rawStderr = retryRes.stderr;
+          isSuccess = true;
+        } catch (retryErr: any) {
+          rawStdout = retryErr.stdout || '';
+          rawStderr = retryErr.stderr || retryErr.message;
+          isSuccess = false;
+        }
+      } else {
+        isSuccess = false;
+      }
     }
 
     let validationFindings: ValidationFinding[] = [];
@@ -564,7 +645,7 @@ export async function runTerraformCommand(
     let isSuccess = true;
 
     try {
-      const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+      const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: effectiveDir, env });
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e: any) {
@@ -637,19 +718,35 @@ export async function runTerraformCommand(
   } else if (action === 'init') {
     cmd = `${tfBin} init -backend=false`;
   } else if (action === 'plan') {
-    cmd = `${tfBin} plan -no-color`;
+    cmd = `${tfBin} plan -no-color -compact-warnings`;
   }
 
   try {
-    const { stdout, stderr } = await execPromise(cmd, { cwd: WORKSPACE_PATH, env });
+    const { stdout, stderr } = await execPromise(cmd, { cwd: effectiveDir, env });
     return {
       success: true,
       output: (stdout + '\n' + (stderr || '')).trim()
     };
   } catch (error: any) {
+    const errText = (error.stdout || '') + '\n' + (error.stderr || error.message);
+    if (action === 'plan' && (errText.includes('init') || errText.includes('Plugin'))) {
+      try {
+        await execPromise(`${tfBin} init -backend=false`, { cwd: effectiveDir, env });
+        const retryRes = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: effectiveDir, env });
+        return {
+          success: true,
+          output: (retryRes.stdout + '\n' + (retryRes.stderr || '')).trim()
+        };
+      } catch (retryError: any) {
+        return {
+          success: false,
+          output: (retryError.stdout || '') + '\n' + (retryError.stderr || retryError.message)
+        };
+      }
+    }
     return {
       success: false,
-      output: (error.stdout || '') + '\n' + (error.stderr || error.message)
+      output: errText.trim()
     };
   }
 }

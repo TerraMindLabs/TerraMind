@@ -29,14 +29,12 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(AGENT_PROMPTS['agent_cicd-pipeline-engineer'].instructions, /CI\/CD|pipelines/i);
   });
 
-  test('2. Global Workspace prompt enforces Rule #2: Folder & Architecture inquiry before code generation', () => {
+  test('2. Global Workspace prompt enforces action-first immediate generation without stalling inquiries', () => {
     const prompt = buildSystemPrompt('agent_k8s-gitops-architect');
 
     assert.match(prompt, /Global Workspace/i);
-    assert.match(prompt, /PRE-GENERATION INQUIRY/i);
-    assert.match(prompt, /Would you like to store this in a dedicated project or folder name/i);
-    assert.match(prompt, /Direct Resource-level code/i);
-    assert.match(prompt, /Reusable Module-level code/i);
+    assert.match(prompt, /ACTION-FIRST IMMEDIATE GENERATION/i);
+    assert.match(prompt, /DO NOT stall or interrogate/i);
   });
 
   test('3. Project workspace prompt injects active project context and target directory', () => {
@@ -64,24 +62,21 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(prompt, /CONCISE & TARGETED SCOPE/i);
   });
 
-  test('5. Terraform DevOps Expert enforces strict multi-file standards (forbids monolithic main.tf)', () => {
+  test('5. Terraform DevOps Expert enforces action-first immediate code generation and structure', () => {
     const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
 
-    assert.match(tfPrompt, /STRICT MULTI-FILE ARCHITECTURE/i);
-    assert.match(tfPrompt, /FORBID MONOLITHIC main\.tf/i);
+    assert.match(tfPrompt, /ACTION-FIRST IMMEDIATE CODE GENERATION/i);
     assert.match(tfPrompt, /providers\.tf/);
     assert.match(tfPrompt, /variables\.tf/);
     assert.match(tfPrompt, /main\.tf/);
     assert.match(tfPrompt, /outputs\.tf/);
-    assert.match(tfPrompt, /terraform\.tfvars\.example/);
   });
 
-  test('6. Terraform DevOps prompt enforces mandatory inquiry for Folder and Resource vs Module level', () => {
+  test('6. Terraform DevOps prompt enforces generating actual resources without stalling questions', () => {
     const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
 
-    assert.match(tfPrompt, /Project Folder/i);
-    assert.match(tfPrompt, /Direct Resource-level code/i);
-    assert.match(tfPrompt, /Reusable Module-level code/i);
+    assert.match(tfPrompt, /DO NOT stall, interrogate, or ask/i);
+    assert.match(tfPrompt, /ALWAYS author the ACTUAL resource blocks in main\.tf/i);
   });
 
   test('7. System prompt injects active Model Context Protocol (MCP) servers and tools', () => {

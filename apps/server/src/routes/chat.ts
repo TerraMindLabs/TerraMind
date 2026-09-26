@@ -721,6 +721,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
             messages: [{ role: 'system', content: systemPrompt }, ...messages],
             options: {
               num_ctx: 16384,
+              num_predict: 4096,
               temperature: 0.2,
               repeat_penalty: 1.18,
               repeat_last_n: 128,
