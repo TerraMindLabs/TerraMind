@@ -446,6 +446,7 @@ function App() {
   };
 
   const handleFixWithAi = (issuePrompt: string, preferredAgent?: string) => {
+    setRailTab('chats');
     if (preferredAgent === 'cost') {
       setSelectedAgentId('agent_finops-cost-optimizer');
     } else {
@@ -685,6 +686,7 @@ function App() {
           setRailTab('settings');
           setSettingsSection('keys');
         }}
+        onFixWithAi={handleFixWithAi}
         currentUser={currentUser}
         onOpenAuth={() => setAuthOpen(true)}
         onLogout={() => {
@@ -1254,7 +1256,7 @@ function App() {
           </div>
         </div>
 
-        {/* Workspace Bar: CLI Execution, tfsec Security, Infracost & ⚡ Fix with AI */}
+        {/* Workspace Bar: Clean single-row with Infracost, Console & One-Click Fix shortcut */}
         <WorkspaceBar
           ollamaOnline={ollamaOnline}
           onOllamaStatusChange={setOllamaOnline}
@@ -1262,6 +1264,10 @@ function App() {
           onOpenSettings={() => {
             setSettingsSection('keys');
             setRailTab('settings');
+            setSidebarOpen(true);
+          }}
+          onOpenAudit={() => {
+            setRailTab('audit');
             setSidebarOpen(true);
           }}
         />

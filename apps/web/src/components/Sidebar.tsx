@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { TERRAMIND_AGENTS, getAgentIcon } from './AgentSelector';
 import { RailTab } from './PrimaryRail';
 import { SettingsSection } from './SettingsView';
+import { AuditPanel } from './AuditPanel';
 
 export interface Project {
   id: string;
@@ -114,6 +115,7 @@ interface SidebarProps {
   onSelectFile?: (filename: string) => void;
   // Settings & Auth
   onOpenSettings: () => void;
+  onFixWithAi?: (prompt: string, preferredAgent?: string) => void;
   currentUser?: { username: string } | null;
   onOpenAuth: () => void;
   onLogout: () => void;
@@ -153,6 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   workspaceFiles,
   onSelectFile,
   onOpenSettings,
+  onFixWithAi,
   currentUser,
   onOpenAuth,
   onLogout,
@@ -397,6 +400,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
           </div>
         </div>
+      ) : railTab === 'audit' ? (
+        <AuditPanel
+          workspaceFiles={workspaceFiles}
+          onClose={onToggle}
+          onBack={() => onSelectRailTab?.('chats')}
+          onFixWithAi={onFixWithAi}
+          onOpenSettings={onOpenSettings}
+        />
       ) : (
         <>
           {/* Top action bar with Brand Logo */}

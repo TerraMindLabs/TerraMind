@@ -56,17 +56,19 @@ interface WorkspaceBarProps {
   onOllamaStatusChange: (online: boolean) => void;
   onFixWithAi: (issuePrompt: string, preferredAgent?: string) => void;
   onOpenSettings?: () => void;
+  onOpenAudit?: () => void;
 }
 
 export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
   ollamaOnline,
   onOllamaStatusChange,
   onFixWithAi,
-  onOpenSettings
+  onOpenSettings,
+  onOpenAudit
 }) => {
   const [workspacePath, setWorkspacePath] = useState('Terraform');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
-  const [selectedTargetFile, setSelectedTargetFile] = useState<string>('');
+  const selectedTargetFile = '';
   const [isRunning, setIsRunning] = useState(false);
   const [terminalOutput, setTerminalOutput] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -209,39 +211,14 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         flexWrap: 'wrap',
         gap: '8px'
       }}>
-        <div className="workspace-info" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="workspace-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '13px' }}>📁</span>
           <span className="workspace-path" title={workspacePath} style={{ fontWeight: 600, color: 'var(--text)' }}>
             {workspacePath.split(/[\/\\]/).filter(Boolean).pop() || 'Terraform'}
           </span>
-
-          {/* Target File Dropdown (Part 2: Point to existing files) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>Target:</span>
-            <select
-              value={selectedTargetFile}
-              onChange={(e) => setSelectedTargetFile(e.target.value)}
-              style={{
-                padding: '3px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-              title="Select an existing file in your workspace to scan, validate, or estimate cost"
-            >
-              <option value="">All Files ({files.length})</option>
-              {files.map((f) => (
-                <option key={f.name} value={f.name}>
-                  📄 {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <span style={{ fontSize: '11px', color: 'var(--muted)', background: 'var(--hover)', padding: '2px 7px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+            {files.length} {files.length === 1 ? 'file' : 'files'}
+          </span>
 
           {costSummary?.totalMonthlyCost && (
             <span style={{
@@ -257,125 +234,39 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
           )}
         </div>
 
-        <div className="workspace-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {/* 1-Click Verification Gate for Selected File or All Files */}
-          <button
-            className="ws-action-btn"
-            onClick={() => handleRunCommand('verify')}
-            disabled={isRunning}
-            title="Execute Full Pre-Flight Verification Gate: fmt + validate + tfsec + Infracost + plan"
-            style={{
-              padding: '4px 11px',
-              borderRadius: '5px',
-              border: '1px solid #10b981',
-              background: 'rgba(16, 185, 129, 0.12)',
-              color: '#10b981',
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              fontSize: '11.5px',
-              fontWeight: 600,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            🚀 Pre-flight Gate
-          </button>
+        <div className="workspace-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Quick link to One-Click Fix & Validate Sidebar */}
+          {onOpenAudit && (
+            <button
+              className="ws-action-btn"
+              onClick={onOpenAudit}
+              title="Open One-Click Fix & Validate Quality Gate panel in sidebar"
+              style={{
+                padding: '4px 10px',
+                borderRadius: '5px',
+                border: '1px solid #10b981',
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: '#10b981',
+                cursor: 'pointer',
+                fontSize: '11.5px',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <span>🛡️</span> One-Click Fix & Validate
+            </button>
+          )}
 
-          <button
-            className="ws-action-btn"
-            onClick={() => handleRunCommand('fmt')}
-            disabled={isRunning}
-            title={`Run 'terraform fmt' on ${selectedTargetFile || 'all files'}`}
-            style={{
-              padding: '4px 9px',
-              borderRadius: '5px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            ⚡ fmt
-          </button>
-
-          <button
-            className="ws-action-btn"
-            onClick={() => handleRunCommand('validate')}
-            disabled={isRunning}
-            title={`Run 'terraform validate' on ${selectedTargetFile || 'workspace'}`}
-            style={{
-              padding: '4px 9px',
-              borderRadius: '5px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            🔍 validate
-          </button>
-
-          <button
-            className="ws-action-btn"
-            onClick={() => handleRunCommand('plan')}
-            disabled={isRunning}
-            title="Run speculative 'terraform plan'"
-            style={{
-              padding: '4px 9px',
-              borderRadius: '5px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            📋 plan
-          </button>
-
-          <button
-            className="ws-action-btn"
-            onClick={() => handleRunCommand('tfsec')}
-            disabled={isRunning}
-            title={`Run 'tfsec' security scanner on ${selectedTargetFile || 'workspace'}`}
-            style={{
-              padding: '4px 9px',
-              borderRadius: '5px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            🛡️ tfsec
-          </button>
-
+          {/* Infracost Button */}
           <button
             className="ws-action-btn"
             onClick={() => handleRunCommand('infracost')}
             disabled={isRunning}
-            title="Run 'infracost' to estimate monthly cloud cost"
+            title="Run Infracost to estimate cloud expenditure"
             style={{
-              padding: '4px 9px',
+              padding: '4px 10px',
               borderRadius: '5px',
               border: '1px solid var(--border)',
               background: 'var(--bg)',
@@ -388,7 +279,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
               gap: '4px'
             }}
           >
-            💰 Infracost
+            <span>💰</span> Infracost
           </button>
 
           {!ollamaOnline && (
