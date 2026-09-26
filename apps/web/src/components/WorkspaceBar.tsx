@@ -1,5 +1,41 @@
 import React, { useState, useEffect } from 'react';
 
+export interface SecurityFinding {
+  id: string;
+  rule_id: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  description: string;
+  resource: string;
+  filename: string;
+  startLine: number;
+  endLine: number;
+  resolution: string;
+  explanation?: string;
+}
+
+export interface ValidationFinding {
+  severity: 'error' | 'warning';
+  summary: string;
+  detail: string;
+  filename?: string;
+  startLine?: number;
+}
+
+export interface CostResource {
+  name: string;
+  resourceType: string;
+  monthlyCost: string;
+}
+
+export interface InfracostSummary {
+  totalMonthlyCost?: string;
+  totalHourlyCost?: string;
+  currency?: string;
+  resources?: CostResource[];
+  apiKeyRequired?: boolean;
+  message?: string;
+}
+
 interface WorkspaceFile {
   name: string;
   size: number;
@@ -8,18 +44,27 @@ interface WorkspaceFile {
 interface WorkspaceBarProps {
   ollamaOnline: boolean;
   onOllamaStatusChange: (online: boolean) => void;
+  onFixWithAi: (issuePrompt: string, preferredAgent?: string) => void;
+  onOpenSettings?: () => void;
 }
 
 export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
   ollamaOnline,
-  onOllamaStatusChange
+  onOllamaStatusChange,
+  onFixWithAi,
+  onOpenSettings
 }) => {
-  const [workspacePath, setWorkspacePath] = useState('E:\\TerraMind\\Terraform');
+  const [workspacePath, setWorkspacePath] = useState('Terraform');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [terminalOutput, setTerminalOutput] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'findings' | 'validation' | 'cost' | 'terminal'>('terminal');
+  const [securityFindings, setSecurityFindings] = useState<SecurityFinding[]>([]);
+  const [validationFindings, setValidationFindings] = useState<ValidationFinding[]>([]);
+  const [costSummary, setCostSummary] = useState<InfracostSummary | null>(null);
 
   const fetchWorkspace = async () => {
     try {
@@ -41,11 +86,21 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const handleRunCommand = async (action: 'init' | 'fmt' | 'validate' | 'plan') => {
+  const handleRunCommand = async (action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost') => {
     setIsRunning(true);
     setActiveAction(action);
     setConsoleOpen(true);
-    setTerminalOutput(`$ terraform ${action === 'init' ? 'init -backend=false' : action} ...\nExecuting on ${workspacePath} ...\n`);
+
+    const actionLabels: Record<string, string> = {
+      fmt: 'terraform fmt',
+      validate: 'terraform validate',
+      plan: 'terraform plan speculative',
+      init: 'terraform init -backend=false',
+      tfsec: 'tfsec static security scanner',
+      infracost: 'infracost cloud cost breakdown'
+    };
+
+    setTerminalOutput(`$ ${actionLabels[action] || action} ...\nExecuting against workspace: ${workspacePath} ...\n`);
 
     try {
       const res = await fetch('/api/workspace/run', {
@@ -54,14 +109,44 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         body: JSON.stringify({ action })
       });
       const data = await res.json();
+
       setTerminalOutput(
-        `$ terraform ${action}\n` +
+        `$ ${actionLabels[action] || action}\n` +
         `----------------------------------------\n` +
-        (data.output || (data.success ? 'Execution completed with 0 errors.' : 'Command finished.'))
+        (data.output || (data.success ? 'Execution finished cleanly.' : 'Execution completed.'))
       );
+
+      if (action === 'tfsec') {
+        const findings: SecurityFinding[] = data.findings || [];
+        setSecurityFindings(findings);
+        if (findings.length > 0) {
+          setActiveTab('findings');
+        } else {
+          setActiveTab('terminal');
+        }
+      } else if (action === 'validate') {
+        const valFindings: ValidationFinding[] = data.validationFindings || [];
+        setValidationFindings(valFindings);
+        if (valFindings.length > 0) {
+          setActiveTab('validation');
+        } else {
+          setActiveTab('terminal');
+        }
+      } else if (action === 'infracost') {
+        if (data.costSummary) {
+          setCostSummary(data.costSummary);
+          setActiveTab('cost');
+        } else {
+          setActiveTab('terminal');
+        }
+      } else {
+        setActiveTab('terminal');
+      }
+
       fetchWorkspace();
     } catch (e: any) {
-      setTerminalOutput(`Error executing terraform ${action}: ${e.message}`);
+      setTerminalOutput(`Error executing ${action}: ${e.message}`);
+      setActiveTab('terminal');
     } finally {
       setIsRunning(false);
     }
@@ -70,6 +155,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
   const handleStartOllama = async () => {
     setIsRunning(true);
     setConsoleOpen(true);
+    setActiveTab('terminal');
     setTerminalOutput('$ ollama serve ...\nAttempting to launch local Ollama background server on port 11434...\n');
 
     try {
@@ -88,24 +174,68 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
     }
   };
 
+  const totalIssuesCount = securityFindings.length + validationFindings.length;
+
   return (
     <>
-      <div className="workspace-bar">
-        <div className="workspace-info">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <span className="workspace-path" title={workspacePath}>
-            {workspacePath.split('\\').pop() || 'Terraform'} ({files.length} .tf files)
+      <div className="workspace-bar" style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '6px 14px',
+        backgroundColor: 'var(--side)',
+        borderBottom: '1px solid var(--border)',
+        fontSize: '12.5px',
+        flexWrap: 'wrap',
+        gap: '8px'
+      }}>
+        <div className="workspace-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '13px' }}>📁</span>
+          <span className="workspace-path" title={workspacePath} style={{ fontWeight: 600, color: 'var(--text)' }}>
+            {workspacePath.split(/[\/\\]/).filter(Boolean).pop() || 'Terraform'}
           </span>
+          <span style={{
+            fontSize: '11px',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            backgroundColor: 'var(--hover)',
+            color: 'var(--muted)'
+          }}>
+            {files.length} .tf files
+          </span>
+          {costSummary?.totalMonthlyCost && (
+            <span style={{
+              fontSize: '11.5px',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(59, 130, 246, 0.12)',
+              color: 'var(--blue)',
+              fontWeight: 600
+            }}>
+              Est: {costSummary.totalMonthlyCost}/mo
+            </span>
+          )}
         </div>
 
-        <div className="workspace-actions">
+        <div className="workspace-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <button
             className="ws-action-btn"
             onClick={() => handleRunCommand('fmt')}
             disabled={isRunning}
             title="Run 'terraform fmt' to format files"
+            style={{
+              padding: '4px 9px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
             ⚡ fmt
           </button>
@@ -115,6 +245,19 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             onClick={() => handleRunCommand('validate')}
             disabled={isRunning}
             title="Run 'terraform validate'"
+            style={{
+              padding: '4px 9px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
             🔍 validate
           </button>
@@ -124,17 +267,65 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             onClick={() => handleRunCommand('plan')}
             disabled={isRunning}
             title="Run speculative 'terraform plan'"
+            style={{
+              padding: '4px 9px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
             📋 plan
           </button>
 
           <button
             className="ws-action-btn"
-            onClick={() => handleRunCommand('tfsec' as any)}
+            onClick={() => handleRunCommand('tfsec')}
             disabled={isRunning}
-            title="Run 'tfsec' static security scanner to detect misconfigurations"
+            title="Run 'tfsec' static security scanner"
+            style={{
+              padding: '4px 9px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
             🛡️ tfsec
+          </button>
+
+          <button
+            className="ws-action-btn"
+            onClick={() => handleRunCommand('infracost')}
+            disabled={isRunning}
+            title="Run 'infracost' to estimate cloud monthly cost"
+            style={{
+              padding: '4px 9px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            💰 Infracost
           </button>
 
           {!ollamaOnline && (
@@ -143,6 +334,16 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
               onClick={handleStartOllama}
               disabled={isRunning}
               title="Launch Ollama background daemon on port 11434"
+              style={{
+                padding: '4px 9px',
+                borderRadius: '5px',
+                border: '1px solid #10b981',
+                background: 'rgba(16, 185, 129, 0.1)',
+                color: '#10b981',
+                cursor: isRunning ? 'not-allowed' : 'pointer',
+                fontSize: '11.5px',
+                fontWeight: 600
+              }}
             >
               🚀 Start Ollama
             </button>
@@ -151,43 +352,490 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
           <button
             className="ws-action-btn toggle-console"
             onClick={() => setConsoleOpen(!consoleOpen)}
-            title="Toggle Terraform CLI Console"
+            title="Toggle Terraform CLI Console & Findings"
+            style={{
+              padding: '4px 10px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: totalIssuesCount > 0 ? 'rgba(239, 68, 68, 0.12)' : 'var(--hover)',
+              color: totalIssuesCount > 0 ? '#ef4444' : 'var(--text)',
+              cursor: 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
             {consoleOpen ? '▼ Console' : '▲ Console'}
+            {totalIssuesCount > 0 && (
+              <span style={{
+                background: '#ef4444',
+                color: '#fff',
+                fontSize: '10px',
+                borderRadius: '10px',
+                padding: '0 5px',
+                lineHeight: '16px'
+              }}>
+                {totalIssuesCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Slide-up Terminal Console Drawer */}
+      {/* Slide-up Console & Findings Drawer */}
       {consoleOpen && (
-        <div className="console-drawer">
-          <div className="console-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isRunning ? 'var(--primary)' : 'var(--success)' }}></span>
-              <strong style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', textTransform: 'uppercase' }}>
-                Terraform CLI Terminal {activeAction ? `(${activeAction})` : ''}
-              </strong>
-            </div>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div className="console-drawer" style={{
+          backgroundColor: 'var(--side)',
+          borderTop: '1px solid var(--border)',
+          borderBottom: '1px solid var(--border)',
+          maxHeight: '340px',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 50
+        }}>
+          {/* Drawer Navigation Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 12px',
+            borderBottom: '1px solid var(--border)',
+            backgroundColor: 'var(--bg)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
-                className="console-tool-btn"
-                onClick={() => setTerminalOutput(null)}
+                onClick={() => setActiveTab('terminal')}
+                style={{
+                  background: activeTab === 'terminal' ? 'var(--hover)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: activeTab === 'terminal' ? 600 : 400,
+                  color: 'var(--text)',
+                  cursor: 'pointer'
+                }}
+              >
+                💻 Terminal Output{activeAction ? ` (${activeAction})` : ''}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('findings')}
+                style={{
+                  background: activeTab === 'findings' ? 'var(--hover)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: activeTab === 'findings' ? 600 : 400,
+                  color: securityFindings.length > 0 ? '#ef4444' : 'var(--text)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                🛡️ Security Findings ({securityFindings.length})
+              </button>
+
+              <button
+                onClick={() => setActiveTab('validation')}
+                style={{
+                  background: activeTab === 'validation' ? 'var(--hover)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: activeTab === 'validation' ? 600 : 400,
+                  color: validationFindings.length > 0 ? '#f59e0b' : 'var(--text)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                🔍 Validation ({validationFindings.length})
+              </button>
+
+              <button
+                onClick={() => setActiveTab('cost')}
+                style={{
+                  background: activeTab === 'cost' ? 'var(--hover)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: activeTab === 'cost' ? 600 : 400,
+                  color: 'var(--blue)',
+                  cursor: 'pointer'
+                }}
+              >
+                💰 Cloud Cost {costSummary?.totalMonthlyCost ? `(${costSummary.totalMonthlyCost})` : ''}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                onClick={() => {
+                  setTerminalOutput(null);
+                  setSecurityFindings([]);
+                  setValidationFindings([]);
+                  setCostSummary(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: '2px 6px'
+                }}
                 title="Clear Output"
               >
                 Clear
               </button>
               <button
-                className="console-tool-btn"
                 onClick={() => setConsoleOpen(false)}
-                title="Close Terminal"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text)',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  padding: '2px 6px'
+                }}
+                title="Close Drawer"
               >
                 ✕
               </button>
             </div>
           </div>
-          <pre className="console-body">
-            <code>{terminalOutput || 'Ready. Click fmt, validate, or plan to execute Terraform commands.'}</code>
-          </pre>
+
+          {/* Drawer Tab Content */}
+          <div style={{ overflowY: 'auto', flex: 1, padding: '10px 14px' }}>
+            {/* 1. Terminal Output Tab */}
+            {activeTab === 'terminal' && (
+              <pre style={{
+                margin: 0,
+                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                fontSize: '12px',
+                lineHeight: '1.5',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                color: 'var(--text)'
+              }}>
+                <code>{terminalOutput || 'Ready. Click fmt, validate, plan, tfsec, or Infracost to execute commands.'}</code>
+              </pre>
+            )}
+
+            {/* 2. Security Findings Tab with ⚡ Fix with AI */}
+            {activeTab === 'findings' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {securityFindings.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                    🛡️ No security misconfigurations found. Click <strong>tfsec</strong> to scan your workspace.
+                  </div>
+                ) : (
+                  securityFindings.map((finding, idx) => {
+                    const sevColors: Record<string, { bg: string; text: string }> = {
+                      CRITICAL: { bg: '#ef4444', text: '#ffffff' },
+                      HIGH: { bg: '#f97316', text: '#ffffff' },
+                      MEDIUM: { bg: '#f59e0b', text: '#ffffff' },
+                      LOW: { bg: '#3b82f6', text: '#ffffff' }
+                    };
+                    const sevStyle = sevColors[finding.severity] || { bg: '#64748b', text: '#ffffff' };
+
+                    return (
+                      <div
+                        key={`${finding.id}-${idx}`}
+                        style={{
+                          backgroundColor: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          padding: '12px 14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{
+                              backgroundColor: sevStyle.bg,
+                              color: sevStyle.text,
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              borderRadius: '4px',
+                              padding: '1px 6px',
+                              textTransform: 'uppercase'
+                            }}>
+                              {finding.severity}
+                            </span>
+                            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>
+                              {finding.id}
+                            </span>
+                            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                              📍 {finding.filename}:{finding.startLine}
+                            </span>
+                            {finding.resource && (
+                              <code style={{
+                                fontSize: '11px',
+                                backgroundColor: 'var(--hover)',
+                                padding: '1px 5px',
+                                borderRadius: '3px'
+                              }}>
+                                {finding.resource}
+                              </code>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              const prompt = `Fix security vulnerability [${finding.id}] in file "${finding.filename}" (lines ${finding.startLine}-${finding.endLine}):\n\nIssue: ${finding.description}\nRecommended Resolution: ${finding.resolution}\n\nPlease inspect the workspace and apply the corrected Terraform HCL code.`;
+                              onFixWithAi(prompt, 'security');
+                              setConsoleOpen(false);
+                            }}
+                            style={{
+                              backgroundColor: '#10b981',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '5px',
+                              padding: '5px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                            }}
+                            title="Click to have AI automatically remediate this issue with a diff"
+                          >
+                            ⚡ Fix with AI
+                          </button>
+                        </div>
+
+                        <div style={{ fontSize: '12px', color: 'var(--text)', marginTop: '2px' }}>
+                          {finding.description}
+                        </div>
+
+                        {finding.resolution && (
+                          <div style={{
+                            fontSize: '11.5px',
+                            color: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                            padding: '4px 8px',
+                            borderRadius: '4px'
+                          }}>
+                            💡 <strong>Remediation:</strong> {finding.resolution}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* 3. Validation Findings Tab with ⚡ Fix with AI */}
+            {activeTab === 'validation' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {validationFindings.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                    🔍 No validation errors found. Click <strong>validate</strong> to check Terraform syntax.
+                  </div>
+                ) : (
+                  validationFindings.map((v, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{
+                            backgroundColor: v.severity === 'error' ? '#ef4444' : '#f59e0b',
+                            color: '#ffffff',
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            textTransform: 'uppercase'
+                          }}>
+                            {v.severity}
+                          </span>
+                          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>
+                            {v.summary}
+                          </span>
+                          {v.filename && (
+                            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                              📍 {v.filename}:{v.startLine || 1}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const prompt = `Fix Terraform validation ${v.severity} in "${v.filename || 'workspace'}" (line ${v.startLine || 1}):\n\n${v.summary}\n${v.detail}\n\nPlease correct the syntax and configuration in the workspace.`;
+                            onFixWithAi(prompt, 'architect');
+                            setConsoleOpen(false);
+                          }}
+                          style={{
+                            backgroundColor: '#3b82f6',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '5px',
+                            padding: '5px 12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Click to have AI fix this validation error"
+                        >
+                          ⚡ Fix with AI
+                        </button>
+                      </div>
+
+                      <div style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'pre-wrap' }}>
+                        {v.detail}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* 4. Infracost Cloud Cost Tab */}
+            {activeTab === 'cost' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {costSummary?.apiKeyRequired ? (
+                  <div style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    <strong style={{ fontSize: '14px', color: 'var(--text)' }}>🔑 Infracost API Key Required</strong>
+                    <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)', lineHeight: '1.5' }}>
+                      Infracost calculates monthly cloud bills for AWS, Azure, and Google Cloud in real-time.
+                      Get a free API key in 30 seconds at <a href="https://dashboard.infracost.io" target="_blank" rel="noreferrer" style={{ color: 'var(--blue)' }}>dashboard.infracost.io</a>.
+                    </p>
+                    {onOpenSettings && (
+                      <button
+                        onClick={onOpenSettings}
+                        style={{
+                          alignSelf: 'flex-start',
+                          backgroundColor: 'var(--blue)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '5px',
+                          padding: '6px 14px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          marginTop: '4px'
+                        }}
+                      >
+                        ⚙️ Configure Infracost Key
+                      </button>
+                    )}
+                  </div>
+                ) : costSummary?.totalMonthlyCost ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.2)',
+                      borderRadius: '6px',
+                      padding: '12px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                          Total Projected Monthly Cloud Cost
+                        </div>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--blue)', marginTop: '2px' }}>
+                          {costSummary.totalMonthlyCost} <span style={{ fontSize: '13px', fontWeight: 500 }}>{costSummary.currency}</span>
+                        </div>
+                      </div>
+
+                      {costSummary.totalHourlyCost && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                            Hourly Rate
+                          </div>
+                          <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text)' }}>
+                            {costSummary.totalHourlyCost}/hr
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {costSummary.resources && costSummary.resources.length > 0 && (
+                      <div style={{
+                        backgroundColor: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          padding: '8px 12px',
+                          fontWeight: 600,
+                          fontSize: '12px',
+                          borderBottom: '1px solid var(--border)',
+                          backgroundColor: 'var(--hover)',
+                          color: 'var(--text)'
+                        }}>
+                          Resource Cost Breakdown
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {costSummary.resources.map((r, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '8px 12px',
+                                borderBottom: i === costSummary.resources!.length - 1 ? 'none' : '1px solid var(--border)',
+                                fontSize: '12px'
+                              }}
+                            >
+                              <div>
+                                <span style={{ fontWeight: 600, color: 'var(--text)' }}>{r.name}</span>
+                                <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: '8px' }}>({r.resourceType})</span>
+                              </div>
+                              <span style={{ fontWeight: 600, color: 'var(--blue)' }}>{r.monthlyCost}/mo</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                    💰 Click <strong>Infracost</strong> above to calculate monthly infrastructure cost breakdown.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>

@@ -32,9 +32,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [openaiKey, setOpenaiKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [infracostKey, setInfracostKey] = useState('');
   const [hasOpenai, setHasOpenai] = useState(false);
   const [hasGemini, setHasGemini] = useState(false);
   const [hasAnthropic, setHasAnthropic] = useState(false);
+  const [hasInfracost, setHasInfracost] = useState(false);
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysSaved, setKeysSaved] = useState(false);
 
@@ -103,9 +105,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (data.openaiApiKey) setOpenaiKey(data.openaiApiKey);
         if (data.geminiApiKey) setGeminiKey(data.geminiApiKey);
         if (data.anthropicApiKey) setAnthropicKey(data.anthropicApiKey);
+        if (data.infracostApiKey) setInfracostKey(data.infracostApiKey);
         setHasOpenai(Boolean(data.hasOpenaiKey));
         setHasGemini(Boolean(data.hasGeminiKey));
         setHasAnthropic(Boolean(data.hasAnthropicKey));
+        setHasInfracost(Boolean(data.hasInfracostKey));
 
         // Enterprise Cloud AI
         if (data.azureOpenaiEndpoint) setAzureEndpoint(data.azureOpenaiEndpoint);
@@ -179,6 +183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           openaiApiKey: openaiKey,
           geminiApiKey: geminiKey,
           anthropicApiKey: anthropicKey,
+          infracostApiKey: infracostKey,
           azureOpenaiEndpoint: azureEndpoint,
           azureOpenaiApiKey: azureKey,
           azureOpenaiDeployment: azureDeployment,
@@ -211,7 +216,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Handle Delete/Clear Single Key
-  const handleDeleteKey = async (provider: 'openai' | 'gemini' | 'anthropic' | 'azure' | 'bedrock' | 'oci') => {
+  const handleDeleteKey = async (provider: 'openai' | 'gemini' | 'anthropic' | 'azure' | 'bedrock' | 'oci' | 'infracost') => {
     try {
       await fetch(`/api/settings/keys/${provider}`, { method: 'DELETE' });
       if (provider === 'openai') {
@@ -223,6 +228,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else if (provider === 'anthropic') {
         setAnthropicKey('');
         setHasAnthropic(false);
+      } else if (provider === 'infracost') {
+        setInfracostKey('');
+        setHasInfracost(false);
       } else if (provider === 'azure') {
         setAzureKey('');
         setAzureEndpoint('');
@@ -764,6 +772,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={anthropicKey}
                   onChange={(e) => setAnthropicKey(e.target.value)}
                   placeholder="sk-ant-..."
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
+                />
+              </div>
+
+              {/* Infracost (Cloud Cost Estimator) */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ margin: 0, fontWeight: 600, fontSize: '13px' }}>Infracost (Cloud Cost Estimator)</label>
+                    <span
+                      style={{
+                        fontSize: '10.5px',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: hasInfracost ? 'rgba(34, 197, 94, 0.15)' : 'var(--hover)',
+                        color: hasInfracost ? '#22c55e' : 'var(--muted)',
+                        fontWeight: 600
+                      }}
+                    >
+                      {hasInfracost ? 'Configured' : 'Optional / Free'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    {hasInfracost && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteKey('infracost')}
+                        style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                        title="Delete Infracost Key"
+                      >
+                        Delete
+                      </button>
+                    )}
+                    <a
+                      href="https://dashboard.infracost.io"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: '11.5px', color: 'var(--blue)', textDecoration: 'none' }}
+                    >
+                      Get Free Key ↗
+                    </a>
+                  </div>
+                </div>
+                <input
+                  type="password"
+                  value={infracostKey}
+                  onChange={(e) => setInfracostKey(e.target.value)}
+                  placeholder="ico-..."
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 />
               </div>

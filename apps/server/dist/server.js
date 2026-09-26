@@ -7373,7 +7373,7 @@ var require_multistream = __commonJS({
 var require_pino = __commonJS({
   "../../node_modules/pino/pino.js"(exports2, module2) {
     "use strict";
-    var os = require("node:os");
+    var os2 = require("node:os");
     var stdSerializers = require_pino_std_serializers();
     var caller = require_caller();
     var redaction = require_redaction();
@@ -7420,7 +7420,7 @@ var require_pino = __commonJS({
     } = symbols;
     var { epochTime, nullTime } = time;
     var { pid } = process;
-    var hostname = os.hostname();
+    var hostname = os2.hostname();
     var defaultErrorSerializer = stdSerializers.err;
     var defaultOptions = {
       level: "info",
@@ -43882,11 +43882,11 @@ var require_content_disposition = __commonJS({
 var require_dirList = __commonJS({
   "node_modules/@fastify/static/lib/dirList.js"(exports2, module2) {
     "use strict";
-    var os = require("node:os");
+    var os2 = require("node:os");
     var path5 = require("node:path");
     var fs5 = require("node:fs/promises");
     var fastq = require_queue();
-    var fastqConcurrency = Math.max(1, os.cpus().length - 1);
+    var fastqConcurrency = Math.max(1, os2.cpus().length - 1);
     var dirList = {
       _getExtendedInfo: async function(dir, info) {
         const depth = dir.split(path5.sep).length;
@@ -61145,7 +61145,7 @@ var require_gssapi = __commonJS({
       if (!hostAddress || typeof hostAddress.host !== "string" || !credentials) {
         throw new error_1.MongoInvalidArgumentError("Connection must have host and port and credentials defined.");
       }
-      const { os } = await runtime;
+      const { os: os2 } = await runtime;
       loadKrb();
       if ("kModuleError" in krb) {
         throw krb["kModuleError"];
@@ -61160,7 +61160,7 @@ var require_gssapi = __commonJS({
         Object.assign(initOptions, { user: username, password });
       }
       const spnHost = mechanismProperties.SERVICE_HOST ?? host;
-      let spn = `${serviceName}${os.platform() === "win32" ? "/" : "@"}${spnHost}`;
+      let spn = `${serviceName}${os2.platform() === "win32" ? "/" : "@"}${spnHost}`;
       if ("SERVICE_REALM" in mechanismProperties) {
         spn = `${spn}@${mechanismProperties.SERVICE_REALM}`;
       }
@@ -61635,7 +61635,7 @@ var require_client_metadata = __commonJS({
     };
     exports2.LimitedSizeDocument = LimitedSizeDocument;
     async function makeClientMetadata(driverInfoList, { appName = "", runtime }) {
-      const { os } = await runtime;
+      const { os: os2 } = await runtime;
       const metadataDocument = new LimitedSizeDocument(512);
       if (appName.length > 0) {
         const name = bson_1.ByteUtils.utf8ByteLength(appName) <= 128 ? appName : bson_1.ByteUtils.toUTF8(bson_1.ByteUtils.fromUTF8(appName), 0, 128, false);
@@ -61665,7 +61665,7 @@ var require_client_metadata = __commonJS({
       if (!metadataDocument.ifItFitsItSits("platform", runtimeInfo)) {
         throw new error_1.MongoInvalidArgumentError("Unable to include driverInfo platform, metadata cannot exceed 512 bytes");
       }
-      const osInfo = (/* @__PURE__ */ new Map()).set("name", os.platform()).set("architecture", os.arch()).set("version", os.release()).set("type", os.type());
+      const osInfo = (/* @__PURE__ */ new Map()).set("name", os2.platform()).set("architecture", os2.arch()).set("version", os2.release()).set("type", os2.type());
       if (!metadataDocument.ifItFitsItSits("os", osInfo)) {
         for (const key of osInfo.keys()) {
           osInfo.delete(key);
@@ -77315,7 +77315,7 @@ loadEnvironment();
 var import_fastify = __toESM(require_fastify());
 var import_static = __toESM(require_static());
 var import_path4 = __toESM(require("path"));
-var import_fs3 = __toESM(require("fs"));
+var import_fs4 = __toESM(require("fs"));
 
 // src/routes/chat.ts
 var import_crypto3 = require("crypto");
@@ -78867,6 +78867,8 @@ var import_child_process = require("child_process");
 var import_util = require("util");
 var import_path3 = __toESM(require("path"));
 var import_promises = __toESM(require("fs/promises"));
+var import_fs3 = __toESM(require("fs"));
+var import_os = __toESM(require("os"));
 var execPromise = (0, import_util.promisify)(import_child_process.exec);
 var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || import_path3.default.resolve(process.cwd(), "..", "..", "Terraform");
 async function ensureWorkspace() {
@@ -78875,6 +78877,62 @@ async function ensureWorkspace() {
   } catch (e) {
   }
   return WORKSPACE_PATH;
+}
+function getAugmentedEnv() {
+  const env = { ...process.env };
+  const isWin = process.platform === "win32";
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || import_path3.default.join(import_os.default.homedir(), "AppData", "Local");
+    const userProfile = process.env.USERPROFILE || import_os.default.homedir();
+    const extraPaths = [
+      import_path3.default.join(localAppData, "Microsoft", "WinGet", "Links"),
+      import_path3.default.join(localAppData, "tfsec"),
+      import_path3.default.join(userProfile, "bin"),
+      "C:\\ProgramData\\chocolatey\\bin"
+    ];
+    env.PATH = (env.PATH || "") + ";" + extraPaths.join(";");
+  } else {
+    const extraPaths = [
+      "/usr/local/bin",
+      import_path3.default.join(import_os.default.homedir(), ".local", "bin"),
+      import_path3.default.join(import_os.default.homedir(), "bin")
+    ];
+    env.PATH = (env.PATH || "") + ":" + extraPaths.join(":");
+  }
+  if (!env.INFRACOST_API_KEY) {
+    const dbKey = getSetting("infracost_api_key");
+    if (dbKey) env.INFRACOST_API_KEY = dbKey;
+  }
+  return env;
+}
+function resolveBinary(binName) {
+  const isWin = process.platform === "win32";
+  const exeName = isWin ? `${binName}.exe` : binName;
+  const candidatePaths = [];
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || import_path3.default.join(import_os.default.homedir(), "AppData", "Local");
+    const userProfile = process.env.USERPROFILE || import_os.default.homedir();
+    candidatePaths.push(
+      import_path3.default.join(localAppData, "tfsec", "tfsec.exe"),
+      import_path3.default.join(localAppData, "Microsoft", "WinGet", "Links", exeName),
+      import_path3.default.join(localAppData, "Programs", binName, exeName),
+      import_path3.default.join(userProfile, "bin", exeName),
+      import_path3.default.join("C:\\ProgramData\\chocolatey\\bin", exeName)
+    );
+  } else {
+    candidatePaths.push(
+      import_path3.default.join("/usr/local/bin", binName),
+      import_path3.default.join("/usr/bin", binName),
+      import_path3.default.join(import_os.default.homedir(), ".local", "bin", binName),
+      import_path3.default.join(import_os.default.homedir(), "bin", binName)
+    );
+  }
+  for (const p of candidatePaths) {
+    if (import_fs3.default.existsSync(p)) {
+      return `"${p}"`;
+    }
+  }
+  return binName;
 }
 async function listWorkspaceFiles() {
   await ensureWorkspace();
@@ -78918,21 +78976,23 @@ async function writeWorkspaceFile(filename, content) {
   let validateOutput = "";
   const fileDir = import_path3.default.dirname(targetPath);
   if (cleanRelPath.endsWith(".tf")) {
+    const env = getAugmentedEnv();
+    const tfBin = resolveBinary("terraform");
     try {
-      const fmtRes = await execPromise("terraform fmt", { cwd: fileDir });
+      const fmtRes = await execPromise(`${tfBin} fmt`, { cwd: fileDir, env });
       fmtOutput = fmtRes.stdout.trim() || "Success (Formatted cleanly)";
     } catch (e) {
       fmtOutput = e.stderr || e.stdout || e.message;
     }
     try {
-      const valRes = await execPromise("terraform validate", { cwd: fileDir });
+      const valRes = await execPromise(`${tfBin} validate`, { cwd: fileDir, env });
       validateOutput = valRes.stdout.trim() || "Success (Configuration is valid)";
     } catch (e) {
       const errMsg = e.stderr || e.stdout || e.message;
       if (errMsg.includes("terraform init") || errMsg.includes("not been initialized")) {
         try {
-          await execPromise("terraform init -backend=false", { cwd: fileDir });
-          const retryVal = await execPromise("terraform validate", { cwd: fileDir });
+          await execPromise(`${tfBin} init -backend=false`, { cwd: fileDir, env });
+          const retryVal = await execPromise(`${tfBin} validate`, { cwd: fileDir, env });
           validateOutput = retryVal.stdout.trim() || "Success (Configuration is valid)";
         } catch {
           validateOutput = "Syntax parsed. Requires provider credentials / backend initialization for full validation.";
@@ -78946,18 +79006,172 @@ async function writeWorkspaceFile(filename, content) {
 }
 async function runTerraformCommand(action) {
   await ensureWorkspace();
-  let cmd = "terraform fmt";
+  const env = getAugmentedEnv();
+  const tfBin = resolveBinary("terraform");
+  const tfsecBin = resolveBinary("tfsec");
+  const infracostBin = resolveBinary("infracost");
+  if (action === "tfsec") {
+    let rawStdout = "";
+    let rawStderr = "";
+    let hasError = false;
+    try {
+      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: WORKSPACE_PATH, env });
+      rawStdout = res.stdout;
+      rawStderr = res.stderr;
+    } catch (e) {
+      rawStdout = e.stdout || "";
+      rawStderr = e.stderr || e.message;
+      hasError = true;
+    }
+    const fullRaw = (rawStdout + "\n" + rawStderr).trim();
+    const findings = [];
+    try {
+      const jsonStart = rawStdout.indexOf("{");
+      const jsonEnd = rawStdout.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const parsed = JSON.parse(rawStdout.slice(jsonStart, jsonEnd + 1));
+        if (Array.isArray(parsed.results)) {
+          for (const r of parsed.results) {
+            findings.push({
+              id: r.rule_id || "tfsec-rule",
+              rule_id: r.rule_id || "",
+              severity: (r.severity || "MEDIUM").toUpperCase(),
+              description: r.description || r.rule_description || "Security misconfiguration detected",
+              resource: r.resource || "",
+              filename: r.location?.filename ? import_path3.default.basename(r.location.filename) : "main.tf",
+              startLine: r.location?.start_line || 1,
+              endLine: r.location?.end_line || 1,
+              resolution: r.resolution || "Apply recommended secure configuration attributes.",
+              explanation: r.explanation || "",
+              links: r.links || []
+            });
+          }
+        }
+      }
+    } catch {
+    }
+    const cleanDisplayOutput = findings.length > 0 ? `tfsec scan complete: found ${findings.length} security finding(s).
+
+` + findings.map((f) => `[${f.severity}] ${f.id} (${f.filename}:${f.startLine}) -> ${f.description}`).join("\n") : fullRaw || "tfsec scan completed: 0 security vulnerabilities found. Excellent!";
+    return {
+      success: findings.length === 0 && !hasError,
+      output: cleanDisplayOutput,
+      findings
+    };
+  }
+  if (action === "validate") {
+    let rawStdout = "";
+    let rawStderr = "";
+    let isSuccess = true;
+    try {
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      rawStdout = res.stdout;
+      rawStderr = res.stderr;
+    } catch (e) {
+      rawStdout = e.stdout || "";
+      rawStderr = e.stderr || e.message;
+      isSuccess = false;
+    }
+    const validationFindings = [];
+    try {
+      const jsonStart = rawStdout.indexOf("{");
+      const jsonEnd = rawStdout.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const parsed = JSON.parse(rawStdout.slice(jsonStart, jsonEnd + 1));
+        if (Array.isArray(parsed.diagnostics)) {
+          for (const d of parsed.diagnostics) {
+            validationFindings.push({
+              severity: d.severity || "error",
+              summary: d.summary || "Validation Issue",
+              detail: d.detail || "",
+              filename: d.range?.filename ? import_path3.default.basename(d.range.filename) : void 0,
+              startLine: d.range?.start?.line
+            });
+          }
+        }
+      }
+    } catch {
+    }
+    const textOutput = validationFindings.length > 0 ? `terraform validate: ${validationFindings.length} issue(s) detected.
+
+` + validationFindings.map((v) => `[${v.severity.toUpperCase()}] ${v.summary}: ${v.detail} (${v.filename || "workspace"}:${v.startLine || 1})`).join("\n") : (rawStdout + "\n" + rawStderr).trim() || "Success! The configuration is valid.";
+    return {
+      success: isSuccess && validationFindings.length === 0,
+      output: textOutput,
+      validationFindings
+    };
+  }
+  if (action === "infracost") {
+    let rawStdout = "";
+    let rawStderr = "";
+    let isSuccess = true;
+    try {
+      const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+      rawStdout = res.stdout;
+      rawStderr = res.stderr;
+    } catch (e) {
+      rawStdout = e.stdout || "";
+      rawStderr = e.stderr || e.message;
+      isSuccess = false;
+    }
+    const fullRaw = (rawStdout + "\n" + rawStderr).trim();
+    if (fullRaw.includes("INFRACOST_API_KEY is not set") || fullRaw.includes("infracost auth login")) {
+      return {
+        success: false,
+        output: "Infracost requires a free API key to calculate cloud pricing.\n\n1. Get your free key at: https://dashboard.infracost.io\n2. Paste it in TerraMind Settings -> API Keys (Infracost API Key), or set INFRACOST_API_KEY in .env.",
+        costSummary: {
+          apiKeyRequired: true,
+          message: "Infracost API key required. Go to Settings -> API Keys."
+        }
+      };
+    }
+    let costSummary;
+    try {
+      const jsonStart = rawStdout.indexOf("{");
+      const jsonEnd = rawStdout.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const parsed = JSON.parse(rawStdout.slice(jsonStart, jsonEnd + 1));
+        const resources = [];
+        if (Array.isArray(parsed.projects)) {
+          for (const proj of parsed.projects) {
+            if (proj.breakdown?.resources) {
+              for (const r of proj.breakdown.resources) {
+                resources.push({
+                  name: r.name,
+                  resourceType: r.resourceType || "",
+                  monthlyCost: r.monthlyCost ? `$${parseFloat(r.monthlyCost).toFixed(2)}` : "$0.00"
+                });
+              }
+            }
+          }
+        }
+        costSummary = {
+          totalMonthlyCost: parsed.totalMonthlyCost ? `$${parseFloat(parsed.totalMonthlyCost).toFixed(2)}` : "$0.00",
+          totalHourlyCost: parsed.totalHourlyCost ? `$${parseFloat(parsed.totalHourlyCost).toFixed(4)}` : "$0.00",
+          currency: parsed.currency || "USD",
+          resources
+        };
+      }
+    } catch {
+    }
+    const textOutput = costSummary?.totalMonthlyCost ? `Infracost Breakdown:
+Total Monthly Cost: ${costSummary.totalMonthlyCost} ${costSummary.currency || "USD"}
+
+` + (costSummary.resources?.map((r) => `\u2022 ${r.name} (${r.resourceType}): ${r.monthlyCost}/mo`).join("\n") || "No chargeable resources detected.") : fullRaw;
+    return {
+      success: isSuccess,
+      output: textOutput,
+      costSummary
+    };
+  }
+  let cmd = `${tfBin} fmt`;
   if (action === "init") {
-    cmd = "terraform init -backend=false";
-  } else if (action === "validate") {
-    cmd = "terraform validate";
+    cmd = `${tfBin} init -backend=false`;
   } else if (action === "plan") {
-    cmd = "terraform plan -no-color";
-  } else if (action === "tfsec") {
-    cmd = "tfsec . --no-colour";
+    cmd = `${tfBin} plan -no-color`;
   }
   try {
-    const { stdout, stderr } = await execPromise(cmd, { cwd: WORKSPACE_PATH });
+    const { stdout, stderr } = await execPromise(cmd, { cwd: WORKSPACE_PATH, env });
     return {
       success: true,
       output: (stdout + "\n" + (stderr || "")).trim()
@@ -80265,7 +80479,7 @@ async function workspaceRoutes(fastify2) {
   fastify2.post("/api/workspace/run", async (request, reply) => {
     const { action } = request.body;
     if (!action) {
-      return reply.status(400).send({ error: "action is required (init, fmt, validate, plan, tfsec)" });
+      return reply.status(400).send({ error: "action is required (init, fmt, validate, plan, tfsec, infracost)" });
     }
     try {
       const result = await runTerraformCommand(action);
@@ -80420,9 +80634,11 @@ async function authAndSettingsRoutes(fastify2) {
       openaiApiKey: settings["openai_api_key"] ? maskKey(settings["openai_api_key"]) : "",
       geminiApiKey: settings["gemini_api_key"] ? maskKey(settings["gemini_api_key"]) : "",
       anthropicApiKey: settings["anthropic_api_key"] ? maskKey(settings["anthropic_api_key"]) : "",
+      infracostApiKey: settings["infracost_api_key"] ? maskKey(settings["infracost_api_key"]) : "",
       hasOpenaiKey: Boolean(settings["openai_api_key"] || process.env.OPENAI_API_KEY),
       hasGeminiKey: Boolean(settings["gemini_api_key"] || process.env.GEMINI_API_KEY),
       hasAnthropicKey: Boolean(settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY),
+      hasInfracostKey: Boolean(settings["infracost_api_key"] || process.env.INFRACOST_API_KEY),
       // Azure AI Foundry / Azure OpenAI
       azureOpenaiEndpoint: settings["azure_openai_endpoint"] || process.env.AZURE_OPENAI_ENDPOINT || "",
       azureOpenaiApiKey: settings["azure_openai_api_key"] ? maskKey(settings["azure_openai_api_key"]) : "",
@@ -80458,6 +80674,9 @@ async function authAndSettingsRoutes(fastify2) {
     }
     if (body.anthropicApiKey !== void 0 && !body.anthropicApiKey.includes("\u2022\u2022\u2022\u2022")) {
       setSetting("anthropic_api_key", body.anthropicApiKey.trim());
+    }
+    if (body.infracostApiKey !== void 0 && !body.infracostApiKey.includes("\u2022\u2022\u2022\u2022")) {
+      setSetting("infracost_api_key", body.infracostApiKey.trim());
     }
     if (body.azureOpenaiEndpoint !== void 0) {
       setSetting("azure_openai_endpoint", body.azureOpenaiEndpoint.trim());
@@ -80506,6 +80725,7 @@ async function authAndSettingsRoutes(fastify2) {
     if (p === "openai") setSetting("openai_api_key", "");
     else if (p === "gemini") setSetting("gemini_api_key", "");
     else if (p === "anthropic") setSetting("anthropic_api_key", "");
+    else if (p === "infracost") setSetting("infracost_api_key", "");
     else if (p === "azure") {
       setSetting("azure_openai_endpoint", "");
       setSetting("azure_openai_api_key", "");
@@ -80698,7 +80918,7 @@ var possibleDistPaths = [
   import_path4.default.resolve(__dirname, "../web/dist"),
   import_path4.default.resolve(process.cwd(), "dist")
 ];
-var webDistPath = possibleDistPaths.find((p) => import_fs3.default.existsSync(import_path4.default.join(p, "index.html")));
+var webDistPath = possibleDistPaths.find((p) => import_fs4.default.existsSync(import_path4.default.join(p, "index.html")));
 if (webDistPath) {
   server.register(import_static.default, {
     root: webDistPath,

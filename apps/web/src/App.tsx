@@ -8,6 +8,7 @@ import { AuthModal } from './components/AuthModal';
 import { ShareProjectModal } from './components/ShareProjectModal';
 import { PrimaryRail, RailTab } from './components/PrimaryRail';
 import { SettingsView, SettingsSection } from './components/SettingsView';
+import { WorkspaceBar } from './components/WorkspaceBar';
 
 interface SuggestionCard {
   icon: string;
@@ -442,6 +443,15 @@ function App() {
     setTimeout(() => {
       refreshConversations();
     }, 400);
+  };
+
+  const handleFixWithAi = (issuePrompt: string, preferredAgent?: string) => {
+    if (preferredAgent === 'cost') {
+      setSelectedAgentId('agent_finops-cost-optimizer');
+    } else {
+      setSelectedAgentId('agent_tf-devops-expert');
+    }
+    handleSend(issuePrompt);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1243,6 +1253,18 @@ function App() {
             </span>
           </div>
         </div>
+
+        {/* Workspace Bar: CLI Execution, tfsec Security, Infracost & ⚡ Fix with AI */}
+        <WorkspaceBar
+          ollamaOnline={ollamaOnline}
+          onOllamaStatusChange={setOllamaOnline}
+          onFixWithAi={handleFixWithAi}
+          onOpenSettings={() => {
+            setSettingsSection('keys');
+            setRailTab('settings');
+            setSidebarOpen(true);
+          }}
+        />
 
         {/* Scrollable messages container */}
         <div className="scroll" id="scroll">

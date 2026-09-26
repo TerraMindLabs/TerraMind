@@ -129,6 +129,28 @@ function Ensure-Tfsec {
     }
 }
 
+function Ensure-Infracost {
+    if (Get-Command "infracost" -ErrorAction SilentlyContinue) {
+        $costVer = (infracost --version 2>&1 | Select-Object -First 1)
+        Write-Host " [OK] Found Infracost (Cloud Cost Estimator): $costVer" -ForegroundColor Green
+        return $true
+    }
+
+    Write-Host "`n [!] Infracost is not installed. Attempting automated installation..." -ForegroundColor Yellow
+
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        Write-Host " [pkg] Installing Infracost via winget..." -ForegroundColor Cyan
+        Invoke-CommandWithSpinner -Message "Installing Infracost" -CommandString "winget install Infracost.Infracost --accept-package-agreements --accept-source-agreements --silent"
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        if (Get-Command "infracost" -ErrorAction SilentlyContinue) {
+            Write-Host " [OK] Infracost installed successfully via winget!" -ForegroundColor Green
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Ensure-OllamaRunning {
     if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
         $running = $false
@@ -488,6 +510,7 @@ Write-Host " [OK] Database: Embedded SQLite with WAL mode ready (zero external D
 
 Ensure-Terraform | Out-Null
 Ensure-Tfsec | Out-Null
+Ensure-Infracost | Out-Null
 
 # 3. Deploy TerraMind Codebase if not local
 if (-not $isLocalRepo) {

@@ -106,9 +106,11 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
       openaiApiKey: settings['openai_api_key'] ? maskKey(settings['openai_api_key']) : '',
       geminiApiKey: settings['gemini_api_key'] ? maskKey(settings['gemini_api_key']) : '',
       anthropicApiKey: settings['anthropic_api_key'] ? maskKey(settings['anthropic_api_key']) : '',
+      infracostApiKey: settings['infracost_api_key'] ? maskKey(settings['infracost_api_key']) : '',
       hasOpenaiKey: Boolean(settings['openai_api_key'] || process.env.OPENAI_API_KEY),
       hasGeminiKey: Boolean(settings['gemini_api_key'] || process.env.GEMINI_API_KEY),
       hasAnthropicKey: Boolean(settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY),
+      hasInfracostKey: Boolean(settings['infracost_api_key'] || process.env.INFRACOST_API_KEY),
 
       // Azure AI Foundry / Azure OpenAI
       azureOpenaiEndpoint: settings['azure_openai_endpoint'] || process.env.AZURE_OPENAI_ENDPOINT || '',
@@ -152,6 +154,9 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
     if (body.anthropicApiKey !== undefined && !body.anthropicApiKey.includes('••••')) {
       setSetting('anthropic_api_key', body.anthropicApiKey.trim());
+    }
+    if (body.infracostApiKey !== undefined && !body.infracostApiKey.includes('••••')) {
+      setSetting('infracost_api_key', body.infracostApiKey.trim());
     }
 
     // Azure AI Foundry
@@ -209,6 +214,7 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     if (p === 'openai') setSetting('openai_api_key', '');
     else if (p === 'gemini') setSetting('gemini_api_key', '');
     else if (p === 'anthropic') setSetting('anthropic_api_key', '');
+    else if (p === 'infracost') setSetting('infracost_api_key', '');
     else if (p === 'azure') {
       setSetting('azure_openai_endpoint', '');
       setSetting('azure_openai_api_key', '');

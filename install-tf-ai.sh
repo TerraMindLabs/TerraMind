@@ -185,6 +185,27 @@ ensure_tfsec() {
     return 0
 }
 
+ensure_infracost() {
+    if command -v infracost &> /dev/null; then
+        local costVer=$(infracost --version 2>/dev/null | head -n 1)
+        echo -e "${GREEN}✅ Found Infracost (Cloud Cost Estimator): ${costVer}${NC}"
+        return 0
+    fi
+
+    echo -e "\n${YELLOW}⚙️ Infracost is not installed. Attempting automatic installation...${NC}"
+    if curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh 2>/dev/null; then
+        export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+        if command -v infracost &> /dev/null; then
+            local installedVer=$(infracost --version 2>/dev/null | head -n 1)
+            echo -e "${GREEN}✅ Infracost installed successfully: ${installedVer}${NC}"
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}⚠️ Could not automatically install Infracost. You can install it manually from: https://www.infracost.io/docs/${NC}"
+    return 0
+}
+
 ensure_nodejs() {
     export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
     if command -v node &> /dev/null && command -v npm &> /dev/null; then
@@ -592,6 +613,7 @@ echo -e "${GREEN}✅ Database: SQLite WAL embedded engine ready (zero setup requ
 
 ensure_terraform
 ensure_tfsec
+ensure_infracost
 
 # 3. Deploy TerraMind Codebase if not local
 if [ "$IS_LOCAL_REPO" = false ]; then
