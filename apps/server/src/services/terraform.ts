@@ -126,66 +126,6 @@ export async function listWorkspaceFiles(): Promise<Array<{ name: string; size: 
   return files;
 }
 
-export async function writeWorkspaceFile(
-  filename: string,
-  content: string
-): Promise<{ path: string; relPath: string; fmtOutput?: string; validateOutput?: string }> {
-  await ensureWorkspace();
-
-  // Strict Security: Reject any directory traversal sequences (.. or ../ or ..\)
-  if (filename.includes('..') || filename.includes('/../') || filename.includes('\\..\\')) {
-    throw new Error('Access denied: target path escapes workspace');
-  }
-
-  const cleanRelPath = filename.replace(/^[\\\/]+/, '');
-  const targetPath = path.resolve(WORKSPACE_PATH, cleanRelPath);
-  const normalizedWs = path.resolve(WORKSPACE_PATH);
-
-  if (!targetPath.toLowerCase().startsWith(normalizedWs.toLowerCase())) {
-    throw new Error('Access denied: target path escapes workspace');
-  }
-
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, content, 'utf8');
-
-  // Automatic Agent Action: If writing Terraform HCL, automatically run terraform fmt and terraform validate
-  let fmtOutput = '';
-  let validateOutput = '';
-
-  const fileDir = path.dirname(targetPath);
-  if (cleanRelPath.endsWith('.tf')) {
-    const env = getAugmentedEnv();
-    const tfBin = resolveBinary('terraform');
-
-    try {
-      const fmtRes = await execPromise(`${tfBin} fmt`, { cwd: fileDir, env });
-      fmtOutput = fmtRes.stdout.trim() || 'Success (Formatted cleanly)';
-    } catch (e: any) {
-      fmtOutput = e.stderr || e.stdout || e.message;
-    }
-
-    try {
-      const valRes = await execPromise(`${tfBin} validate`, { cwd: fileDir, env });
-      validateOutput = valRes.stdout.trim() || 'Success (Configuration is valid)';
-    } catch (e: any) {
-      const errMsg = e.stderr || e.stdout || e.message;
-      if (errMsg.includes('terraform init') || errMsg.includes('not been initialized')) {
-        try {
-          await execPromise(`${tfBin} init -backend=false`, { cwd: fileDir, env });
-          const retryVal = await execPromise(`${tfBin} validate`, { cwd: fileDir, env });
-          validateOutput = retryVal.stdout.trim() || 'Success (Configuration is valid)';
-        } catch {
-          validateOutput = 'Syntax parsed. Requires provider credentials / backend initialization for full validation.';
-        }
-      } else {
-        validateOutput = errMsg;
-      }
-    }
-  }
-
-  return { path: targetPath, relPath: cleanRelPath, fmtOutput, validateOutput };
-}
-
 export interface SecurityFinding {
   id: string;
   rule_id: string;
@@ -223,16 +163,264 @@ export interface InfracostSummary {
   message?: string;
 }
 
+export interface FileVerificationResult {
+  filename: string;
+  fmt: { success: boolean; formatted: boolean; output: string };
+  validate: { success: boolean; errorCount: number; warningCount: number; diagnostics: ValidationFinding[] };
+  tfsec: { success: boolean; issueCount: number; findings: SecurityFinding[] };
+  infracost: InfracostSummary;
+  plan: { success: boolean; summary: string };
+  overallStatus: 'passed' | 'warning' | 'error';
+}
+
 export interface TerraformCommandResult {
   success: boolean;
   output: string;
   findings?: SecurityFinding[];
   validationFindings?: ValidationFinding[];
   costSummary?: InfracostSummary;
+  verification?: FileVerificationResult;
+}
+
+/**
+ * Executes full pre-flight verification gate: fmt + validate + tfsec + infracost + speculative plan
+ */
+export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileVerificationResult> {
+  await ensureWorkspace();
+  const env = getAugmentedEnv();
+  const tfBin = resolveBinary('terraform');
+  const tfsecBin = resolveBinary('tfsec');
+  const infracostBin = resolveBinary('infracost');
+
+  const cleanTarget = targetRelPath ? targetRelPath.replace(/^[\\\/]+/, '') : '';
+  const fileBasename = cleanTarget ? path.basename(cleanTarget) : 'workspace';
+
+  // 1. fmt check
+  let fmtSuccess = true;
+  let isFormatted = false;
+  let fmtOutput = '';
+  try {
+    const fmtTarget = cleanTarget ? `"${path.resolve(WORKSPACE_PATH, cleanTarget)}"` : '';
+    const res = await execPromise(`${tfBin} fmt ${fmtTarget}`, { cwd: WORKSPACE_PATH, env });
+    fmtOutput = res.stdout.trim() || 'Clean';
+    isFormatted = Boolean(res.stdout && res.stdout.includes(fileBasename));
+  } catch (e: any) {
+    fmtSuccess = false;
+    fmtOutput = e.stderr || e.stdout || e.message;
+  }
+
+  // 2. validate check
+  let valSuccess = true;
+  const diagnostics: ValidationFinding[] = [];
+  try {
+    let valRaw = '';
+    try {
+      const res = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+      valRaw = res.stdout;
+    } catch (e: any) {
+      valRaw = e.stdout || '';
+      if ((e.stderr || e.stdout || '').includes('init')) {
+        try {
+          await execPromise(`${tfBin} init -backend=false`, { cwd: WORKSPACE_PATH, env });
+          const retryRes = await execPromise(`${tfBin} validate -json`, { cwd: WORKSPACE_PATH, env });
+          valRaw = retryRes.stdout;
+        } catch {}
+      }
+    }
+
+    const jsonStart = valRaw.indexOf('{');
+    const jsonEnd = valRaw.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      const parsed = JSON.parse(valRaw.slice(jsonStart, jsonEnd + 1));
+      if (Array.isArray(parsed.diagnostics)) {
+        for (const d of parsed.diagnostics) {
+          const diagFile = d.range?.filename ? path.basename(d.range.filename) : undefined;
+          if (!cleanTarget || !diagFile || diagFile === fileBasename) {
+            diagnostics.push({
+              severity: d.severity || 'error',
+              summary: d.summary || 'Validation Issue',
+              detail: d.detail || '',
+              filename: diagFile,
+              startLine: d.range?.start?.line
+            });
+          }
+        }
+      }
+      valSuccess = Boolean(parsed.valid && diagnostics.filter(d => d.severity === 'error').length === 0);
+    }
+  } catch {
+    valSuccess = false;
+  }
+
+  // 3. tfsec check
+  let tfsecSuccess = true;
+  const securityFindings: SecurityFinding[] = [];
+  try {
+    let secStdout = '';
+    try {
+      const res = await execPromise(`${tfsecBin} . --format json --no-colour`, { cwd: WORKSPACE_PATH, env });
+      secStdout = res.stdout;
+    } catch (e: any) {
+      secStdout = e.stdout || '';
+    }
+
+    const jsonStart = secStdout.indexOf('{');
+    const jsonEnd = secStdout.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      const parsed = JSON.parse(secStdout.slice(jsonStart, jsonEnd + 1));
+      if (Array.isArray(parsed.results)) {
+        for (const r of parsed.results) {
+          const findingFile = r.location?.filename ? path.basename(r.location.filename) : 'main.tf';
+          if (!cleanTarget || findingFile === fileBasename) {
+            securityFindings.push({
+              id: r.rule_id || 'tfsec-rule',
+              rule_id: r.rule_id || '',
+              severity: (r.severity || 'MEDIUM').toUpperCase(),
+              description: r.description || r.rule_description || 'Security misconfiguration detected',
+              resource: r.resource || '',
+              filename: findingFile,
+              startLine: r.location?.start_line || 1,
+              endLine: r.location?.end_line || 1,
+              resolution: r.resolution || 'Apply recommended secure configuration attributes.',
+              explanation: r.explanation || '',
+              links: r.links || []
+            });
+          }
+        }
+      }
+    }
+    tfsecSuccess = securityFindings.length === 0;
+  } catch {
+    tfsecSuccess = false;
+  }
+
+  // 4. infracost check
+  let infracostSummary: InfracostSummary = { totalMonthlyCost: '$0.00', currency: 'USD' };
+  try {
+    const res = await execPromise(`${infracostBin} breakdown --path . --format json`, { cwd: WORKSPACE_PATH, env });
+    const jsonStart = res.stdout.indexOf('{');
+    const jsonEnd = res.stdout.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      const parsed = JSON.parse(res.stdout.slice(jsonStart, jsonEnd + 1));
+      const resources: CostResource[] = [];
+      if (Array.isArray(parsed.projects)) {
+        for (const proj of parsed.projects) {
+          if (proj.breakdown?.resources) {
+            for (const r of proj.breakdown.resources) {
+              resources.push({
+                name: r.name,
+                resourceType: r.resourceType || '',
+                monthlyCost: r.monthlyCost ? `$${parseFloat(r.monthlyCost).toFixed(2)}` : '$0.00'
+              });
+            }
+          }
+        }
+      }
+      infracostSummary = {
+        totalMonthlyCost: parsed.totalMonthlyCost ? `$${parseFloat(parsed.totalMonthlyCost).toFixed(2)}` : '$0.00',
+        totalHourlyCost: parsed.totalHourlyCost ? `$${parseFloat(parsed.totalHourlyCost).toFixed(4)}` : '$0.00',
+        currency: parsed.currency || 'USD',
+        resources
+      };
+    }
+  } catch (e: any) {
+    const errText = (e.stdout || '') + (e.stderr || '');
+    if (errText.includes('INFRACOST_API_KEY')) {
+      infracostSummary = { apiKeyRequired: true, message: 'Infracost API key required.' };
+    }
+  }
+
+  // 5. speculative plan check
+  let planSuccess = true;
+  let planSummary = 'Plan ready';
+  try {
+    const res = await execPromise(`${tfBin} plan -no-color -compact-warnings`, { cwd: WORKSPACE_PATH, env });
+    const match = res.stdout.match(/Plan:\s*(\d+\s*to\s*add,\s*\d+\s*to\s*change,\s*\d+\s*to\s*destroy)/i);
+    if (match) {
+      planSummary = match[1];
+    } else if (res.stdout.includes('No changes.')) {
+      planSummary = 'No changes (State clean)';
+    } else {
+      planSummary = 'Speculative plan complete';
+    }
+  } catch (e: any) {
+    planSuccess = false;
+    const errOut = (e.stdout || '') + (e.stderr || e.message);
+    const firstLine = errOut.trim().split('\n')[0].slice(0, 80);
+    planSummary = firstLine || 'Requires provider credentials for full plan';
+  }
+
+  const errorCount = diagnostics.filter(d => d.severity === 'error').length;
+  const criticalSecCount = securityFindings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH').length;
+
+  let overallStatus: 'passed' | 'warning' | 'error' = 'passed';
+  if (errorCount > 0 || criticalSecCount > 0) {
+    overallStatus = 'error';
+  } else if (diagnostics.length > 0 || securityFindings.length > 0) {
+    overallStatus = 'warning';
+  }
+
+  return {
+    filename: fileBasename,
+    fmt: { success: fmtSuccess, formatted: isFormatted, output: fmtOutput },
+    validate: { success: valSuccess, errorCount, warningCount: diagnostics.length - errorCount, diagnostics },
+    tfsec: { success: tfsecSuccess, issueCount: securityFindings.length, findings: securityFindings },
+    infracost: infracostSummary,
+    plan: { success: planSuccess, summary: planSummary },
+    overallStatus
+  };
+}
+
+export async function writeWorkspaceFile(
+  filename: string,
+  content: string
+): Promise<{
+  path: string;
+  relPath: string;
+  fmtOutput?: string;
+  validateOutput?: string;
+  verification?: FileVerificationResult;
+}> {
+  await ensureWorkspace();
+
+  // Strict Security: Reject any directory traversal sequences (.. or ../ or ..\)
+  if (filename.includes('..') || filename.includes('/../') || filename.includes('\\..\\')) {
+    throw new Error('Access denied: target path escapes workspace');
+  }
+
+  const cleanRelPath = filename.replace(/^[\\\/]+/, '');
+  const targetPath = path.resolve(WORKSPACE_PATH, cleanRelPath);
+  const normalizedWs = path.resolve(WORKSPACE_PATH);
+
+  if (!targetPath.toLowerCase().startsWith(normalizedWs.toLowerCase())) {
+    throw new Error('Access denied: target path escapes workspace');
+  }
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, content, 'utf8');
+
+  // Automatic Pre-flight Gate: fmt + validate + tfsec + infracost + plan
+  let verification: FileVerificationResult | undefined;
+  if (cleanRelPath.endsWith('.tf')) {
+    try {
+      verification = await verifyWorkspaceFile(cleanRelPath);
+    } catch (e) {
+      console.warn('[Workspace] verifyWorkspaceFile notification:', e);
+    }
+  }
+
+  return {
+    path: targetPath,
+    relPath: cleanRelPath,
+    fmtOutput: verification?.fmt.output || 'Success (Formatted cleanly)',
+    validateOutput: verification?.validate.success ? 'Success (Configuration is valid)' : 'Validation issues detected',
+    verification
+  };
 }
 
 export async function runTerraformCommand(
-  action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost'
+  action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost' | 'verify',
+  targetFile?: string
 ): Promise<TerraformCommandResult> {
   await ensureWorkspace();
   const env = getAugmentedEnv();
@@ -240,6 +428,27 @@ export async function runTerraformCommand(
   const tfBin = resolveBinary('terraform');
   const tfsecBin = resolveBinary('tfsec');
   const infracostBin = resolveBinary('infracost');
+
+  const cleanTarget = targetFile ? targetFile.replace(/^[\\\/]+/, '') : '';
+
+  if (action === 'verify') {
+    const verification = await verifyWorkspaceFile(cleanTarget);
+    const summary = `Full Verification Gate (${verification.filename}):\n` +
+      `• fmt: ${verification.fmt.success ? (verification.fmt.formatted ? 'Formatted' : 'Clean') : 'Failed'}\n` +
+      `• validate: ${verification.validate.success ? 'Valid' : `${verification.validate.errorCount} Error(s)`}\n` +
+      `• tfsec: ${verification.tfsec.issueCount === 0 ? '0 Security Issues' : `${verification.tfsec.issueCount} Issue(s)`}\n` +
+      `• infracost: ${verification.infracost.totalMonthlyCost || 'N/A'}/mo\n` +
+      `• plan: ${verification.plan.summary}`;
+
+    return {
+      success: verification.overallStatus === 'passed',
+      output: summary,
+      findings: verification.tfsec.findings,
+      validationFindings: verification.validate.diagnostics,
+      costSummary: verification.infracost,
+      verification
+    };
+  }
 
   if (action === 'tfsec') {
     let rawStdout = '';
@@ -251,16 +460,14 @@ export async function runTerraformCommand(
       rawStdout = res.stdout;
       rawStderr = res.stderr;
     } catch (e: any) {
-      // tfsec returns exit code 1 when security issues are discovered
       rawStdout = e.stdout || '';
       rawStderr = e.stderr || e.message;
       hasError = true;
     }
 
     const fullRaw = (rawStdout + '\n' + rawStderr).trim();
-    const findings: SecurityFinding[] = [];
+    let findings: SecurityFinding[] = [];
 
-    // Parse JSON results
     try {
       const jsonStart = rawStdout.indexOf('{');
       const jsonEnd = rawStdout.lastIndexOf('}');
@@ -268,28 +475,29 @@ export async function runTerraformCommand(
         const parsed = JSON.parse(rawStdout.slice(jsonStart, jsonEnd + 1));
         if (Array.isArray(parsed.results)) {
           for (const r of parsed.results) {
-            findings.push({
-              id: r.rule_id || 'tfsec-rule',
-              rule_id: r.rule_id || '',
-              severity: (r.severity || 'MEDIUM').toUpperCase(),
-              description: r.description || r.rule_description || 'Security misconfiguration detected',
-              resource: r.resource || '',
-              filename: r.location?.filename ? path.basename(r.location.filename) : 'main.tf',
-              startLine: r.location?.start_line || 1,
-              endLine: r.location?.end_line || 1,
-              resolution: r.resolution || 'Apply recommended secure configuration attributes.',
-              explanation: r.explanation || '',
-              links: r.links || []
-            });
+            const findingFile = r.location?.filename ? path.basename(r.location.filename) : 'main.tf';
+            if (!cleanTarget || findingFile === path.basename(cleanTarget)) {
+              findings.push({
+                id: r.rule_id || 'tfsec-rule',
+                rule_id: r.rule_id || '',
+                severity: (r.severity || 'MEDIUM').toUpperCase(),
+                description: r.description || r.rule_description || 'Security misconfiguration detected',
+                resource: r.resource || '',
+                filename: findingFile,
+                startLine: r.location?.start_line || 1,
+                endLine: r.location?.end_line || 1,
+                resolution: r.resolution || 'Apply recommended secure configuration attributes.',
+                explanation: r.explanation || '',
+                links: r.links || []
+              });
+            }
           }
         }
       }
-    } catch {
-      // Keep raw output if JSON parse fails
-    }
+    } catch {}
 
     const cleanDisplayOutput = findings.length > 0
-      ? `tfsec scan complete: found ${findings.length} security finding(s).\n\n` +
+      ? `tfsec scan complete: found ${findings.length} security finding(s)${cleanTarget ? ` in ${cleanTarget}` : ''}.\n\n` +
         findings.map(f => `[${f.severity}] ${f.id} (${f.filename}:${f.startLine}) -> ${f.description}`).join('\n')
       : fullRaw || 'tfsec scan completed: 0 security vulnerabilities found. Excellent!';
 
@@ -315,7 +523,7 @@ export async function runTerraformCommand(
       isSuccess = false;
     }
 
-    const validationFindings: ValidationFinding[] = [];
+    let validationFindings: ValidationFinding[] = [];
     try {
       const jsonStart = rawStdout.indexOf('{');
       const jsonEnd = rawStdout.lastIndexOf('}');
@@ -323,20 +531,23 @@ export async function runTerraformCommand(
         const parsed = JSON.parse(rawStdout.slice(jsonStart, jsonEnd + 1));
         if (Array.isArray(parsed.diagnostics)) {
           for (const d of parsed.diagnostics) {
-            validationFindings.push({
-              severity: d.severity || 'error',
-              summary: d.summary || 'Validation Issue',
-              detail: d.detail || '',
-              filename: d.range?.filename ? path.basename(d.range.filename) : undefined,
-              startLine: d.range?.start?.line
-            });
+            const diagFile = d.range?.filename ? path.basename(d.range.filename) : undefined;
+            if (!cleanTarget || !diagFile || diagFile === path.basename(cleanTarget)) {
+              validationFindings.push({
+                severity: d.severity || 'error',
+                summary: d.summary || 'Validation Issue',
+                detail: d.detail || '',
+                filename: diagFile,
+                startLine: d.range?.start?.line
+              });
+            }
           }
         }
       }
     } catch {}
 
     const textOutput = validationFindings.length > 0
-      ? `terraform validate: ${validationFindings.length} issue(s) detected.\n\n` +
+      ? `terraform validate: ${validationFindings.length} issue(s) detected${cleanTarget ? ` in ${cleanTarget}` : ''}.\n\n` +
         validationFindings.map(v => `[${v.severity.toUpperCase()}] ${v.summary}: ${v.detail} (${v.filename || 'workspace'}:${v.startLine || 1})`).join('\n')
       : (rawStdout + '\n' + rawStderr).trim() || 'Success! The configuration is valid.';
 
@@ -421,7 +632,9 @@ export async function runTerraformCommand(
 
   // Fallback standard actions: init, fmt, plan
   let cmd = `${tfBin} fmt`;
-  if (action === 'init') {
+  if (action === 'fmt' && cleanTarget) {
+    cmd = `${tfBin} fmt "${path.resolve(WORKSPACE_PATH, cleanTarget)}"`;
+  } else if (action === 'init') {
     cmd = `${tfBin} init -backend=false`;
   } else if (action === 'plan') {
     cmd = `${tfBin} plan -no-color`;

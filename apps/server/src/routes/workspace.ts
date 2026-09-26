@@ -3,7 +3,8 @@ import {
   WORKSPACE_PATH,
   listWorkspaceFiles,
   writeWorkspaceFile,
-  runTerraformCommand
+  runTerraformCommand,
+  verifyWorkspaceFile
 } from '../services/terraform';
 import { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, installOllama } from '../services/ollama';
 
@@ -24,19 +25,34 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 2. Run Terraform CLI action (fmt, validate, plan, init, tfsec, infracost)
+  // 2. Run Terraform CLI action (fmt, validate, plan, init, tfsec, infracost, verify)
   fastify.post('/api/workspace/run', async (request, reply) => {
-    const { action } = request.body as { action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost' };
+    const { action, targetFile } = request.body as {
+      action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost' | 'verify';
+      targetFile?: string;
+    };
     if (!action) {
-      return reply.status(400).send({ error: 'action is required (init, fmt, validate, plan, tfsec, infracost)' });
+      return reply.status(400).send({ error: 'action is required (init, fmt, validate, plan, tfsec, infracost, verify)' });
     }
 
     try {
-      const result = await runTerraformCommand(action);
+      const result = await runTerraformCommand(action, targetFile);
       return result;
     } catch (err: any) {
       fastify.log.error(err);
       return reply.status(500).send({ error: 'Failed to run Terraform action' });
+    }
+  });
+
+  // 2b. Full pre-flight verification gate
+  fastify.post('/api/workspace/verify', async (request, reply) => {
+    const { filename } = (request.body as { filename?: string }) || {};
+    try {
+      const result = await verifyWorkspaceFile(filename);
+      return { success: result.overallStatus === 'passed', verification: result };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to run verification gate' });
     }
   });
 

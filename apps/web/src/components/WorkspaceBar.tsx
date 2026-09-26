@@ -36,6 +36,16 @@ export interface InfracostSummary {
   message?: string;
 }
 
+export interface FileVerificationResult {
+  filename: string;
+  fmt: { success: boolean; formatted: boolean; output: string };
+  validate: { success: boolean; errorCount: number; warningCount: number; diagnostics: ValidationFinding[] };
+  tfsec: { success: boolean; issueCount: number; findings: SecurityFinding[] };
+  infracost: InfracostSummary;
+  plan: { success: boolean; summary: string };
+  overallStatus: 'passed' | 'warning' | 'error';
+}
+
 interface WorkspaceFile {
   name: string;
   size: number;
@@ -56,12 +66,14 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
 }) => {
   const [workspacePath, setWorkspacePath] = useState('Terraform');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [selectedTargetFile, setSelectedTargetFile] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [terminalOutput, setTerminalOutput] = useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'findings' | 'validation' | 'cost' | 'terminal'>('terminal');
+  const [activeTab, setActiveTab] = useState<'verification' | 'findings' | 'validation' | 'cost' | 'terminal'>('terminal');
+  const [verificationResult, setVerificationResult] = useState<FileVerificationResult | null>(null);
   const [securityFindings, setSecurityFindings] = useState<SecurityFinding[]>([]);
   const [validationFindings, setValidationFindings] = useState<ValidationFinding[]>([]);
   const [costSummary, setCostSummary] = useState<InfracostSummary | null>(null);
@@ -86,27 +98,29 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const handleRunCommand = async (action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost') => {
+  const handleRunCommand = async (action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost' | 'verify') => {
     setIsRunning(true);
     setActiveAction(action);
     setConsoleOpen(true);
 
+    const targetLabel = selectedTargetFile ? `[${selectedTargetFile}]` : '[All Files]';
     const actionLabels: Record<string, string> = {
-      fmt: 'terraform fmt',
-      validate: 'terraform validate',
-      plan: 'terraform plan speculative',
+      fmt: `terraform fmt ${targetLabel}`,
+      validate: `terraform validate ${targetLabel}`,
+      plan: `terraform plan speculative ${targetLabel}`,
       init: 'terraform init -backend=false',
-      tfsec: 'tfsec static security scanner',
-      infracost: 'infracost cloud cost breakdown'
+      tfsec: `tfsec static security scanner ${targetLabel}`,
+      infracost: 'infracost cloud cost breakdown',
+      verify: `Full Pre-Flight Verification Gate ${targetLabel}`
     };
 
-    setTerminalOutput(`$ ${actionLabels[action] || action} ...\nExecuting against workspace: ${workspacePath} ...\n`);
+    setTerminalOutput(`$ ${actionLabels[action] || action} ...\nExecuting on workspace: ${workspacePath} ...\n`);
 
     try {
       const res = await fetch('/api/workspace/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action, targetFile: selectedTargetFile || undefined })
       });
       const data = await res.json();
 
@@ -116,7 +130,13 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         (data.output || (data.success ? 'Execution finished cleanly.' : 'Execution completed.'))
       );
 
-      if (action === 'tfsec') {
+      if (action === 'verify' && data.verification) {
+        setVerificationResult(data.verification);
+        setSecurityFindings(data.verification.tfsec.findings || []);
+        setValidationFindings(data.verification.validate.diagnostics || []);
+        setCostSummary(data.verification.infracost || null);
+        setActiveTab('verification');
+      } else if (action === 'tfsec') {
         const findings: SecurityFinding[] = data.findings || [];
         setSecurityFindings(findings);
         if (findings.length > 0) {
@@ -189,20 +209,40 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         flexWrap: 'wrap',
         gap: '8px'
       }}>
-        <div className="workspace-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="workspace-info" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '13px' }}>📁</span>
           <span className="workspace-path" title={workspacePath} style={{ fontWeight: 600, color: 'var(--text)' }}>
             {workspacePath.split(/[\/\\]/).filter(Boolean).pop() || 'Terraform'}
           </span>
-          <span style={{
-            fontSize: '11px',
-            padding: '1px 6px',
-            borderRadius: '4px',
-            backgroundColor: 'var(--hover)',
-            color: 'var(--muted)'
-          }}>
-            {files.length} .tf files
-          </span>
+
+          {/* Target File Dropdown (Part 2: Point to existing files) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>Target:</span>
+            <select
+              value={selectedTargetFile}
+              onChange={(e) => setSelectedTargetFile(e.target.value)}
+              style={{
+                padding: '3px 8px',
+                borderRadius: '5px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: '11.5px',
+                fontWeight: 500,
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+              title="Select an existing file in your workspace to scan, validate, or estimate cost"
+            >
+              <option value="">All Files ({files.length})</option>
+              {files.map((f) => (
+                <option key={f.name} value={f.name}>
+                  📄 {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {costSummary?.totalMonthlyCost && (
             <span style={{
               fontSize: '11.5px',
@@ -218,11 +258,34 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         </div>
 
         <div className="workspace-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {/* 1-Click Verification Gate for Selected File or All Files */}
+          <button
+            className="ws-action-btn"
+            onClick={() => handleRunCommand('verify')}
+            disabled={isRunning}
+            title="Execute Full Pre-Flight Verification Gate: fmt + validate + tfsec + Infracost + plan"
+            style={{
+              padding: '4px 11px',
+              borderRadius: '5px',
+              border: '1px solid #10b981',
+              background: 'rgba(16, 185, 129, 0.12)',
+              color: '#10b981',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            🚀 Pre-flight Gate
+          </button>
+
           <button
             className="ws-action-btn"
             onClick={() => handleRunCommand('fmt')}
             disabled={isRunning}
-            title="Run 'terraform fmt' to format files"
+            title={`Run 'terraform fmt' on ${selectedTargetFile || 'all files'}`}
             style={{
               padding: '4px 9px',
               borderRadius: '5px',
@@ -244,7 +307,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             className="ws-action-btn"
             onClick={() => handleRunCommand('validate')}
             disabled={isRunning}
-            title="Run 'terraform validate'"
+            title={`Run 'terraform validate' on ${selectedTargetFile || 'workspace'}`}
             style={{
               padding: '4px 9px',
               borderRadius: '5px',
@@ -288,7 +351,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             className="ws-action-btn"
             onClick={() => handleRunCommand('tfsec')}
             disabled={isRunning}
-            title="Run 'tfsec' static security scanner"
+            title={`Run 'tfsec' security scanner on ${selectedTargetFile || 'workspace'}`}
             style={{
               padding: '4px 9px',
               borderRadius: '5px',
@@ -310,7 +373,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             className="ws-action-btn"
             onClick={() => handleRunCommand('infracost')}
             disabled={isRunning}
-            title="Run 'infracost' to estimate cloud monthly cost"
+            title="Run 'infracost' to estimate monthly cloud cost"
             style={{
               padding: '4px 9px',
               borderRadius: '5px',
@@ -390,7 +453,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
           backgroundColor: 'var(--side)',
           borderTop: '1px solid var(--border)',
           borderBottom: '1px solid var(--border)',
-          maxHeight: '340px',
+          maxHeight: '360px',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 50
@@ -404,22 +467,27 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             borderBottom: '1px solid var(--border)',
             backgroundColor: 'var(--bg)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={() => setActiveTab('terminal')}
-                style={{
-                  background: activeTab === 'terminal' ? 'var(--hover)' : 'transparent',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '4px 10px',
-                  fontSize: '12px',
-                  fontWeight: activeTab === 'terminal' ? 600 : 400,
-                  color: 'var(--text)',
-                  cursor: 'pointer'
-                }}
-              >
-                💻 Terminal Output{activeAction ? ` (${activeAction})` : ''}
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {verificationResult && (
+                <button
+                  onClick={() => setActiveTab('verification')}
+                  style={{
+                    background: activeTab === 'verification' ? 'var(--hover)' : 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 10px',
+                    fontSize: '12px',
+                    fontWeight: activeTab === 'verification' ? 600 : 400,
+                    color: verificationResult.overallStatus === 'passed' ? '#10b981' : (verificationResult.overallStatus === 'error' ? '#ef4444' : '#f59e0b'),
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  🚀 Pre-flight Scorecard ({verificationResult.overallStatus.toUpperCase()})
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab('findings')}
@@ -474,6 +542,22 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
               >
                 💰 Cloud Cost {costSummary?.totalMonthlyCost ? `(${costSummary.totalMonthlyCost})` : ''}
               </button>
+
+              <button
+                onClick={() => setActiveTab('terminal')}
+                style={{
+                  background: activeTab === 'terminal' ? 'var(--hover)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: activeTab === 'terminal' ? 600 : 400,
+                  color: 'var(--text)',
+                  cursor: 'pointer'
+                }}
+              >
+                💻 Terminal Output{activeAction ? ` (${activeAction})` : ''}
+              </button>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -483,6 +567,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
                   setSecurityFindings([]);
                   setValidationFindings([]);
                   setCostSummary(null);
+                  setVerificationResult(null);
                 }}
                 style={{
                   background: 'none',
@@ -515,27 +600,109 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
 
           {/* Drawer Tab Content */}
           <div style={{ overflowY: 'auto', flex: 1, padding: '10px 14px' }}>
-            {/* 1. Terminal Output Tab */}
-            {activeTab === 'terminal' && (
-              <pre style={{
-                margin: 0,
-                fontFamily: 'JetBrains Mono, Menlo, monospace',
-                fontSize: '12px',
-                lineHeight: '1.5',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                color: 'var(--text)'
-              }}>
-                <code>{terminalOutput || 'Ready. Click fmt, validate, plan, tfsec, or Infracost to execute commands.'}</code>
-              </pre>
+            {/* 0. Pre-Flight Verification Gate Scorecard */}
+            {activeTab === 'verification' && verificationResult && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: verificationResult.overallStatus === 'passed'
+                    ? 'rgba(16, 185, 129, 0.1)'
+                    : verificationResult.overallStatus === 'error'
+                    ? 'rgba(239, 68, 68, 0.1)'
+                    : 'rgba(245, 158, 11, 0.1)',
+                  border: `1px solid ${
+                    verificationResult.overallStatus === 'passed' ? '#10b981' : verificationResult.overallStatus === 'error' ? '#ef4444' : '#f59e0b'
+                  }`
+                }}>
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: '13px', textTransform: 'uppercase' }}>
+                      Pre-Flight Gate: {verificationResult.overallStatus} ({verificationResult.filename})
+                    </span>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                      Checked: fmt • validate • tfsec security • Infracost • speculative plan
+                    </div>
+                  </div>
+                  {totalIssuesCount > 0 && (
+                    <button
+                      onClick={() => {
+                        const firstFinding = securityFindings[0];
+                        const prompt = firstFinding
+                          ? `Fix security vulnerability [${firstFinding.id}] in ${firstFinding.filename}: ${firstFinding.description}. Recommendation: ${firstFinding.resolution}`
+                          : `Fix Terraform validation issues in ${verificationResult.filename}: ${validationFindings.map(v => v.summary).join('; ')}`;
+                        onFixWithAi(prompt, 'security');
+                        setConsoleOpen(false);
+                      }}
+                      style={{
+                        backgroundColor: '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '5px',
+                        padding: '6px 14px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ⚡ Fix All with AI
+                    </button>
+                  )}
+                </div>
+
+                {/* Scorecard 5-Pillar Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                  {/* fmt */}
+                  <div style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>⚡ FORMAT (FMT)</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '3px', color: verificationResult.fmt.success ? '#10b981' : '#ef4444' }}>
+                      {verificationResult.fmt.success ? (verificationResult.fmt.formatted ? 'Reformatted' : 'Clean') : 'Syntax Error'}
+                    </div>
+                  </div>
+
+                  {/* validate */}
+                  <div style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>🔍 SYNTAX VALIDATION</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '3px', color: verificationResult.validate.success ? '#10b981' : '#ef4444' }}>
+                      {verificationResult.validate.success ? 'Valid HCL' : `${verificationResult.validate.errorCount} Error(s)`}
+                    </div>
+                  </div>
+
+                  {/* tfsec */}
+                  <div style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>🛡️ TFSEC SECURITY</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '3px', color: verificationResult.tfsec.issueCount === 0 ? '#10b981' : '#f59e0b' }}>
+                      {verificationResult.tfsec.issueCount === 0 ? '0 Vulnerabilities' : `${verificationResult.tfsec.issueCount} Finding(s)`}
+                    </div>
+                  </div>
+
+                  {/* Infracost */}
+                  <div style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>💰 CLOUD COST</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '3px', color: 'var(--blue)' }}>
+                      {verificationResult.infracost.totalMonthlyCost ? `${verificationResult.infracost.totalMonthlyCost}/mo` : 'Est Ready'}
+                    </div>
+                  </div>
+
+                  {/* Speculative plan */}
+                  <div style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 600 }}>📋 SPECULATIVE PLAN</div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 500, marginTop: '3px', color: 'var(--text)' }}>
+                      {verificationResult.plan.summary}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
-            {/* 2. Security Findings Tab with ⚡ Fix with AI */}
+            {/* 1. Security Findings Tab with ⚡ Fix with AI */}
             {activeTab === 'findings' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {securityFindings.length === 0 ? (
                   <div style={{ padding: '16px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
-                    🛡️ No security misconfigurations found. Click <strong>tfsec</strong> to scan your workspace.
+                    🛡️ No security misconfigurations found. Click <strong>tfsec</strong> or <strong>Pre-flight Gate</strong> to scan.
                   </div>
                 ) : (
                   securityFindings.map((finding, idx) => {
@@ -611,7 +778,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
                               gap: '4px',
                               boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                             }}
-                            title="Click to have AI automatically remediate this issue with a diff"
+                            title="Click to have AI automatically remediate this issue on this file"
                           >
                             ⚡ Fix with AI
                           </button>
@@ -639,7 +806,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
               </div>
             )}
 
-            {/* 3. Validation Findings Tab with ⚡ Fix with AI */}
+            {/* 2. Validation Findings Tab with ⚡ Fix with AI */}
             {activeTab === 'validation' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {validationFindings.length === 0 ? (
@@ -717,7 +884,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
               </div>
             )}
 
-            {/* 4. Infracost Cloud Cost Tab */}
+            {/* 3. Infracost Cloud Cost Tab */}
             {activeTab === 'cost' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {costSummary?.apiKeyRequired ? (
@@ -834,6 +1001,21 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
                   </div>
                 )}
               </div>
+            )}
+
+            {/* 4. Terminal Output Tab */}
+            {activeTab === 'terminal' && (
+              <pre style={{
+                margin: 0,
+                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                fontSize: '12px',
+                lineHeight: '1.5',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                color: 'var(--text)'
+              }}>
+                <code>{terminalOutput || 'Ready. Click Pre-flight Gate, fmt, validate, plan, tfsec, or Infracost to execute commands.'}</code>
+              </pre>
             )}
           </div>
         </div>

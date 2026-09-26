@@ -1317,6 +1317,7 @@ function App() {
                       handleSend(lastUserMsg.content);
                     }
                   }}
+                  onFixWithAi={handleFixWithAi}
                 />
               ))
             )}

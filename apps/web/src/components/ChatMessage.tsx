@@ -1,5 +1,42 @@
 import React, { useState } from 'react';
 
+export interface SecurityFinding {
+  id: string;
+  rule_id: string;
+  severity: string;
+  description: string;
+  resource: string;
+  filename: string;
+  startLine: number;
+  endLine: number;
+  resolution: string;
+}
+
+export interface ValidationFinding {
+  severity: string;
+  summary: string;
+  detail: string;
+  filename?: string;
+  startLine?: number;
+}
+
+export interface InfracostSummary {
+  totalMonthlyCost?: string;
+  totalHourlyCost?: string;
+  currency?: string;
+  apiKeyRequired?: boolean;
+}
+
+export interface FileVerificationResult {
+  filename: string;
+  fmt: { success: boolean; formatted: boolean; output: string };
+  validate: { success: boolean; errorCount: number; warningCount: number; diagnostics: ValidationFinding[] };
+  tfsec: { success: boolean; issueCount: number; findings: SecurityFinding[] };
+  infracost: InfracostSummary;
+  plan: { success: boolean; summary: string };
+  overallStatus: 'passed' | 'warning' | 'error';
+}
+
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
@@ -8,6 +45,7 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   generationStatus?: string | null;
   onRegenerate?: () => void;
+  onFixWithAi?: (prompt: string, preferredAgent?: string) => void;
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -17,7 +55,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   agentIcon,
   isStreaming = false,
   generationStatus,
-  onRegenerate
+  onRegenerate,
+  onFixWithAi
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -63,7 +102,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               <span>{generationStatus || 'Processing prompt & generating response...'}</span>
             </div>
           ) : (
-            renderFormattedContent(content)
+            renderFormattedContent(content, onFixWithAi)
           )}
           {isStreaming && content && (
             <span className="dots" style={{ marginLeft: '6px' }}>
@@ -73,21 +112,23 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             </span>
           )}
         </div>
+
+        {/* Message Action Footer */}
         {!isStreaming && content && (
-          <div className="acts">
-            <button onClick={handleCopyMessage}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              {copied ? 'Copied' : 'Copy'}
+          <div className="msg-actions">
+            <button
+              className="msg-action-btn"
+              onClick={handleCopyMessage}
+              title="Copy message to clipboard"
+            >
+              {copied ? '✓ Copied' : 'Copy'}
             </button>
             {onRegenerate && (
-              <button onClick={onRegenerate}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 4v6h6M23 20v-6h-6" />
-                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-                </svg>
+              <button
+                className="msg-action-btn"
+                onClick={onRegenerate}
+                title="Regenerate this response"
+              >
                 Regenerate
               </button>
             )}
@@ -98,11 +139,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   );
 };
 
-function renderFormattedContent(text: string) {
-  if (!text) return null;
-
+function renderFormattedContent(content: string, onFixWithAi?: (prompt: string, preferredAgent?: string) => void) {
+  const lines = content.split('\n');
   const tokens: Array<{ type: 'text' | 'code'; content: string; language?: string }> = [];
-  const lines = text.split('\n');
+
   let inCode = false;
   let currentLang = '';
   let currentBlockLines: string[] = [];
@@ -110,22 +150,22 @@ function renderFormattedContent(text: string) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.trim().startsWith('```')) {
+    if (line.startsWith('```')) {
       if (!inCode) {
         if (currentTextLines.length > 0) {
           tokens.push({ type: 'text', content: currentTextLines.join('\n') });
           currentTextLines = [];
         }
         inCode = true;
-        currentLang = line.trim().slice(3).trim() || 'hcl';
+        currentLang = line.replace('```', '').trim();
         currentBlockLines = [];
       } else {
-        inCode = false;
         tokens.push({
           type: 'code',
           content: currentBlockLines.join('\n'),
-          language: currentLang
+          language: currentLang || 'hcl'
         });
+        inCode = false;
         currentBlockLines = [];
         currentLang = '';
       }
@@ -150,7 +190,7 @@ function renderFormattedContent(text: string) {
 
   return tokens.map((token, index) => {
     if (token.type === 'code') {
-      return <CodeSnippet key={index} language={token.language || 'hcl'} code={token.content} />;
+      return <CodeSnippet key={index} language={token.language || 'hcl'} code={token.content} onFixWithAi={onFixWithAi} />;
     }
 
     return (
@@ -166,11 +206,17 @@ function renderFormattedContent(text: string) {
   });
 }
 
-const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, code }) => {
+const CodeSnippet: React.FC<{
+  language: string;
+  code: string;
+  onFixWithAi?: (prompt: string, preferredAgent?: string) => void;
+}> = ({ language, code, onFixWithAi }) => {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [verification, setVerification] = useState<FileVerificationResult | null>(null);
+  const [showFindings, setShowFindings] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -178,24 +224,29 @@ const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, c
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const getTargetFilename = () => {
+    let filename = 'main.tf';
+    const firstLine = code.trim().split('\n')[0].trim();
+    const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
+    if (fileMatch) {
+      filename = fileMatch[1].trim();
+    } else if (code.includes('required_providers') || code.includes('provider "aws"') || code.includes('provider "google"')) {
+      filename = 'providers.tf';
+    } else if (code.includes('variable "')) {
+      filename = 'variables.tf';
+    } else if (code.includes('output "')) {
+      filename = 'outputs.tf';
+    } else if (language === 'yaml' || code.includes('apiVersion:')) {
+      filename = 'deployment.yaml';
+    }
+    return filename;
+  };
+
   const handleSaveToWorkspace = async () => {
     setSaving(true);
     setSaveStatus(null);
     try {
-      let filename = 'main.tf';
-      const firstLine = code.trim().split('\n')[0].trim();
-      const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
-      if (fileMatch) {
-        filename = fileMatch[1].trim();
-      } else if (code.includes('required_providers') || code.includes('provider "aws"') || code.includes('provider "google"')) {
-        filename = 'providers.tf';
-      } else if (code.includes('variable "')) {
-        filename = 'variables.tf';
-      } else if (code.includes('output "')) {
-        filename = 'outputs.tf';
-      } else if (language === 'yaml' || code.includes('apiVersion:')) {
-        filename = 'deployment.yaml';
-      }
+      const filename = getTargetFilename();
 
       const res = await fetch('/api/workspace/save', {
         method: 'POST',
@@ -206,15 +257,17 @@ const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, c
       const data = await res.json();
       if (res.ok) {
         setSaved(true);
-        if (data.validateOutput) {
-          setSaveStatus(data.validateOutput.includes('Success') ? 'Validated' : 'Saved');
-        } else {
-          setSaveStatus('Saved');
+        if (data.verification) {
+          setVerification(data.verification);
+          if (data.verification.tfsec.issueCount > 0 || data.verification.validate.errorCount > 0) {
+            setShowFindings(true);
+          }
         }
+        setSaveStatus(data.verification?.overallStatus === 'passed' ? 'Verified & Deployed' : 'Deployed');
         setTimeout(() => {
           setSaved(false);
           setSaveStatus(null);
-        }, 3000);
+        }, 4000);
       }
     } catch (e) {
       console.error('Failed to save to workspace:', e);
@@ -232,21 +285,24 @@ const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, c
     code.includes('module ');
 
   return (
-    <div className="code-container">
+    <div className="code-container" style={{ borderRadius: '6px', overflow: 'hidden', margin: '8px 0' }}>
       <div className="code-header-bar">
-        <span>{language}</span>
-        <div className="code-actions">
+        <span>{language} {isSaveable ? `(${getTargetFilename()})` : ''}</span>
+        <div className="code-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {isSaveable && (
             <button
               className="code-btn save"
               onClick={handleSaveToWorkspace}
               disabled={saving}
-              title="Save to Workspace and validate with Terraform"
+              title="Save to Workspace and run full verification gate: fmt + validate + tfsec + Infracost + plan"
+              style={{
+                backgroundColor: verification?.overallStatus === 'passed' ? '#10b981' : undefined
+              }}
             >
               {saved ? (
-                <>✓ {saveStatus || 'Saved'}</>
+                <>✓ {saveStatus || 'Verified'}</>
               ) : (
-                <>{saving ? 'Validating...' : 'Deploy to Workspace'}</>
+                <>{saving ? 'Auditing...' : '🚀 Deploy & Verify Gate'}</>
               )}
             </button>
           )}
@@ -255,9 +311,225 @@ const CodeSnippet: React.FC<{ language: string; code: string }> = ({ language, c
           </button>
         </div>
       </div>
+
       <pre>
         <code>{code}</code>
       </pre>
+
+      {/* Part 1: Automated Inline Verification Gate Summary Strip */}
+      {verification && (
+        <div className="code-verification-strip" style={{
+          borderTop: '1px solid var(--border)',
+          backgroundColor: 'var(--hover)',
+          padding: '8px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '6px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                backgroundColor: verification.fmt.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                color: verification.fmt.success ? '#10b981' : '#ef4444'
+              }}>
+                ⚡ fmt: {verification.fmt.formatted ? 'Reformatted' : 'Clean'}
+              </span>
+
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                backgroundColor: verification.validate.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                color: verification.validate.success ? '#10b981' : '#ef4444'
+              }}>
+                🔍 validate: {verification.validate.success ? 'Valid' : `${verification.validate.errorCount} Error(s)`}
+              </span>
+
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                backgroundColor: verification.tfsec.issueCount === 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                color: verification.tfsec.issueCount === 0 ? '#10b981' : '#f59e0b'
+              }}>
+                🛡️ tfsec: {verification.tfsec.issueCount === 0 ? '0 Issues' : `${verification.tfsec.issueCount} Finding(s)`}
+              </span>
+
+              {verification.infracost.totalMonthlyCost && (
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                  color: 'var(--blue)'
+                }}>
+                  💰 Infracost: {verification.infracost.totalMonthlyCost}/mo
+                </span>
+              )}
+
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 500,
+                padding: '2px 7px',
+                borderRadius: '4px',
+                backgroundColor: 'var(--bg)',
+                color: 'var(--muted)'
+              }}>
+                📋 {verification.plan.summary}
+              </span>
+            </div>
+
+            {(verification.tfsec.findings.length > 0 || verification.validate.diagnostics.length > 0) && (
+              <button
+                onClick={() => setShowFindings(!showFindings)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#ef4444',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {showFindings ? 'Hide Findings ▲' : `View ${verification.tfsec.findings.length + verification.validate.diagnostics.length} Issues ▼`}
+              </button>
+            )}
+          </div>
+
+          {/* Expandable Findings Drawer with ⚡ Fix with AI */}
+          {showFindings && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+              {verification.tfsec.findings.map((f, i) => (
+                <div key={`sec-${i}`} style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  padding: '8px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '9.5px',
+                        fontWeight: 700,
+                        backgroundColor: '#ef4444',
+                        color: '#fff',
+                        padding: '1px 5px',
+                        borderRadius: '3px'
+                      }}>
+                        {f.severity}
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+                        {f.id}
+                      </span>
+                      <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>
+                        (lines {f.startLine}-{f.endLine})
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text)', marginTop: '2px' }}>
+                      {f.description}
+                    </div>
+                  </div>
+
+                  {onFixWithAi && (
+                    <button
+                      onClick={() => {
+                        const prompt = `Fix security vulnerability [${f.id}] in ${f.filename || 'generated Terraform'} (lines ${f.startLine}-${f.endLine}): ${f.description}. Recommendation: ${f.resolution}. Please provide corrected Terraform HCL.`;
+                        onFixWithAi(prompt, 'security');
+                      }}
+                      style={{
+                        backgroundColor: '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      ⚡ Fix with AI
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {verification.validate.diagnostics.map((d, i) => (
+                <div key={`diag-${i}`} style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  padding: '8px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '9.5px',
+                        fontWeight: 700,
+                        backgroundColor: d.severity === 'error' ? '#ef4444' : '#f59e0b',
+                        color: '#fff',
+                        padding: '1px 5px',
+                        borderRadius: '3px'
+                      }}>
+                        {d.severity.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+                        {d.summary}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text)', marginTop: '2px' }}>
+                      {d.detail}
+                    </div>
+                  </div>
+
+                  {onFixWithAi && (
+                    <button
+                      onClick={() => {
+                        const prompt = `Fix Terraform validation error: ${d.summary} - ${d.detail}. Please provide corrected HCL.`;
+                        onFixWithAi(prompt, 'architect');
+                      }}
+                      style={{
+                        backgroundColor: '#3b82f6',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      ⚡ Fix with AI
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
