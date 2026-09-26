@@ -4,9 +4,29 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 import fs from 'fs';
+import { getSetting } from '../db';
 
-export async function isOllamaRunning(): Promise<boolean> {
-  const hosts = ['http://127.0.0.1:11434', 'http://localhost:11434'];
+export function getOllamaBaseUrl(): string {
+  try {
+    const raw = getSetting('ollama_host') || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+    let host = raw.trim();
+    if (!host) host = 'http://127.0.0.1:11434';
+    if (!host.startsWith('http://') && !host.startsWith('https://')) {
+      host = `http://${host}`;
+    }
+    // If configured to listen on 0.0.0.0 (all interfaces), local fetch should connect via 127.0.0.1
+    if (host.includes('://0.0.0.0')) {
+      return host.replace('://0.0.0.0', '://127.0.0.1');
+    }
+    return host.replace(/\/+$/, '');
+  } catch {
+    return 'http://127.0.0.1:11434';
+  }
+}
+
+export async function isOllamaRunning(customHost?: string): Promise<boolean> {
+  const configured = customHost || getOllamaBaseUrl();
+  const hosts = Array.from(new Set([configured, 'http://127.0.0.1:11434', 'http://localhost:11434']));
   for (const host of hosts) {
     try {
       const controller = new AbortController();
@@ -70,11 +90,21 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
       let stderrOutput = '';
       const isWin = process.platform === 'win32';
 
+      // Always set OLLAMA_HOST to 0.0.0.0:11434 and OLLAMA_ORIGINS to * so that port forwarding across
+      // Docker, WSL, remote Linux, dev tunnels, and codespaces works seamlessly without loopback blockage.
+      process.env.OLLAMA_HOST = process.env.OLLAMA_HOST || '0.0.0.0:11434';
+      process.env.OLLAMA_ORIGINS = process.env.OLLAMA_ORIGINS || '*';
+
       if (isWin) {
         const child = spawn('ollama', ['serve'], {
           detached: true,
           stdio: ['ignore', 'ignore', 'pipe'],
-          shell: true
+          shell: true,
+          env: {
+            ...process.env,
+            OLLAMA_HOST: '0.0.0.0:11434',
+            OLLAMA_ORIGINS: '*'
+          }
         });
         child.stderr?.on('data', (d) => {
           stderrOutput += d.toString();
@@ -86,7 +116,13 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
       } else {
         // 1. In Linux, first attempt systemctl if available
         try {
-          await execAsync('systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null');
+          // If systemd override directory can be created or updated for 0.0.0.0 binding
+          await execAsync(
+            '(sudo -n mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null && ' +
+            'printf "[Service]\\nEnvironment=\\"OLLAMA_HOST=0.0.0.0:11434\\"\\nEnvironment=\\"OLLAMA_ORIGINS=*\\"\\n" | sudo -n tee /etc/systemd/system/ollama.service.d/terramind-bind.conf >/dev/null && ' +
+            'sudo -n systemctl daemon-reload 2>/dev/null) || true; ' +
+            'systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null'
+          );
         } catch {}
 
         // Quick check if systemd started it
@@ -105,13 +141,18 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
           {
             detached: true,
             stdio: 'ignore',
-            env: { ...process.env, PATH: envPath }
+            env: {
+              ...process.env,
+              OLLAMA_HOST: '0.0.0.0:11434',
+              OLLAMA_ORIGINS: '*',
+              PATH: envPath
+            }
           }
         );
         child.unref();
       }
 
-      // Poll up to 7 seconds for Ollama to become responsive
+      // Poll up to 10 seconds for Ollama to become responsive
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
@@ -120,7 +161,7 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
           clearInterval(interval);
           return resolve({ success: true, running: true });
         }
-        if (attempts >= 14) {
+        if (attempts >= 20) {
           clearInterval(interval);
 
           let logTail = '';
@@ -136,7 +177,7 @@ export function startOllamaDaemon(): Promise<{ success: boolean; running: boolea
             error:
               logTail ||
               stderrOutput.trim() ||
-              'Ollama process launched but port 11434 did not respond within 7 seconds. Try running "Download & Install Ollama".'
+              'Ollama process launched but port 11434 did not respond within 10 seconds. Check if port 11434 is in use or run "ollama serve" manually.'
           });
         }
       }, 500);

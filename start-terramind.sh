@@ -2,6 +2,8 @@
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR" || exit 1
 export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+export OLLAMA_HOST="0.0.0.0:11434"
+export OLLAMA_ORIGINS="*"
 
 echo "==========================================================="
 echo "   TerraMind - AI Cloud & Infrastructure Architect        "
@@ -9,7 +11,7 @@ echo "==========================================================="
 echo " Starting server on http://localhost:3080..."
 
 if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
-    echo " Starting local Ollama server..."
+    echo " Starting local Ollama server on 0.0.0.0:11434 (port-forwarding enabled)..."
     if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then
         sudo systemctl start ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
     fi
@@ -22,7 +24,7 @@ if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://
     if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
         ollamaBin=$(command -v ollama || [ -x "/usr/local/bin/ollama" ] && echo "/usr/local/bin/ollama" || echo "")
         if [ -n "$ollamaBin" ]; then
-            nohup "$ollamaBin" serve >/dev/null 2>&1 &
+            OLLAMA_HOST="0.0.0.0:11434" OLLAMA_ORIGINS="*" nohup "$ollamaBin" serve >/dev/null 2>&1 &
             sleep 1.5
         fi
     fi

@@ -774,6 +774,8 @@ export function syncEnvToSettings(): void {
       ['oci_genai_region', process.env.OCI_GENAI_REGION],
       ['oci_genai_compartment_id', process.env.OCI_GENAI_COMPARTMENT_ID],
       ['oci_genai_api_key', process.env.OCI_GENAI_API_KEY],
+      ['ollama_host', process.env.OLLAMA_HOST || 'http://127.0.0.1:11434'],
+      ['ollama_auto_start', process.env.OLLAMA_AUTO_START || 'true'],
       ['default_model', process.env.DEFAULT_MODEL || process.env.OLLAMA_MODEL],
       ['default_provider', process.env.DEFAULT_PROVIDER || process.env.AGENT_PROVIDER]
     ];

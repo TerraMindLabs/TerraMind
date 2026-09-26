@@ -138,7 +138,11 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
       hasOciGenai: Boolean(
         (settings['oci_genai_compartment_id'] || process.env.OCI_COMPARTMENT_ID) &&
         (settings['oci_genai_api_key'] || process.env.OCI_GENAI_API_KEY)
-      )
+      ),
+
+      // Ollama Host & Auto-Start Configuration
+      ollamaHost: settings['ollama_host'] || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
+      ollamaAutoStart: settings['ollama_auto_start'] !== 'false'
     };
   });
 
@@ -202,6 +206,14 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
     if (body.ociGenaiModel !== undefined) {
       setSetting('oci_genai_model', body.ociGenaiModel.trim());
+    }
+
+    // Ollama Host & Auto-Start Configuration
+    if (body.ollamaHost !== undefined) {
+      setSetting('ollama_host', body.ollamaHost.trim());
+    }
+    if (body.ollamaAutoStart !== undefined) {
+      setSetting('ollama_auto_start', String(body.ollamaAutoStart));
     }
 
     return { success: true };

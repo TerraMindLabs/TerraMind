@@ -11,6 +11,7 @@ import {
   deleteConversation,
   updateConversationTitle,
   getAllSettings,
+  getSetting,
   getProjects,
   getProjectById,
   createProject,
@@ -22,6 +23,7 @@ import {
 import { buildSystemPrompt } from './agent-prompts';
 import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
 import { invokeBedrockConverse, streamAzureFoundry, invokeOciGenAi } from '../services/enterprise-ai';
+import { getOllamaBaseUrl, isOllamaRunning, startOllamaDaemon } from '../services/ollama';
 
 interface ChatRequestBody {
   conversationId?: string;
@@ -175,7 +177,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     let ollamaOnline = false;
     let localModels: string[] = [];
 
-    const hosts = ['http://127.0.0.1:11434', 'http://localhost:11434'];
+    const baseUrl = getOllamaBaseUrl();
+    const hosts = Array.from(new Set([baseUrl, 'http://127.0.0.1:11434', 'http://localhost:11434']));
     for (const host of hosts) {
       try {
         const controller = new AbortController();
@@ -430,7 +433,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       // Allow up to 30 minutes for large downloads
       const timeout = setTimeout(() => controller.abort(), 1800000);
       
-      const res = await fetch('http://127.0.0.1:11434/api/pull', {
+      const baseUrl = getOllamaBaseUrl();
+      const res = await fetch(`${baseUrl}/api/pull`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: modelName, stream: true }),
@@ -506,7 +510,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Model name is required' });
       }
       const decoded = decodeURIComponent(model).trim();
-      const res = await fetch('http://127.0.0.1:11434/api/delete', {
+      const baseUrl = getOllamaBaseUrl();
+      const res = await fetch(`${baseUrl}/api/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: decoded })
@@ -651,34 +656,33 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
     // CASE 1: Local Ollama
     if (activeProvider === 'ollama') {
-      sendStatus('Connecting to Ollama daemon (port 11434)...', 'connecting');
-      let ollamaActive = false;
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
-        const check = await fetch('http://127.0.0.1:11434/api/version', { signal: controller.signal });
-        clearTimeout(timeout);
-        ollamaActive = check.ok;
-      } catch {
-        ollamaActive = false;
-      }
+      const baseUrl = getOllamaBaseUrl();
+      sendStatus(`Connecting to Ollama daemon (${baseUrl})...`, 'connecting');
+      let ollamaActive = await isOllamaRunning();
 
-      if (!ollamaActive) {
-        sendStatus('Attempting to launch local Ollama background service...', 'starting');
-        // Attempt to start local Ollama daemon
+      const autoStartPref = getSetting('ollama_auto_start') !== 'false';
+      if (!ollamaActive && autoStartPref) {
+        sendStatus('⚙️ Ollama is offline. Auto-launching local Ollama server on 0.0.0.0:11434...', 'starting');
         try {
-          const { startOllamaDaemon, isOllamaRunning } = await import('../services/ollama');
           await startOllamaDaemon();
           ollamaActive = await isOllamaRunning();
+          if (ollamaActive) {
+            sendStatus('✓ Local Ollama daemon started and listening on 0.0.0.0:11434!', 'ready');
+          }
         } catch {}
       }
 
       if (!ollamaActive) {
         streamToken(
-          `> ⚠️ **Ollama is offline or unreachable on port 11434.**\n\n` +
-            `TerraMind could not connect to your local Ollama daemon. Please start it using:\n\n` +
-            `\`\`\`bash\nollama serve\n\`\`\`\n\n` +
-            `Once started, send your message again. Or switch to **Cloud AI** in the model menu if you prefer.`
+          `> ⚠️ **Ollama server is offline or unreachable at \`${baseUrl}\`.**\n\n` +
+            `TerraMind attempted to connect to your Ollama daemon, but the service is not currently responding.\n\n` +
+            `### 🌐 Port Forwarding & Remote Setup:\n` +
+            `If you are running in **Docker**, **WSL2**, **remote Linux**, or a **cloud VM**, ensure Ollama is listening on all interfaces with CORS enabled by running:\n\n` +
+            `\`\`\`bash\nexport OLLAMA_HOST="0.0.0.0:11434"\nexport OLLAMA_ORIGINS="*"\nollama serve\n\`\`\`\n\n` +
+            `### ⚡ Quick Fix Options:\n` +
+            `1. Open **Settings → Local Models (Ollama)** and click **"Start Service"** or **"Install Ollama"**.\n` +
+            `2. If your Ollama server is running on a different port or IP, configure the **Ollama Host URL** in Settings.\n` +
+            `3. Or select **Cloud AI** (Gemini, Claude, OpenAI) in the model menu above to continue immediately.`
         );
         reply.raw.write(`data: [DONE]\n\n`);
         reply.raw.end();
@@ -690,8 +694,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       sendStatus('Verifying local model availability...', 'resolving');
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
-        const tagsRes = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const tagsRes = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
         clearTimeout(timeout);
         if (tagsRes.ok) {
           const tagsData = (await tagsRes.json()) as any;
@@ -713,7 +717,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       sendStatus(`Processing prompt with '${targetModel}'...`, 'generating');
 
       try {
-        const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
+        const ollamaRes = await fetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

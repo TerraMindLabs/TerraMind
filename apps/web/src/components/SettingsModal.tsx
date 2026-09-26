@@ -83,6 +83,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [installLogs, setInstallLogs] = useState('');
   const [showInstallTerminal, setShowInstallTerminal] = useState(false);
   const [serviceMessage, setServiceMessage] = useState<string | null>(null);
+  const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
+  const [ollamaAutoStart, setOllamaAutoStart] = useState(true);
+  const [savingOllamaConfig, setSavingOllamaConfig] = useState(false);
+  const [ollamaConfigSaved, setOllamaConfigSaved] = useState(false);
 
   // In-App Confirmation Modal state (Replaces ugly browser window.confirm alerts)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -130,6 +134,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (data.ociGenaiApiKey) setOciKey(data.ociGenaiApiKey);
         if (data.ociGenaiModel) setOciModel(data.ociGenaiModel);
         setHasOci(Boolean(data.hasOciGenai));
+
+        if (data.ollamaHost) setOllamaHost(data.ollamaHost);
+        if (data.ollamaAutoStart !== undefined) setOllamaAutoStart(Boolean(data.ollamaAutoStart));
       })
       .catch(console.error);
 
@@ -150,6 +157,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       .then((data) => {
         setOllamaStatus(data);
         if (data.running) setOllamaOnline(true);
+        if (data.host) setOllamaHost(data.host);
+        if (data.autoStart !== undefined) setOllamaAutoStart(Boolean(data.autoStart));
       })
       .catch(() => {});
   };
@@ -382,6 +391,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }
       }
     });
+  };
+
+  // Save Ollama host and auto-start configuration
+  const handleSaveOllamaConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingOllamaConfig(true);
+    setActionError(null);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ollamaHost: ollamaHost.trim(),
+          ollamaAutoStart
+        })
+      });
+      if (res.ok) {
+        setOllamaConfigSaved(true);
+        setTimeout(() => setOllamaConfigSaved(false), 3000);
+      } else {
+        const d = await res.json();
+        setActionError(d.error || 'Failed to save Ollama settings');
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Error saving settings');
+    } finally {
+      setSavingOllamaConfig(false);
+    }
   };
 
   // Start local Ollama daemon service
@@ -1302,6 +1339,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </pre>
               </div>
             )}
+
+            {/* Host & Port Forwarding Configuration */}
+            <form
+              onSubmit={handleSaveOllamaConfig}
+              style={{
+                marginBottom: '14px',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg)',
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+                  ⚙️ Host & Port Forwarding Settings
+                </span>
+                <span
+                  style={{
+                    fontSize: '10.5px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    color: '#3b82f6',
+                    fontWeight: 600
+                  }}
+                >
+                  0.0.0.0:11434 (All Interfaces)
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>
+                  Ollama Host URL
+                </label>
+                <input
+                  type="text"
+                  value={ollamaHost}
+                  onChange={(e) => setOllamaHost(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace' }}
+                />
+                <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '4px' }}>
+                  For WSL, Docker, or remote machines, port forwarding connects via forwarded ports with CORS enabled.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={ollamaAutoStart}
+                    onChange={(e) => setOllamaAutoStart(e.target.checked)}
+                  />
+                  <span>Auto-start local Ollama server if offline</span>
+                </label>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {ollamaConfigSaved && (
+                    <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                      ✓ Saved
+                    </span>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={savingOllamaConfig}
+                    className="submit-btn"
+                    style={{ width: 'auto', marginTop: 0, padding: '3px 10px', fontSize: '11px', borderRadius: '5px' }}
+                  >
+                    {savingOllamaConfig ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </div>
+              </div>
+            </form>
 
             {/* Download Loading Progress Bar */}
             {pullProgress && (

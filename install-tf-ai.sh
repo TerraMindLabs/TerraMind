@@ -252,6 +252,8 @@ export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
 
 ensure_ollama_running() {
     export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+    export OLLAMA_HOST="0.0.0.0:11434"
+    export OLLAMA_ORIGINS="*"
     hash -r 2>/dev/null || true
 
     local ollamaBin=""
@@ -289,18 +291,25 @@ ensure_ollama_running() {
     fi
 
     if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
-        echo -e "${GREEN}✅ Ollama daemon is active and listening on port 11434.${NC}"
+        echo -e "${GREEN}✅ Ollama daemon is active and listening on port 11434 (0.0.0.0:11434 ready for port forwarding).${NC}"
         return 0
     fi
 
-    echo -e "${YELLOW}⚙️ Starting Ollama daemon in background...${NC}"
+    echo -e "${YELLOW}⚙️ Starting Ollama daemon on 0.0.0.0:11434 (with port forwarding enabled)...${NC}"
     
     # 1. Try systemd service if available (standard for official Linux install)
     if [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
+        local sudoN=""
+        [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && sudoN="sudo -n"
+        $sudoN mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null || true
+        if [ -d /etc/systemd/system/ollama.service.d ]; then
+            printf "[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0:11434\"\nEnvironment=\"OLLAMA_ORIGINS=*\"\n" | $sudoN tee /etc/systemd/system/ollama.service.d/terramind-bind.conf >/dev/null 2>&1 || true
+            $sudoN systemctl daemon-reload 2>/dev/null || true
+        fi
         sudo systemctl start ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
         for s in {1..6}; do
             if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
-                echo -e "${GREEN}✅ Ollama daemon started via systemd and listening on port 11434.${NC}"
+                echo -e "${GREEN}✅ Ollama daemon started via systemd and listening on 0.0.0.0:11434.${NC}"
                 return 0
             fi
             sleep 0.5
@@ -308,12 +317,12 @@ ensure_ollama_running() {
     fi
 
     # 2. Direct nohup spawn if systemd not present or not active
-    nohup "$ollamaBin" serve > /tmp/ollama_terramind.log 2>&1 &
+    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_ORIGINS="*" nohup "$ollamaBin" serve > /tmp/ollama_terramind.log 2>&1 &
     local ollamaPid=$!
 
     for i in {1..14}; do
         if curl -s http://127.0.0.1:11434/api/version &>/dev/null || curl -s http://localhost:11434/api/version &>/dev/null; then
-            echo -e "${GREEN}✅ Ollama daemon started successfully (PID: $ollamaPid)!${NC}"
+            echo -e "${GREEN}✅ Ollama daemon started successfully on 0.0.0.0:11434 (PID: $ollamaPid)!${NC}"
             return 0
         fi
         sleep 0.5
@@ -750,9 +759,11 @@ echo "==========================================================="
 echo " Starting server on http://localhost:3080..."
 
 export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+export OLLAMA_HOST="0.0.0.0:11434"
+export OLLAMA_ORIGINS="*"
 
 if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
-    echo " Starting local Ollama server..."
+    echo " Starting local Ollama server on 0.0.0.0:11434..."
     if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then
         sudo systemctl start ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
     fi
@@ -765,7 +776,7 @@ if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://
     if ! curl -s http://127.0.0.1:11434/api/version &>/dev/null && ! curl -s http://localhost:11434/api/version &>/dev/null; then
         ollamaBin=$(command -v ollama || [ -x "/usr/local/bin/ollama" ] && echo "/usr/local/bin/ollama" || echo "")
         if [ -n "$ollamaBin" ]; then
-            nohup "$ollamaBin" serve >/dev/null 2>&1 &
+            OLLAMA_HOST="0.0.0.0:11434" OLLAMA_ORIGINS="*" nohup "$ollamaBin" serve >/dev/null 2>&1 &
             sleep 1.5
         fi
     fi

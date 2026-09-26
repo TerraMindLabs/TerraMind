@@ -6,7 +6,8 @@ import {
   runTerraformCommand,
   verifyWorkspaceFile
 } from '../services/terraform';
-import { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, installOllama } from '../services/ollama';
+import { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, installOllama, getOllamaBaseUrl } from '../services/ollama';
+import { getSetting } from '../db';
 
 export default async function workspaceRoutes(fastify: FastifyInstance) {
   // 1. Get workspace status and file list
@@ -77,12 +78,18 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     try {
       const running = await isOllamaRunning();
       const info = await isOllamaInstalled();
+      const host = getOllamaBaseUrl();
+      const autoStart = getSetting('ollama_auto_start') !== 'false';
       return {
         running,
         installed: info.installed,
         version: info.version,
         path: info.path,
-        platform: process.platform
+        platform: process.platform,
+        host,
+        autoStart,
+        portForwardingReady: true,
+        listenBinding: '0.0.0.0:11434'
       };
     } catch (err: any) {
       fastify.log.error(err);

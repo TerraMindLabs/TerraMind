@@ -40,6 +40,80 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/env.ts
+function loadEnvironment() {
+  const candidates = [
+    process.env.ENV_FILE,
+    import_path.default.resolve(process.cwd(), ".env"),
+    import_path.default.resolve(process.cwd(), "apps", "server", ".env"),
+    import_path.default.resolve(__dirname, ".env"),
+    import_path.default.resolve(__dirname, "..", ".env"),
+    import_path.default.resolve(__dirname, "..", "..", ".env"),
+    import_path.default.resolve(__dirname, "..", "..", "..", ".env")
+  ].filter(Boolean);
+  let loaded = false;
+  for (const p of candidates) {
+    if (import_fs.default.existsSync(p)) {
+      try {
+        const stat = import_fs.default.statSync(p);
+        if (stat.isFile()) {
+          const content = import_fs.default.readFileSync(p, "utf8");
+          const lines = content.split(/\r?\n/);
+          let count = 0;
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const eqIndex = trimmed.indexOf("=");
+            if (eqIndex === -1) continue;
+            const key = trimmed.slice(0, eqIndex).trim();
+            let val = trimmed.slice(eqIndex + 1).trim();
+            if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
+              val = val.slice(1, -1);
+            }
+            if (!process.env[key] || process.env[key]?.trim() === "") {
+              process.env[key] = val;
+              count++;
+            }
+          }
+          console.log(`[Env] Loaded ${count} configuration variables from ${p}`);
+          loaded = true;
+          break;
+        }
+      } catch (err) {
+        console.warn(`[Env] Warning reading ${p}:`, err);
+      }
+    }
+  }
+  if (!loaded) {
+    console.log("[Env] No .env file found in search paths.");
+  }
+  if (process.platform !== "win32") {
+    const extraPaths = [
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      `${process.env.HOME || ""}/.local/bin`
+    ];
+    const currentPaths = (process.env.PATH || "").split(":");
+    for (const p of extraPaths) {
+      if (p && !currentPaths.includes(p)) {
+        currentPaths.unshift(p);
+      }
+    }
+    process.env.PATH = currentPaths.join(":");
+  }
+}
+var import_path, import_fs;
+var init_env = __esm({
+  "src/env.ts"() {
+    import_path = __toESM(require("path"));
+    import_fs = __toESM(require("fs"));
+    loadEnvironment();
+  }
+});
+
 // ../../node_modules/reusify/reusify.js
 var require_reusify = __commonJS({
   "../../node_modules/reusify/reusify.js"(exports2, module2) {
@@ -77086,311 +77160,7 @@ var require_lib4 = __commonJS({
   }
 });
 
-// src/services/ollama.ts
-var ollama_exports = {};
-__export(ollama_exports, {
-  installOllama: () => installOllama,
-  isOllamaInstalled: () => isOllamaInstalled,
-  isOllamaRunning: () => isOllamaRunning,
-  startOllamaDaemon: () => startOllamaDaemon
-});
-async function isOllamaRunning() {
-  const hosts = ["http://127.0.0.1:11434", "http://localhost:11434"];
-  for (const host of hosts) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch(`${host}/api/version`, { signal: controller.signal });
-      clearTimeout(timeout);
-      if (res.ok) return true;
-    } catch {
-    }
-  }
-  return false;
-}
-async function isOllamaInstalled() {
-  try {
-    const isWin = process.platform === "win32";
-    if (!isWin) {
-      const candidatePaths = [
-        "/usr/local/bin/ollama",
-        "/usr/bin/ollama",
-        `${process.env.HOME || ""}/.local/bin/ollama`,
-        "/bin/ollama"
-      ];
-      for (const p of candidatePaths) {
-        if (p && import_fs4.default.existsSync(p)) {
-          try {
-            const { stdout: verOut } = await execAsync(`"${p}" --version`);
-            return { installed: true, version: verOut.trim(), path: p };
-          } catch {
-            return { installed: true, path: p };
-          }
-        }
-      }
-    }
-    const cmd = isWin ? "where ollama" : "command -v ollama || which ollama";
-    const { stdout } = await execAsync(cmd);
-    const ollamaPath = stdout.trim().split("\n")[0].trim();
-    if (ollamaPath) {
-      try {
-        const { stdout: verOut } = await execAsync(`"${ollamaPath}" --version`);
-        return { installed: true, version: verOut.trim(), path: ollamaPath };
-      } catch {
-        return { installed: true, path: ollamaPath };
-      }
-    }
-    return { installed: false };
-  } catch {
-    return { installed: false };
-  }
-}
-function startOllamaDaemon() {
-  return new Promise(async (resolve) => {
-    if (await isOllamaRunning()) {
-      return resolve({ success: true, running: true });
-    }
-    try {
-      let stderrOutput = "";
-      const isWin = process.platform === "win32";
-      if (isWin) {
-        const child = (0, import_child_process2.spawn)("ollama", ["serve"], {
-          detached: true,
-          stdio: ["ignore", "ignore", "pipe"],
-          shell: true
-        });
-        child.stderr?.on("data", (d) => {
-          stderrOutput += d.toString();
-        });
-        child.on("error", (err) => {
-          stderrOutput += ` ${err.message}`;
-        });
-        child.unref();
-      } else {
-        try {
-          await execAsync("systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null");
-        } catch {
-        }
-        if (await isOllamaRunning()) {
-          return resolve({ success: true, running: true });
-        }
-        const installedInfo = await isOllamaInstalled();
-        const binPath = installedInfo.path || "ollama";
-        const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`;
-        const child = (0, import_child_process2.spawn)(
-          "sh",
-          ["-c", `nohup "${binPath}" serve > /tmp/ollama.log 2>&1 &`],
-          {
-            detached: true,
-            stdio: "ignore",
-            env: { ...process.env, PATH: envPath }
-          }
-        );
-        child.unref();
-      }
-      let attempts = 0;
-      const interval = setInterval(async () => {
-        attempts++;
-        const running = await isOllamaRunning();
-        if (running) {
-          clearInterval(interval);
-          return resolve({ success: true, running: true });
-        }
-        if (attempts >= 14) {
-          clearInterval(interval);
-          let logTail = "";
-          if (!isWin && import_fs4.default.existsSync("/tmp/ollama.log")) {
-            try {
-              logTail = import_fs4.default.readFileSync("/tmp/ollama.log", "utf8").trim().split("\n").slice(-4).join(" ");
-            } catch {
-            }
-          }
-          return resolve({
-            success: false,
-            running: false,
-            error: logTail || stderrOutput.trim() || 'Ollama process launched but port 11434 did not respond within 7 seconds. Try running "Download & Install Ollama".'
-          });
-        }
-      }, 500);
-    } catch (err) {
-      resolve({ success: false, running: false, error: err.message || "Failed to spawn ollama process" });
-    }
-  });
-}
-function installOllama(onLog) {
-  return new Promise((resolve) => {
-    const isWin = process.platform === "win32";
-    let cmd = "";
-    let args = [];
-    if (isWin) {
-      cmd = "powershell.exe";
-      args = [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        'Write-Host ">>> Attempting winget install for Ollama..."; winget install Ollama.Ollama --accept-source-agreements --accept-package-agreements; if ($LASTEXITCODE -ne 0) { Write-Host ">>> Winget failed or not available. Downloading official Ollama installer..."; Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\\OllamaSetup.exe"; Start-Process -Wait "$env:TEMP\\OllamaSetup.exe" /SILENT; Write-Host ">>> Installer completed." }'
-      ];
-    } else {
-      cmd = "sh";
-      args = [
-        "-c",
-        'echo ">>> Checking operating system environment..." && if command -v apk >/dev/null 2>&1; then   echo ">>> Alpine Linux detected. Installing glibc compatibility and curl..." &&   (sudo apk add --no-cache curl gcompat libc6-compat 2>/dev/null || apk add --no-cache curl gcompat libc6-compat 2>/dev/null || true); elif command -v apt-get >/dev/null 2>&1; then   echo ">>> Debian/Ubuntu detected. Installing dependencies..." &&   (sudo apt-get update && sudo apt-get install -y curl zstd 2>/dev/null || true); fi && echo ">>> Downloading and executing official Ollama install script..." && (curl -fsSL https://ollama.com/install.sh | sudo sh 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh) && echo ">>> Starting Ollama background daemon on port 11434..." && nohup ollama serve > /tmp/ollama.log 2>&1 &'
-      ];
-    }
-    try {
-      const child = (0, import_child_process2.spawn)(cmd, args, { shell: true });
-      let outputBuffer = "";
-      child.stdout?.on("data", (d) => {
-        const text = d.toString();
-        outputBuffer += text;
-        onLog(text);
-      });
-      child.stderr?.on("data", (d) => {
-        const text = d.toString();
-        outputBuffer += text;
-        onLog(text);
-      });
-      child.on("close", async (code) => {
-        onLog(`
->>> Installation process exited with code ${code}.
->>> Verifying Ollama daemon health on port 11434...
-`);
-        let attempts = 0;
-        const interval = setInterval(async () => {
-          attempts++;
-          const running = await isOllamaRunning();
-          if (running) {
-            clearInterval(interval);
-            onLog(">>> \u2713 Ollama service is active and responsive on port 11434!\n");
-            return resolve({ success: true });
-          }
-          if (attempts >= 10) {
-            clearInterval(interval);
-            await startOllamaDaemon();
-            const finalCheck = await isOllamaRunning();
-            if (finalCheck) {
-              onLog(">>> \u2713 Ollama daemon started successfully!\n");
-              return resolve({ success: true });
-            }
-            return resolve({
-              success: false,
-              error: `Installation completed (exit code ${code}) but Ollama service is not responding on 127.0.0.1:11434. Log: ${outputBuffer.slice(-300)}`
-            });
-          }
-        }, 1200);
-      });
-      child.on("error", (err) => {
-        onLog(`>>> Process execution error: ${err.message}
-`);
-        resolve({ success: false, error: err.message });
-      });
-    } catch (err) {
-      onLog(`>>> Unexpected error: ${err.message}
-`);
-      resolve({ success: false, error: err.message });
-    }
-  });
-}
-var import_child_process2, import_util2, import_fs4, execAsync;
-var init_ollama = __esm({
-  "src/services/ollama.ts"() {
-    import_child_process2 = require("child_process");
-    import_util2 = require("util");
-    import_fs4 = __toESM(require("fs"));
-    execAsync = (0, import_util2.promisify)(import_child_process2.exec);
-  }
-});
-
-// src/env.ts
-var import_path = __toESM(require("path"));
-var import_fs = __toESM(require("fs"));
-function loadEnvironment() {
-  const candidates = [
-    process.env.ENV_FILE,
-    import_path.default.resolve(process.cwd(), ".env"),
-    import_path.default.resolve(process.cwd(), "apps", "server", ".env"),
-    import_path.default.resolve(__dirname, ".env"),
-    import_path.default.resolve(__dirname, "..", ".env"),
-    import_path.default.resolve(__dirname, "..", "..", ".env"),
-    import_path.default.resolve(__dirname, "..", "..", "..", ".env")
-  ].filter(Boolean);
-  let loaded = false;
-  for (const p of candidates) {
-    if (import_fs.default.existsSync(p)) {
-      try {
-        const stat = import_fs.default.statSync(p);
-        if (stat.isFile()) {
-          const content = import_fs.default.readFileSync(p, "utf8");
-          const lines = content.split(/\r?\n/);
-          let count = 0;
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith("#")) continue;
-            const eqIndex = trimmed.indexOf("=");
-            if (eqIndex === -1) continue;
-            const key = trimmed.slice(0, eqIndex).trim();
-            let val = trimmed.slice(eqIndex + 1).trim();
-            if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
-              val = val.slice(1, -1);
-            }
-            if (!process.env[key] || process.env[key]?.trim() === "") {
-              process.env[key] = val;
-              count++;
-            }
-          }
-          console.log(`[Env] Loaded ${count} configuration variables from ${p}`);
-          loaded = true;
-          break;
-        }
-      } catch (err) {
-        console.warn(`[Env] Warning reading ${p}:`, err);
-      }
-    }
-  }
-  if (!loaded) {
-    console.log("[Env] No .env file found in search paths.");
-  }
-  if (process.platform !== "win32") {
-    const extraPaths = [
-      "/usr/local/bin",
-      "/usr/bin",
-      "/bin",
-      "/usr/sbin",
-      "/sbin",
-      `${process.env.HOME || ""}/.local/bin`
-    ];
-    const currentPaths = (process.env.PATH || "").split(":");
-    for (const p of extraPaths) {
-      if (p && !currentPaths.includes(p)) {
-        currentPaths.unshift(p);
-      }
-    }
-    process.env.PATH = currentPaths.join(":");
-  }
-}
-loadEnvironment();
-
-// src/server.ts
-var import_fastify = __toESM(require_fastify());
-var import_static = __toESM(require_static());
-var import_path4 = __toESM(require("path"));
-var import_fs5 = __toESM(require("fs"));
-
-// src/routes/chat.ts
-var import_crypto3 = require("crypto");
-
-// src/db/index.ts
-var import_node_sqlite = require("node:sqlite");
-var import_path2 = __toESM(require("path"));
-var import_crypto = require("crypto");
-
 // src/db/mongo.ts
-var import_mongodb = __toESM(require_lib4());
-var MONGO_URI = process.env.MONGO_URI || "";
-var client = null;
-var db = null;
-var isConnected = false;
 async function initMongo() {
   if (!MONGO_URI) return false;
   if (isConnected && db) return true;
@@ -77486,148 +77256,60 @@ async function deleteMongoConversation(convoId) {
     console.error("[MongoDB] Error deleting conversation from mongo:", e);
   }
 }
+var import_mongodb, MONGO_URI, client, db, isConnected;
+var init_mongo = __esm({
+  "src/db/mongo.ts"() {
+    import_mongodb = __toESM(require_lib4());
+    MONGO_URI = process.env.MONGO_URI || "";
+    client = null;
+    db = null;
+    isConnected = false;
+  }
+});
 
 // src/db/index.ts
-var import_fs2 = __toESM(require("fs"));
-initMongo().catch((err) => console.warn("[MongoDB] Init error:", err.message));
-var dataDir = process.env.DATA_DIR || import_path2.default.join(process.cwd(), "data");
-if (!import_fs2.default.existsSync(dataDir)) {
-  try {
-    import_fs2.default.mkdirSync(dataDir, { recursive: true });
-  } catch (err) {
-    console.warn("[DB] Failed to create data directory:", err);
-  }
-}
-var legacyDbPath = import_path2.default.join(process.cwd(), "terramind.db");
-var targetDbPath = process.env.DB_PATH || import_path2.default.join(dataDir, "terramind.db");
-if (!process.env.DB_PATH && import_fs2.default.existsSync(legacyDbPath) && !import_fs2.default.existsSync(targetDbPath)) {
-  try {
-    import_fs2.default.renameSync(legacyDbPath, targetDbPath);
-    if (import_fs2.default.existsSync(legacyDbPath + "-wal")) import_fs2.default.renameSync(legacyDbPath + "-wal", targetDbPath + "-wal");
-    if (import_fs2.default.existsSync(legacyDbPath + "-shm")) import_fs2.default.renameSync(legacyDbPath + "-shm", targetDbPath + "-shm");
-  } catch {
-  }
-}
-var activeDbPath = process.env.DB_PATH ? process.env.DB_PATH : import_fs2.default.existsSync(targetDbPath) ? targetDbPath : import_fs2.default.existsSync(legacyDbPath) ? legacyDbPath : targetDbPath;
-var db2 = new import_node_sqlite.DatabaseSync(activeDbPath);
-db2.exec("PRAGMA journal_mode = WAL;");
-db2.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE,
-    password_hash TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    icon TEXT DEFAULT '\u{1F4C1}',
-    user_id TEXT DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS project_members (
-    id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    username TEXT NOT NULL,
-    role TEXT DEFAULT 'editor',
-    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(project_id, user_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY,
-    title TEXT,
-    provider TEXT,
-    model TEXT,
-    project_id TEXT DEFAULT '',
-    user_id TEXT DEFAULT '',
-    agent_id TEXT DEFAULT 'agent_tf-devops-expert',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-  
-  CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT,
-    role TEXT,
-    content TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(conversation_id) REFERENCES conversations(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS mcp_servers (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    transport TEXT NOT NULL,
-    command TEXT,
-    args TEXT,
-    url TEXT,
-    env TEXT,
-    enabled INTEGER DEFAULT 1,
-    status TEXT DEFAULT 'active',
-    tools TEXT,
-    last_checked DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-try {
-  db2.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT '';`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT '';`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE conversations ADD COLUMN agent_id TEXT DEFAULT 'agent_tf-devops-expert';`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE conversations ADD COLUMN updated_at DATETIME;`);
-  db2.exec(`UPDATE conversations SET updated_at = created_at WHERE updated_at IS NULL;`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT '';`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT '';`);
-} catch {
-}
-try {
-  db2.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'Cloud Architect';`);
-} catch {
-}
-try {
-  db2.exec(`
-    CREATE TABLE IF NOT EXISTS project_members (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      username TEXT NOT NULL,
-      role TEXT DEFAULT 'editor',
-      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(project_id, user_id)
-    );
-  `);
-} catch {
-}
-try {
-  db2.exec(`DELETE FROM projects WHERE id IN ('proj-aws', 'proj-k8s', 'proj-finops', 'proj-cicd');`);
-} catch {
+var db_exports = {};
+__export(db_exports, {
+  addMessage: () => addMessage,
+  addProjectMember: () => addProjectMember,
+  createConversation: () => createConversation,
+  createProject: () => createProject,
+  createUser: () => createUser,
+  default: () => db_default,
+  deleteConversation: () => deleteConversation,
+  deleteMcpServer: () => deleteMcpServer,
+  deleteProject: () => deleteProject,
+  getActiveMcpServers: () => getActiveMcpServers,
+  getAllMcpServers: () => getAllMcpServers,
+  getAllSettings: () => getAllSettings,
+  getConversation: () => getConversation,
+  getConversations: () => getConversations,
+  getMcpServerById: () => getMcpServerById,
+  getMessages: () => getMessages,
+  getProjectById: () => getProjectById,
+  getProjectMembers: () => getProjectMembers,
+  getProjects: () => getProjects,
+  getSetting: () => getSetting,
+  getUserByUsername: () => getUserByUsername,
+  getUserCount: () => getUserCount,
+  hashPassword: () => hashPassword,
+  logUserActivity: () => logUserActivity,
+  recordUserSession: () => recordUserSession,
+  removeProjectMember: () => removeProjectMember,
+  saveMcpServer: () => saveMcpServer,
+  seedDefaultMcpServers: () => seedDefaultMcpServers,
+  setSetting: () => setSetting,
+  syncEnvToSettings: () => syncEnvToSettings,
+  toggleMcpServer: () => toggleMcpServer,
+  touchConversation: () => touchConversation,
+  updateConversationAgent: () => updateConversationAgent,
+  updateConversationTitle: () => updateConversationTitle,
+  updateMcpServerStatus: () => updateMcpServerStatus,
+  upsertMessage: () => upsertMessage,
+  verifyUser: () => verifyUser
+});
+function hashPassword(password) {
+  return (0, import_crypto.createHash)("sha256").update(password).digest("hex");
 }
 function getUserByUsername(username) {
   const stmt = db2.prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
@@ -77655,6 +77337,14 @@ function createUser(idOrUsername, usernameOrPasswordHash, passwordHash, fullName
   }
   logUserActivity(id, "user_registered", { username, fullName, role });
   return { id, username, created_at: (/* @__PURE__ */ new Date()).toISOString() };
+}
+function verifyUser(username, rawPassword) {
+  const user = getUserByUsername(username);
+  if (!user) return null;
+  if (user.password_hash === hashPassword(rawPassword)) {
+    return { id: user.id, username: user.username };
+  }
+  return null;
 }
 function getUserCount() {
   const stmt = db2.prepare("SELECT COUNT(*) as count FROM users");
@@ -77827,6 +77517,14 @@ function touchConversation(id, title) {
     `);
     stmt.run(id);
   }
+  const convo = getConversation(id);
+  if (convo) syncMongoConversation(convo);
+}
+function updateConversationTitle(id, title) {
+  const stmt = db2.prepare(`
+    UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `);
+  stmt.run(title, id);
   const convo = getConversation(id);
   if (convo) syncMongoConversation(convo);
 }
@@ -78044,7 +77742,6 @@ function seedDefaultMcpServers() {
     console.warn("[DB] MCP seed warning:", err);
   }
 }
-seedDefaultMcpServers();
 function syncEnvToSettings() {
   try {
     const envMappings = [
@@ -78059,6 +77756,8 @@ function syncEnvToSettings() {
       ["oci_genai_region", process.env.OCI_GENAI_REGION],
       ["oci_genai_compartment_id", process.env.OCI_GENAI_COMPARTMENT_ID],
       ["oci_genai_api_key", process.env.OCI_GENAI_API_KEY],
+      ["ollama_host", process.env.OLLAMA_HOST || "http://127.0.0.1:11434"],
+      ["ollama_auto_start", process.env.OLLAMA_AUTO_START || "true"],
       ["default_model", process.env.DEFAULT_MODEL || process.env.OLLAMA_MODEL],
       ["default_provider", process.env.DEFAULT_PROVIDER || process.env.AGENT_PROVIDER]
     ];
@@ -78074,9 +77773,423 @@ function syncEnvToSettings() {
     console.warn("[DB] Sync env to settings notice:", err);
   }
 }
-syncEnvToSettings();
+var import_node_sqlite, import_path2, import_crypto, import_fs2, dataDir, legacyDbPath, targetDbPath, activeDbPath, db2, db_default;
+var init_db = __esm({
+  "src/db/index.ts"() {
+    init_env();
+    import_node_sqlite = require("node:sqlite");
+    import_path2 = __toESM(require("path"));
+    import_crypto = require("crypto");
+    init_mongo();
+    import_fs2 = __toESM(require("fs"));
+    initMongo().catch((err) => console.warn("[MongoDB] Init error:", err.message));
+    dataDir = process.env.DATA_DIR || import_path2.default.join(process.cwd(), "data");
+    if (!import_fs2.default.existsSync(dataDir)) {
+      try {
+        import_fs2.default.mkdirSync(dataDir, { recursive: true });
+      } catch (err) {
+        console.warn("[DB] Failed to create data directory:", err);
+      }
+    }
+    legacyDbPath = import_path2.default.join(process.cwd(), "terramind.db");
+    targetDbPath = process.env.DB_PATH || import_path2.default.join(dataDir, "terramind.db");
+    if (!process.env.DB_PATH && import_fs2.default.existsSync(legacyDbPath) && !import_fs2.default.existsSync(targetDbPath)) {
+      try {
+        import_fs2.default.renameSync(legacyDbPath, targetDbPath);
+        if (import_fs2.default.existsSync(legacyDbPath + "-wal")) import_fs2.default.renameSync(legacyDbPath + "-wal", targetDbPath + "-wal");
+        if (import_fs2.default.existsSync(legacyDbPath + "-shm")) import_fs2.default.renameSync(legacyDbPath + "-shm", targetDbPath + "-shm");
+      } catch {
+      }
+    }
+    activeDbPath = process.env.DB_PATH ? process.env.DB_PATH : import_fs2.default.existsSync(targetDbPath) ? targetDbPath : import_fs2.default.existsSync(legacyDbPath) ? legacyDbPath : targetDbPath;
+    db2 = new import_node_sqlite.DatabaseSync(activeDbPath);
+    db2.exec("PRAGMA journal_mode = WAL;");
+    db2.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
+    password_hash TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon TEXT DEFAULT '\u{1F4C1}',
+    user_id TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS project_members (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    role TEXT DEFAULT 'editor',
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    provider TEXT,
+    model TEXT,
+    project_id TEXT DEFAULT '',
+    user_id TEXT DEFAULT '',
+    agent_id TEXT DEFAULT 'agent_tf-devops-expert',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    role TEXT,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS mcp_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    transport TEXT NOT NULL,
+    command TEXT,
+    args TEXT,
+    url TEXT,
+    env TEXT,
+    enabled INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'active',
+    tools TEXT,
+    last_checked DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+    try {
+      db2.exec(`ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT '';`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT '';`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE conversations ADD COLUMN agent_id TEXT DEFAULT 'agent_tf-devops-expert';`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE conversations ADD COLUMN updated_at DATETIME;`);
+      db2.exec(`UPDATE conversations SET updated_at = created_at WHERE updated_at IS NULL;`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE projects ADD COLUMN user_id TEXT DEFAULT '';`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT '';`);
+    } catch {
+    }
+    try {
+      db2.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'Cloud Architect';`);
+    } catch {
+    }
+    try {
+      db2.exec(`
+    CREATE TABLE IF NOT EXISTS project_members (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      role TEXT DEFAULT 'editor',
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(project_id, user_id)
+    );
+  `);
+    } catch {
+    }
+    try {
+      db2.exec(`DELETE FROM projects WHERE id IN ('proj-aws', 'proj-k8s', 'proj-finops', 'proj-cicd');`);
+    } catch {
+    }
+    seedDefaultMcpServers();
+    syncEnvToSettings();
+    db_default = db2;
+  }
+});
+
+// src/services/ollama.ts
+var ollama_exports = {};
+__export(ollama_exports, {
+  getOllamaBaseUrl: () => getOllamaBaseUrl,
+  installOllama: () => installOllama,
+  isOllamaInstalled: () => isOllamaInstalled,
+  isOllamaRunning: () => isOllamaRunning,
+  startOllamaDaemon: () => startOllamaDaemon
+});
+function getOllamaBaseUrl() {
+  try {
+    const raw = getSetting("ollama_host") || process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
+    let host = raw.trim();
+    if (!host) host = "http://127.0.0.1:11434";
+    if (!host.startsWith("http://") && !host.startsWith("https://")) {
+      host = `http://${host}`;
+    }
+    if (host.includes("://0.0.0.0")) {
+      return host.replace("://0.0.0.0", "://127.0.0.1");
+    }
+    return host.replace(/\/+$/, "");
+  } catch {
+    return "http://127.0.0.1:11434";
+  }
+}
+async function isOllamaRunning(customHost) {
+  const configured = customHost || getOllamaBaseUrl();
+  const hosts = Array.from(/* @__PURE__ */ new Set([configured, "http://127.0.0.1:11434", "http://localhost:11434"]));
+  for (const host of hosts) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`${host}/api/version`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) return true;
+    } catch {
+    }
+  }
+  return false;
+}
+async function isOllamaInstalled() {
+  try {
+    const isWin = process.platform === "win32";
+    if (!isWin) {
+      const candidatePaths = [
+        "/usr/local/bin/ollama",
+        "/usr/bin/ollama",
+        `${process.env.HOME || ""}/.local/bin/ollama`,
+        "/bin/ollama"
+      ];
+      for (const p of candidatePaths) {
+        if (p && import_fs4.default.existsSync(p)) {
+          try {
+            const { stdout: verOut } = await execAsync(`"${p}" --version`);
+            return { installed: true, version: verOut.trim(), path: p };
+          } catch {
+            return { installed: true, path: p };
+          }
+        }
+      }
+    }
+    const cmd = isWin ? "where ollama" : "command -v ollama || which ollama";
+    const { stdout } = await execAsync(cmd);
+    const ollamaPath = stdout.trim().split("\n")[0].trim();
+    if (ollamaPath) {
+      try {
+        const { stdout: verOut } = await execAsync(`"${ollamaPath}" --version`);
+        return { installed: true, version: verOut.trim(), path: ollamaPath };
+      } catch {
+        return { installed: true, path: ollamaPath };
+      }
+    }
+    return { installed: false };
+  } catch {
+    return { installed: false };
+  }
+}
+function startOllamaDaemon() {
+  return new Promise(async (resolve) => {
+    if (await isOllamaRunning()) {
+      return resolve({ success: true, running: true });
+    }
+    try {
+      let stderrOutput = "";
+      const isWin = process.platform === "win32";
+      process.env.OLLAMA_HOST = process.env.OLLAMA_HOST || "0.0.0.0:11434";
+      process.env.OLLAMA_ORIGINS = process.env.OLLAMA_ORIGINS || "*";
+      if (isWin) {
+        const child = (0, import_child_process2.spawn)("ollama", ["serve"], {
+          detached: true,
+          stdio: ["ignore", "ignore", "pipe"],
+          shell: true,
+          env: {
+            ...process.env,
+            OLLAMA_HOST: "0.0.0.0:11434",
+            OLLAMA_ORIGINS: "*"
+          }
+        });
+        child.stderr?.on("data", (d) => {
+          stderrOutput += d.toString();
+        });
+        child.on("error", (err) => {
+          stderrOutput += ` ${err.message}`;
+        });
+        child.unref();
+      } else {
+        try {
+          await execAsync(
+            '(sudo -n mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null && printf "[Service]\\nEnvironment=\\"OLLAMA_HOST=0.0.0.0:11434\\"\\nEnvironment=\\"OLLAMA_ORIGINS=*\\"\\n" | sudo -n tee /etc/systemd/system/ollama.service.d/terramind-bind.conf >/dev/null && sudo -n systemctl daemon-reload 2>/dev/null) || true; systemctl start ollama 2>/dev/null || sudo -n systemctl start ollama 2>/dev/null'
+          );
+        } catch {
+        }
+        if (await isOllamaRunning()) {
+          return resolve({ success: true, running: true });
+        }
+        const installedInfo = await isOllamaInstalled();
+        const binPath = installedInfo.path || "ollama";
+        const envPath = `/usr/local/bin:/usr/bin:/bin:${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`;
+        const child = (0, import_child_process2.spawn)(
+          "sh",
+          ["-c", `nohup "${binPath}" serve > /tmp/ollama.log 2>&1 &`],
+          {
+            detached: true,
+            stdio: "ignore",
+            env: {
+              ...process.env,
+              OLLAMA_HOST: "0.0.0.0:11434",
+              OLLAMA_ORIGINS: "*",
+              PATH: envPath
+            }
+          }
+        );
+        child.unref();
+      }
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        const running = await isOllamaRunning();
+        if (running) {
+          clearInterval(interval);
+          return resolve({ success: true, running: true });
+        }
+        if (attempts >= 20) {
+          clearInterval(interval);
+          let logTail = "";
+          if (!isWin && import_fs4.default.existsSync("/tmp/ollama.log")) {
+            try {
+              logTail = import_fs4.default.readFileSync("/tmp/ollama.log", "utf8").trim().split("\n").slice(-4).join(" ");
+            } catch {
+            }
+          }
+          return resolve({
+            success: false,
+            running: false,
+            error: logTail || stderrOutput.trim() || 'Ollama process launched but port 11434 did not respond within 10 seconds. Check if port 11434 is in use or run "ollama serve" manually.'
+          });
+        }
+      }, 500);
+    } catch (err) {
+      resolve({ success: false, running: false, error: err.message || "Failed to spawn ollama process" });
+    }
+  });
+}
+function installOllama(onLog) {
+  return new Promise((resolve) => {
+    const isWin = process.platform === "win32";
+    let cmd = "";
+    let args = [];
+    if (isWin) {
+      cmd = "powershell.exe";
+      args = [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        'Write-Host ">>> Attempting winget install for Ollama..."; winget install Ollama.Ollama --accept-source-agreements --accept-package-agreements; if ($LASTEXITCODE -ne 0) { Write-Host ">>> Winget failed or not available. Downloading official Ollama installer..."; Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\\OllamaSetup.exe"; Start-Process -Wait "$env:TEMP\\OllamaSetup.exe" /SILENT; Write-Host ">>> Installer completed." }'
+      ];
+    } else {
+      cmd = "sh";
+      args = [
+        "-c",
+        'echo ">>> Checking operating system environment..." && if command -v apk >/dev/null 2>&1; then   echo ">>> Alpine Linux detected. Installing glibc compatibility and curl..." &&   (sudo apk add --no-cache curl gcompat libc6-compat 2>/dev/null || apk add --no-cache curl gcompat libc6-compat 2>/dev/null || true); elif command -v apt-get >/dev/null 2>&1; then   echo ">>> Debian/Ubuntu detected. Installing dependencies..." &&   (sudo apt-get update && sudo apt-get install -y curl zstd 2>/dev/null || true); fi && echo ">>> Downloading and executing official Ollama install script..." && (curl -fsSL https://ollama.com/install.sh | sudo sh 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh) && echo ">>> Starting Ollama background daemon on port 11434..." && nohup ollama serve > /tmp/ollama.log 2>&1 &'
+      ];
+    }
+    try {
+      const child = (0, import_child_process2.spawn)(cmd, args, { shell: true });
+      let outputBuffer = "";
+      child.stdout?.on("data", (d) => {
+        const text = d.toString();
+        outputBuffer += text;
+        onLog(text);
+      });
+      child.stderr?.on("data", (d) => {
+        const text = d.toString();
+        outputBuffer += text;
+        onLog(text);
+      });
+      child.on("close", async (code) => {
+        onLog(`
+>>> Installation process exited with code ${code}.
+>>> Verifying Ollama daemon health on port 11434...
+`);
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts++;
+          const running = await isOllamaRunning();
+          if (running) {
+            clearInterval(interval);
+            onLog(">>> \u2713 Ollama service is active and responsive on port 11434!\n");
+            return resolve({ success: true });
+          }
+          if (attempts >= 10) {
+            clearInterval(interval);
+            await startOllamaDaemon();
+            const finalCheck = await isOllamaRunning();
+            if (finalCheck) {
+              onLog(">>> \u2713 Ollama daemon started successfully!\n");
+              return resolve({ success: true });
+            }
+            return resolve({
+              success: false,
+              error: `Installation completed (exit code ${code}) but Ollama service is not responding on 127.0.0.1:11434. Log: ${outputBuffer.slice(-300)}`
+            });
+          }
+        }, 1200);
+      });
+      child.on("error", (err) => {
+        onLog(`>>> Process execution error: ${err.message}
+`);
+        resolve({ success: false, error: err.message });
+      });
+    } catch (err) {
+      onLog(`>>> Unexpected error: ${err.message}
+`);
+      resolve({ success: false, error: err.message });
+    }
+  });
+}
+var import_child_process2, import_util2, import_fs4, execAsync;
+var init_ollama = __esm({
+  "src/services/ollama.ts"() {
+    import_child_process2 = require("child_process");
+    import_util2 = require("util");
+    import_fs4 = __toESM(require("fs"));
+    init_db();
+    execAsync = (0, import_util2.promisify)(import_child_process2.exec);
+  }
+});
+
+// src/server.ts
+init_env();
+var import_fastify = __toESM(require_fastify());
+var import_static = __toESM(require_static());
+var import_path4 = __toESM(require("path"));
+var import_fs5 = __toESM(require("fs"));
+
+// src/routes/chat.ts
+var import_crypto3 = require("crypto");
+init_db();
 
 // src/routes/agent-prompts.ts
+init_db();
 var SKILLS = {
   "tf-remote-state-backend": {
     displayTitle: "Terraform Remote State & Distributed Locking",
@@ -78924,6 +79037,7 @@ var import_path3 = __toESM(require("path"));
 var import_promises = __toESM(require("fs/promises"));
 var import_fs3 = __toESM(require("fs"));
 var import_os = __toESM(require("os"));
+init_db();
 var execPromise = (0, import_util.promisify)(import_child_process.exec);
 var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || import_path3.default.resolve(process.cwd(), "..", "..", "Terraform");
 async function ensureWorkspace() {
@@ -79751,6 +79865,7 @@ async function invokeOciGenAi(params) {
 }
 
 // src/routes/chat.ts
+init_ollama();
 async function chatRoutes(fastify2) {
   fastify2.get("/api/projects", async (request, reply) => {
     try {
@@ -79874,7 +79989,8 @@ async function chatRoutes(fastify2) {
   fastify2.get("/api/models", async (request, reply) => {
     let ollamaOnline = false;
     let localModels = [];
-    const hosts = ["http://127.0.0.1:11434", "http://localhost:11434"];
+    const baseUrl = getOllamaBaseUrl();
+    const hosts = Array.from(/* @__PURE__ */ new Set([baseUrl, "http://127.0.0.1:11434", "http://localhost:11434"]));
     for (const host of hosts) {
       try {
         const controller = new AbortController();
@@ -80083,7 +80199,8 @@ async function chatRoutes(fastify2) {
       sendEvent({ status: `Connecting to Ollama library for '${modelName}'...`, percent: 0 });
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 18e5);
-      const res = await fetch("http://127.0.0.1:11434/api/pull", {
+      const baseUrl = getOllamaBaseUrl();
+      const res = await fetch(`${baseUrl}/api/pull`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: modelName, stream: true }),
@@ -80153,7 +80270,8 @@ async function chatRoutes(fastify2) {
         return reply.status(400).send({ error: "Model name is required" });
       }
       const decoded = decodeURIComponent(model).trim();
-      const res = await fetch("http://127.0.0.1:11434/api/delete", {
+      const baseUrl = getOllamaBaseUrl();
+      const res = await fetch(`${baseUrl}/api/delete`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: decoded })
@@ -80266,37 +80384,40 @@ async function chatRoutes(fastify2) {
       const hasAnyCloudKey = Boolean(geminiKey || openaiKey || anthropicKey);
       let activeProvider = provider;
       if (activeProvider === "ollama") {
-        sendStatus("Connecting to Ollama daemon (port 11434)...", "connecting");
-        let ollamaActive = false;
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2e3);
-          const check = await fetch("http://127.0.0.1:11434/api/version", { signal: controller.signal });
-          clearTimeout(timeout);
-          ollamaActive = check.ok;
-        } catch {
-          ollamaActive = false;
-        }
-        if (!ollamaActive) {
-          sendStatus("Attempting to launch local Ollama background service...", "starting");
+        const baseUrl = getOllamaBaseUrl();
+        sendStatus(`Connecting to Ollama daemon (${baseUrl})...`, "connecting");
+        let ollamaActive = await isOllamaRunning();
+        const autoStartPref = getSetting("ollama_auto_start") !== "false";
+        if (!ollamaActive && autoStartPref) {
+          sendStatus("\u2699\uFE0F Ollama is offline. Auto-launching local Ollama server on 0.0.0.0:11434...", "starting");
           try {
-            const { startOllamaDaemon: startOllamaDaemon2, isOllamaRunning: isOllamaRunning2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
-            await startOllamaDaemon2();
-            ollamaActive = await isOllamaRunning2();
+            await startOllamaDaemon();
+            ollamaActive = await isOllamaRunning();
+            if (ollamaActive) {
+              sendStatus("\u2713 Local Ollama daemon started and listening on 0.0.0.0:11434!", "ready");
+            }
           } catch {
           }
         }
         if (!ollamaActive) {
           streamToken(
-            `> \u26A0\uFE0F **Ollama is offline or unreachable on port 11434.**
+            `> \u26A0\uFE0F **Ollama server is offline or unreachable at \`${baseUrl}\`.**
 
-TerraMind could not connect to your local Ollama daemon. Please start it using:
+TerraMind attempted to connect to your Ollama daemon, but the service is not currently responding.
+
+### \u{1F310} Port Forwarding & Remote Setup:
+If you are running in **Docker**, **WSL2**, **remote Linux**, or a **cloud VM**, ensure Ollama is listening on all interfaces with CORS enabled by running:
 
 \`\`\`bash
+export OLLAMA_HOST="0.0.0.0:11434"
+export OLLAMA_ORIGINS="*"
 ollama serve
 \`\`\`
 
-Once started, send your message again. Or switch to **Cloud AI** in the model menu if you prefer.`
+### \u26A1 Quick Fix Options:
+1. Open **Settings \u2192 Local Models (Ollama)** and click **"Start Service"** or **"Install Ollama"**.
+2. If your Ollama server is running on a different port or IP, configure the **Ollama Host URL** in Settings.
+3. Or select **Cloud AI** (Gemini, Claude, OpenAI) in the model menu above to continue immediately.`
           );
           reply.raw.write(`data: [DONE]
 
@@ -80308,8 +80429,8 @@ Once started, send your message again. Or switch to **Cloud AI** in the model me
         sendStatus("Verifying local model availability...", "resolving");
         try {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2e3);
-          const tagsRes = await fetch("http://127.0.0.1:11434/api/tags", { signal: controller.signal });
+          const timeout = setTimeout(() => controller.abort(), 2500);
+          const tagsRes = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
           clearTimeout(timeout);
           if (tagsRes.ok) {
             const tagsData = await tagsRes.json();
@@ -80328,7 +80449,7 @@ Once started, send your message again. Or switch to **Cloud AI** in the model me
         }
         sendStatus(`Processing prompt with '${targetModel}'...`, "generating");
         try {
-          const ollamaRes = await fetch("http://127.0.0.1:11434/api/chat", {
+          const ollamaRes = await fetch(`${baseUrl}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -80789,6 +80910,7 @@ ${validationReports.join("\n\n")}
 
 // src/routes/workspace.ts
 init_ollama();
+init_db();
 async function workspaceRoutes(fastify2) {
   fastify2.get("/api/workspace", async (request, reply) => {
     try {
@@ -80844,12 +80966,18 @@ async function workspaceRoutes(fastify2) {
     try {
       const running = await isOllamaRunning();
       const info = await isOllamaInstalled();
+      const host = getOllamaBaseUrl();
+      const autoStart = getSetting("ollama_auto_start") !== "false";
       return {
         running,
         installed: info.installed,
         version: info.version,
         path: info.path,
-        platform: process.platform
+        platform: process.platform,
+        host,
+        autoStart,
+        portForwardingReady: true,
+        listenBinding: "0.0.0.0:11434"
       };
     } catch (err) {
       fastify2.log.error(err);
@@ -80896,7 +81024,8 @@ async function workspaceRoutes(fastify2) {
 
 // src/routes/auth.ts
 var import_crypto4 = require("crypto");
-function hashPassword(password) {
+init_db();
+function hashPassword2(password) {
   return (0, import_crypto4.createHash)("sha256").update(password).digest("hex");
 }
 async function authAndSettingsRoutes(fastify2) {
@@ -80915,7 +81044,7 @@ async function authAndSettingsRoutes(fastify2) {
     if (!user) {
       return reply.status(401).send({ error: "Invalid username or password" });
     }
-    if (user.password_hash !== hashPassword(password)) {
+    if (user.password_hash !== hashPassword2(password)) {
       return reply.status(401).send({ error: "Invalid username or password" });
     }
     const sessionToken = (0, import_crypto4.randomUUID)();
@@ -80936,7 +81065,7 @@ async function authAndSettingsRoutes(fastify2) {
     if (existing) {
       return reply.status(400).send({ error: "Username already exists" });
     }
-    const newUser = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(password), fullName || "", role || "Cloud Architect");
+    const newUser = createUser((0, import_crypto4.randomUUID)(), username, hashPassword2(password), fullName || "", role || "Cloud Architect");
     const sessionToken = (0, import_crypto4.randomUUID)();
     recordUserSession(newUser.id, newUser.username, sessionToken);
     return {
@@ -80951,7 +81080,7 @@ async function authAndSettingsRoutes(fastify2) {
       const username = email || (name ? `${name.toLowerCase().replace(/\s+/g, "_")}_${provider.toLowerCase()}` : `${provider.toLowerCase()}_user`);
       let user = getUserByUsername(username);
       if (!user) {
-        user = createUser((0, import_crypto4.randomUUID)(), username, hashPassword(`sso_${provider}_${(0, import_crypto4.randomUUID)()}`));
+        user = createUser((0, import_crypto4.randomUUID)(), username, hashPassword2(`sso_${provider}_${(0, import_crypto4.randomUUID)()}`));
       }
       const sessionToken = (0, import_crypto4.randomUUID)();
       recordUserSession(user.id, user.username, sessionToken);
@@ -80999,7 +81128,10 @@ async function authAndSettingsRoutes(fastify2) {
       ociGenaiModel: settings["oci_genai_model"] || "cohere.command-r-plus",
       hasOciGenai: Boolean(
         (settings["oci_genai_compartment_id"] || process.env.OCI_COMPARTMENT_ID) && (settings["oci_genai_api_key"] || process.env.OCI_GENAI_API_KEY)
-      )
+      ),
+      // Ollama Host & Auto-Start Configuration
+      ollamaHost: settings["ollama_host"] || process.env.OLLAMA_HOST || "http://127.0.0.1:11434",
+      ollamaAutoStart: settings["ollama_auto_start"] !== "false"
     };
   });
   fastify2.post("/api/settings", async (request, reply) => {
@@ -81055,6 +81187,12 @@ async function authAndSettingsRoutes(fastify2) {
     if (body.ociGenaiModel !== void 0) {
       setSetting("oci_genai_model", body.ociGenaiModel.trim());
     }
+    if (body.ollamaHost !== void 0) {
+      setSetting("ollama_host", body.ollamaHost.trim());
+    }
+    if (body.ollamaAutoStart !== void 0) {
+      setSetting("ollama_auto_start", String(body.ollamaAutoStart));
+    }
     return { success: true };
   });
   fastify2.delete("/api/settings/keys/:provider", async (request, reply) => {
@@ -81088,6 +81226,7 @@ function maskKey(key) {
 // src/routes/mcp.ts
 var import_child_process3 = require("child_process");
 var import_util3 = require("util");
+init_db();
 var execPromise2 = (0, import_util3.promisify)(import_child_process3.exec);
 async function mcpRoutes(fastify2) {
   fastify2.get("/api/mcp/servers", async (request, reply) => {
@@ -81319,17 +81458,25 @@ var start = async () => {
     console.log(`TerraMind Server listening on http://localhost:${port}`);
     setTimeout(async () => {
       try {
-        const { isOllamaRunning: isOllamaRunning2, isOllamaInstalled: isOllamaInstalled2, startOllamaDaemon: startOllamaDaemon2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
+        const { getSetting: getSetting2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const autoStart = getSetting2("ollama_auto_start") !== "false";
+        if (!autoStart) {
+          console.log("[Ollama] Auto-start is disabled in settings.");
+          return;
+        }
+        const { isOllamaRunning: isOllamaRunning2, isOllamaInstalled: isOllamaInstalled2, startOllamaDaemon: startOllamaDaemon2, getOllamaBaseUrl: getOllamaBaseUrl2 } = await Promise.resolve().then(() => (init_ollama(), ollama_exports));
         const running = await isOllamaRunning2();
         if (!running) {
           const installed = await isOllamaInstalled2();
           if (installed.installed) {
-            console.log("[Ollama] Auto-launching local Ollama background server...");
+            console.log("[Ollama] Auto-launching local Ollama server (listening on 0.0.0.0:11434 with port-forwarding enabled)...");
             const res = await startOllamaDaemon2();
             if (res.running) {
-              console.log("[Ollama] Local Ollama daemon started successfully on port 11434.");
+              console.log("[Ollama] Local Ollama daemon started successfully on 0.0.0.0:11434.");
             }
           }
+        } else {
+          console.log(`[Ollama] Ollama server is active and responsive at ${getOllamaBaseUrl2()}`);
         }
       } catch (err) {
         console.warn("[Ollama] Background startup notice:", err.message || err);

@@ -131,17 +131,26 @@ const start = async () => {
     // Auto-detect and start Ollama in background if installed and not yet running
     setTimeout(async () => {
       try {
-        const { isOllamaRunning, isOllamaInstalled, startOllamaDaemon } = await import('./services/ollama');
+        const { getSetting } = await import('./db');
+        const autoStart = getSetting('ollama_auto_start') !== 'false';
+        if (!autoStart) {
+          console.log('[Ollama] Auto-start is disabled in settings.');
+          return;
+        }
+
+        const { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, getOllamaBaseUrl } = await import('./services/ollama');
         const running = await isOllamaRunning();
         if (!running) {
           const installed = await isOllamaInstalled();
           if (installed.installed) {
-            console.log('[Ollama] Auto-launching local Ollama background server...');
+            console.log('[Ollama] Auto-launching local Ollama server (listening on 0.0.0.0:11434 with port-forwarding enabled)...');
             const res = await startOllamaDaemon();
             if (res.running) {
-              console.log('[Ollama] Local Ollama daemon started successfully on port 11434.');
+              console.log('[Ollama] Local Ollama daemon started successfully on 0.0.0.0:11434.');
             }
           }
+        } else {
+          console.log(`[Ollama] Ollama server is active and responsive at ${getOllamaBaseUrl()}`);
         }
       } catch (err: any) {
         console.warn('[Ollama] Background startup notice:', err.message || err);

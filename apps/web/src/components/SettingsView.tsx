@@ -50,10 +50,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // 4. Ollama local state
   const [ollamaOnline, setOllamaOnline] = useState(false);
+  const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
+  const [ollamaAutoStart, setOllamaAutoStart] = useState(true);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [newModelInput, setNewModelInput] = useState('');
   const [pulling, setPulling] = useState(false);
   const [pullStatus, setPullStatus] = useState<string | null>(null);
+  const [startingOllama, setStartingOllama] = useState(false);
+  const [ollamaStatusMsg, setOllamaStatusMsg] = useState<string | null>(null);
+  const [ollamaConfigSaved, setOllamaConfigSaved] = useState(false);
+  const [ollamaSaving, setOllamaSaving] = useState(false);
 
   // 5. AWS Bedrock state
   const [bedrockRegion, setBedrockRegion] = useState('us-east-1');
@@ -147,6 +153,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (data.ociGenaiCompartmentId) setOciCompartmentId(data.ociGenaiCompartmentId);
         if (data.ociGenaiApiKey) setOciKey(data.ociGenaiApiKey);
         if (data.ociGenaiModel) setOciModel(data.ociGenaiModel);
+
+        // Ollama Host & Auto-Start
+        if (data.ollamaHost) setOllamaHost(data.ollamaHost);
+        if (data.ollamaAutoStart !== undefined) setOllamaAutoStart(Boolean(data.ollamaAutoStart));
       })
       .catch((err) => console.error('Error fetching settings:', err));
 
@@ -155,6 +165,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .then((data) => {
         setOllamaOnline(Boolean(data.ollamaOnline ?? data.ollama_online));
         setInstalledModels(data.localModels || data.local || []);
+      })
+      .catch(() => {});
+
+    fetch('/api/ollama/status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.running) setOllamaOnline(true);
+        if (data.host) setOllamaHost(data.host);
+        if (data.autoStart !== undefined) setOllamaAutoStart(Boolean(data.autoStart));
       })
       .catch(() => {});
 
@@ -423,6 +442,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       console.error('Error saving OCI settings:', err);
     } finally {
       setOciLoading(false);
+    }
+  };
+
+  const handleStartOllamaServer = async () => {
+    setStartingOllama(true);
+    setOllamaStatusMsg('Launching local Ollama daemon on 0.0.0.0:11434...');
+    try {
+      const res = await fetch('/api/ollama/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.online || data.running || data.success) {
+        setOllamaOnline(true);
+        setOllamaStatusMsg('✓ Ollama daemon is active and listening on port 11434!');
+        const mRes = await fetch('/api/models');
+        const mData = await mRes.json();
+        setInstalledModels(mData.localModels || []);
+        setTimeout(() => setOllamaStatusMsg(null), 4000);
+      } else {
+        setOllamaStatusMsg(`⚠️ ${data.error || 'Failed to start Ollama. Make sure Ollama is installed on this system.'}`);
+      }
+    } catch (err: any) {
+      setOllamaStatusMsg(`⚠️ Network error: ${err.message}`);
+    } finally {
+      setStartingOllama(false);
+    }
+  };
+
+  const handleSaveOllamaConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOllamaSaving(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ollamaHost: ollamaHost.trim(),
+          ollamaAutoStart
+        })
+      });
+      if (res.ok) {
+        setOllamaConfigSaved(true);
+        setTimeout(() => setOllamaConfigSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error('Error saving Ollama config:', err);
+    } finally {
+      setOllamaSaving(false);
     }
   };
 
@@ -916,7 +981,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             padding: '28px 32px'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div
                 style={{
@@ -927,14 +992,134 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }}
               />
               <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>
-                {ollamaOnline ? 'Ollama Daemon Active & Listening (port 11434)' : 'Ollama Offline'}
+                {ollamaOnline ? 'Ollama Daemon Active & Listening (0.0.0.0:11434)' : 'Ollama Offline'}
+              </span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  color: '#3b82f6',
+                  fontWeight: 600,
+                  border: '1px solid rgba(59, 130, 246, 0.2)'
+                }}
+                title="Ollama is configured to bind to 0.0.0.0:11434 with OLLAMA_ORIGINS=* for port forwarding support"
+              >
+                🌐 Port Forwarding Ready
               </span>
             </div>
 
-            <span style={{ fontSize: '12.5px', color: 'var(--muted)' }}>
-              {installedModels.length} models installed
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {!ollamaOnline && (
+                <button
+                  type="button"
+                  onClick={handleStartOllamaServer}
+                  disabled={startingOllama}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '7px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: startingOllama ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {startingOllama ? 'Starting...' : '▶ Start Ollama Server'}
+                </button>
+              )}
+              <span style={{ fontSize: '12.5px', color: 'var(--muted)' }}>
+                {installedModels.length} models installed
+              </span>
+            </div>
           </div>
+
+          {ollamaStatusMsg && (
+            <div
+              style={{
+                marginBottom: '20px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                border: `1px solid ${ollamaStatusMsg.startsWith('✓') ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                color: ollamaStatusMsg.startsWith('✓') ? '#10b981' : '#ef4444',
+                fontSize: '13px'
+              }}
+            >
+              {ollamaStatusMsg}
+            </div>
+          )}
+
+          {/* Connection & Port Forwarding Configuration Form */}
+          <form onSubmit={handleSaveOllamaConfig} style={{ marginBottom: '28px', padding: '16px 20px', borderRadius: '10px', background: 'var(--bg)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>⚙️</span> Host & Auto-Start Configuration
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 14px 0' }}>
+              Configure how TerraMind connects to and manages your local or remote Ollama server.
+            </p>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                Ollama Host URL (Default: <code>http://localhost:11434</code>)
+              </label>
+              <input
+                type="text"
+                placeholder="http://localhost:11434"
+                value={ollamaHost}
+                onChange={(e) => setOllamaHost(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--card-bg, var(--side))', color: 'var(--text)', fontSize: '13px', fontFamily: 'monospace' }}
+              />
+              <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '6px', lineHeight: 1.4 }}>
+                ℹ️ For Docker, WSL2, or remote servers, TerraMind launches Ollama bound to <code>0.0.0.0:11434</code> with <code>OLLAMA_ORIGINS="*"</code> so any forwarded port connects seamlessly without loopback blockages.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="ollama-auto-start-toggle"
+                checked={ollamaAutoStart}
+                onChange={(e) => setOllamaAutoStart(e.target.checked)}
+                style={{ marginTop: '3px', cursor: 'pointer' }}
+              />
+              <label htmlFor="ollama-auto-start-toggle" style={{ fontSize: '12.5px', color: 'var(--text)', cursor: 'pointer', lineHeight: 1.4 }}>
+                <strong>Auto-start Ollama server if offline</strong>
+                <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
+                  When querying local models or booting TerraMind, automatically start the background Ollama daemon if it is not currently running.
+                </div>
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+              {ollamaConfigSaved && (
+                <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 600 }}>
+                  ✓ Ollama configuration saved
+                </span>
+              )}
+              <button
+                type="submit"
+                disabled={ollamaSaving}
+                style={{
+                  padding: '7px 18px',
+                  borderRadius: '7px',
+                  border: 'none',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  cursor: ollamaSaving ? 'wait' : 'pointer'
+                }}
+              >
+                {ollamaSaving ? 'Saving...' : 'Save Configuration'}
+              </button>
+            </div>
+          </form>
 
           <div style={{ marginBottom: '26px' }}>
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
