@@ -524,6 +524,21 @@ $envLines = @(
 if (![string]::IsNullOrWhiteSpace($geminiApiKey)) { $envLines += "GEMINI_API_KEY=`"$geminiApiKey`"" }
 if (![string]::IsNullOrWhiteSpace($openaiApiKey)) { $envLines += "OPENAI_API_KEY=`"$openaiApiKey`"" }
 if (![string]::IsNullOrWhiteSpace($anthropicApiKey)) { $envLines += "ANTHROPIC_API_KEY=`"$anthropicApiKey`"" }
+
+if ($models.Count -gt 0) {
+    $envLines += "DEFAULT_MODEL=`"$($models[0])`""
+    $envLines += "OLLAMA_MODELS=`"$($models -join ' ')`""
+    $envLines += "DEFAULT_PROVIDER=`"ollama`""
+} elseif (![string]::IsNullOrWhiteSpace($geminiApiKey)) {
+    $envLines += "DEFAULT_MODEL=`"gemini-2.5-flash`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+} elseif (![string]::IsNullOrWhiteSpace($openaiApiKey)) {
+    $envLines += "DEFAULT_MODEL=`"gpt-4o`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+} elseif (![string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $envLines += "DEFAULT_MODEL=`"claude-3-5-sonnet-20241022`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+}
 Set-Content -Path $envPath -Value ($envLines -join "`r`n") -Encoding UTF8
 Write-Host " [OK] Created .env configuration." -ForegroundColor Green
 

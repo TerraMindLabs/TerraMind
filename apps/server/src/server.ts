@@ -1,7 +1,9 @@
+import './env';
 import fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
+
 import chatRoutes from './routes/chat';
 import workspaceRoutes from './routes/workspace';
 import authRoutes from './routes/auth';

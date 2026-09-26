@@ -1,3 +1,4 @@
+import '../env';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import { randomUUID, createHash } from 'crypto';
@@ -757,6 +758,39 @@ export function seedDefaultMcpServers(): void {
   }
 }
 seedDefaultMcpServers();
+
+// Sync environment variables (from .env or shell) into SQLite settings table
+export function syncEnvToSettings(): void {
+  try {
+    const envMappings: Array<[string, string | undefined]> = [
+      ['gemini_api_key', process.env.GEMINI_API_KEY || process.env.GOOGLE_KEY],
+      ['openai_api_key', process.env.OPENAI_API_KEY],
+      ['anthropic_api_key', process.env.ANTHROPIC_API_KEY],
+      ['azure_openai_endpoint', process.env.AZURE_OPENAI_ENDPOINT],
+      ['azure_openai_api_key', process.env.AZURE_OPENAI_API_KEY],
+      ['aws_bedrock_region', process.env.AWS_BEDROCK_REGION],
+      ['aws_bedrock_access_key', process.env.AWS_BEDROCK_ACCESS_KEY],
+      ['aws_bedrock_secret_key', process.env.AWS_BEDROCK_SECRET_KEY],
+      ['oci_genai_region', process.env.OCI_GENAI_REGION],
+      ['oci_genai_compartment_id', process.env.OCI_GENAI_COMPARTMENT_ID],
+      ['oci_genai_api_key', process.env.OCI_GENAI_API_KEY],
+      ['default_model', process.env.DEFAULT_MODEL || process.env.OLLAMA_MODEL],
+      ['default_provider', process.env.DEFAULT_PROVIDER || process.env.AGENT_PROVIDER]
+    ];
+
+    for (const [key, val] of envMappings) {
+      if (val && val.trim()) {
+        const existing = getSetting(key);
+        if (!existing || !existing.trim() || key.startsWith('default_') || val.trim() !== existing) {
+          setSetting(key, val.trim());
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[DB] Sync env to settings notice:', err);
+  }
+}
+syncEnvToSettings();
 
 export { recordUserSession, logUserActivity };
 export default db;

@@ -658,6 +658,21 @@ fi
 if [ -n "$anthropicApiKey" ]; then
     echo "ANTHROPIC_API_KEY=\"$anthropicApiKey\"" >> "$envDest"
 fi
+
+if [ ${#models[@]} -gt 0 ]; then
+    echo "DEFAULT_MODEL=\"${models[0]}\"" >> "$envDest"
+    echo "OLLAMA_MODELS=\"${models[*]}\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"ollama\"" >> "$envDest"
+elif [ -n "$geminiApiKey" ]; then
+    echo "DEFAULT_MODEL=\"gemini-2.5-flash\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+elif [ -n "$openaiApiKey" ]; then
+    echo "DEFAULT_MODEL=\"gpt-4o\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+elif [ -n "$anthropicApiKey" ]; then
+    echo "DEFAULT_MODEL=\"claude-3-5-sonnet-20241022\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+fi
 echo -e "${GREEN}✅ Created .env configuration.${NC}"
 
 # 7. Create Launch & Uninstall Scripts

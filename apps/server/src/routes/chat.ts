@@ -394,6 +394,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       ollamaOnline,
       localModels,
       cloudModels,
+      defaultModel: settings['default_model'] || process.env.DEFAULT_MODEL || (localModels.length > 0 ? localModels[0] : (cloudModels.length > 0 ? cloudModels[0] : '')),
+      defaultProvider: settings['default_provider'] || process.env.DEFAULT_PROVIDER || (localModels.length > 0 ? 'ollama' : (cloudModels.length > 0 ? 'cloud' : 'ollama')),
       hasKeys: {
         ...hasKeys,
         azure: Boolean(settings['azure_openai_endpoint'] && settings['azure_openai_api_key']),

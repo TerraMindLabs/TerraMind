@@ -327,11 +327,20 @@ function App() {
         setLocalModels(locals);
         setCloudModels(clouds);
 
-        // Intelligently set default model based on availability and active provider
-        if (provider === 'ollama') {
+        // Intelligently set default provider & model based on installer settings and availability
+        const configuredProvider = data.defaultProvider;
+        const configuredModel = data.defaultModel;
+
+        if (configuredProvider && (configuredProvider === 'ollama' || configuredProvider === 'cloud')) {
+          setProvider(configuredProvider);
+        }
+
+        if (configuredModel && (locals.includes(configuredModel) || clouds.includes(configuredModel))) {
+          setModel(configuredModel);
+        } else if (provider === 'ollama' || configuredProvider === 'ollama') {
           if (locals.length > 0) {
             if (!model || !locals.includes(model)) {
-              setModel(locals[0]);
+              setModel(configuredModel && locals.includes(configuredModel) ? configuredModel : locals[0]);
             }
           } else if (clouds.length > 0 && !data.ollamaOnline) {
             setProvider('cloud');
