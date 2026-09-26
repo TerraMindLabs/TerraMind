@@ -99,6 +99,67 @@ function Ensure-OllamaRunning {
         }
     }
 }
+function Test-ValidTerraMindDir {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if (!(Test-Path $Path)) { return $false }
+    
+    try {
+        $resolved = (Resolve-Path $Path).Path
+    } catch {
+        return $false
+    }
+
+    # 1. Strictly forbid drive roots (e.g. C:\, D:\, E:\, /)
+    $root = [System.IO.Path]::GetPathRoot($resolved)
+    if (![string]::IsNullOrWhiteSpace($root) -and ($root.TrimEnd('\', '/') -ieq $resolved.TrimEnd('\', '/'))) {
+        return $false
+    }
+
+    # 2. Strictly forbid sensitive system and user directories
+    $forbiddenFolders = @(
+        $env:SystemDrive + "\",
+        $env:SystemRoot,
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)},
+        $env:USERPROFILE,
+        [System.Environment]::GetFolderPath("Desktop"),
+        [System.Environment]::GetFolderPath("Personal"),
+        [System.Environment]::GetFolderPath("MyDocuments"),
+        $env:LOCALAPPDATA,
+        $env:APPDATA,
+        $env:TEMP
+    )
+    foreach ($f in $forbiddenFolders) {
+        if (![string]::IsNullOrWhiteSpace($f) -and ($resolved.TrimEnd('\', '/') -ieq $f.TrimEnd('\', '/'))) {
+            return $false
+        }
+    }
+
+    # 3. Directory name MUST be "TerraMind" (case-insensitive)
+    $leaf = [System.IO.Path]::GetFileName($resolved.TrimEnd('\', '/'))
+    if ($leaf -inotmatch "^terramind$") {
+        return $false
+    }
+
+    # 4. Must contain TerraMind-specific signature files (package.json and apps/server)
+    $pkgJson = Join-Path $resolved "package.json"
+    $appsServer = Join-Path $resolved "apps\server"
+    if (!(Test-Path $pkgJson) -or !(Test-Path $appsServer)) {
+        return $false
+    }
+
+    try {
+        $content = Get-Content $pkgJson -Raw -ErrorAction SilentlyContinue
+        if ($content -notmatch '"name":\s*"terramind"') {
+            return $false
+        }
+    } catch {
+        return $false
+    }
+
+    return $true
+}
 
 Write-Host "===========================================================" -ForegroundColor DarkGray
 Write-Host "  _____                    __  __ _           _            " -ForegroundColor Cyan
@@ -121,8 +182,44 @@ if ([string]::IsNullOrWhiteSpace($action)) { $action = "1" }
 
 if ($action -eq "2") {
     $currentPath = (Get-Location).Path
-    $basePath = Read-Host "`nEnter the directory where TerraMind is installed [Default: $currentPath]"
-    if ([string]::IsNullOrWhiteSpace($basePath)) { $basePath = $currentPath }
+    $defaultCandidate = ""
+    if (Test-ValidTerraMindDir $currentPath) {
+        $defaultCandidate = $currentPath
+    } elseif (Test-ValidTerraMindDir (Join-Path $currentPath "TerraMind")) {
+        $defaultCandidate = (Join-Path $currentPath "TerraMind")
+    } else {
+        $defaultDrive = (Get-Location).Drive.Name
+        if (Test-ValidTerraMindDir "$defaultDrive`:\TerraMind") {
+            $defaultCandidate = "$defaultDrive`:\TerraMind"
+        } elseif (Test-ValidTerraMindDir "$HOME\TerraMind") {
+            $defaultCandidate = "$HOME\TerraMind"
+        }
+    }
+
+    $promptText = if ($defaultCandidate) {
+        "`nEnter the TerraMind installation directory to delete [Default: $defaultCandidate]"
+    } else {
+        "`nEnter the TerraMind installation directory to delete"
+    }
+
+    $inputPath = Read-Host $promptText
+    $basePath = if ([string]::IsNullOrWhiteSpace($inputPath)) { $defaultCandidate } else { $inputPath }
+
+    if ([string]::IsNullOrWhiteSpace($basePath) -or !(Test-Path $basePath)) {
+        Write-Host "`n[!] Directory does not exist: '$basePath'" -ForegroundColor Red
+        return
+    }
+
+    # SAFETY CHECK: Strictly block deleting anything other than a verified TerraMind folder
+    if (!(Test-ValidTerraMindDir $basePath)) {
+        Write-Host "`n===========================================================" -ForegroundColor Red
+        Write-Host " [!] SAFETY VIOLATION: Refusing to delete '$basePath'!" -ForegroundColor Red
+        Write-Host "===========================================================" -ForegroundColor Red
+        Write-Host " For safety, the TerraMind uninstaller will ONLY delete a folder" -ForegroundColor Yellow
+        Write-Host " specifically named 'TerraMind' that contains verified project files." -ForegroundColor Yellow
+        Write-Host " Drive roots (e.g. C:\, D:\) and non-TerraMind folders are strictly protected.`n" -ForegroundColor Yellow
+        return
+    }
 
     Write-Host "`n[WARN] This will stop TerraMind and remove application files in $basePath!" -ForegroundColor Red
     $confirm = Read-Host "Are you sure you want to proceed? (y/N)"
@@ -143,9 +240,14 @@ if ($action -eq "2") {
         }
     }
 
-    if (Test-Path $basePath) {
+    # Final sanity check immediately before removal
+    if (Test-ValidTerraMindDir $basePath) {
+        Set-Location $HOME
         Invoke-CommandWithSpinner -Message "Deleting TerraMind installation ($basePath)" -CommandString "rmdir /s /q `"$basePath`""
         if (Test-Path $basePath) { Remove-Item -Recurse -Force $basePath -ErrorAction SilentlyContinue }
+    } else {
+        Write-Host "[!] Safety check failed before deletion. Aborting." -ForegroundColor Red
+        return
     }
 
     $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "TerraMind.lnk"
@@ -369,12 +471,38 @@ $uninstallBat = Join-Path $basePath "Uninstall_TerraMind.bat"
 $unContent = @"
 @echo off
 title Uninstall TerraMind
-echo [WARN] This will completely remove TerraMind from %~dp0!
+set "TARGET_DIR=%~dp0"
+if "%TARGET_DIR:~-1%"=="\" set "TARGET_DIR=%TARGET_DIR:~0,-1%"
+
+:: Extract folder name
+for %%F in ("%TARGET_DIR%") do set "FOLDER_NAME=%%~nxF"
+
+:: Safety check: Must specifically be a TerraMind directory
+if /i not "%FOLDER_NAME%"=="TerraMind" (
+    echo [ERROR] Safety check failed: Target folder is '%FOLDER_NAME%', not 'TerraMind'.
+    echo Refusing to delete for system safety.
+    pause
+    exit /b 1
+)
+
+:: Safety check: Must contain TerraMind project signature
+if not exist "%TARGET_DIR%\package.json" (
+    echo [ERROR] Safety check failed: Missing package.json in '%TARGET_DIR%'.
+    pause
+    exit /b 1
+)
+if not exist "%TARGET_DIR%\apps\server" (
+    echo [ERROR] Safety check failed: Missing apps\server in '%TARGET_DIR%'.
+    pause
+    exit /b 1
+)
+
+echo [WARN] This will completely remove TerraMind from: %TARGET_DIR%
 set /p confirm="Are you sure you want to proceed? (y/N): "
 if /i "%confirm%"=="y" (
     taskkill /f /im node.exe >nul 2>nul
-    cd ..
-    rmdir /s /q "%~dp0"
+    cd /d "%USERPROFILE%"
+    rmdir /s /q "%TARGET_DIR%"
     echo TerraMind removed successfully.
 )
 pause

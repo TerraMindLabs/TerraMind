@@ -234,6 +234,41 @@ ensure_ollama_running() {
 
     return 0
 }
+is_valid_terramind_dir() {
+    local target="$1"
+    [ -n "$target" ] || return 1
+    [ -d "$target" ] || return 1
+
+    local absPath
+    absPath=$(cd "$target" 2>/dev/null && pwd) || return 1
+
+    # 1. Strictly forbid root and essential system paths
+    case "$absPath" in
+        ""|"/"|"/root"|"/home"|"/usr"|"/etc"|"/var"|"/tmp"|"/boot"|"/dev"|"/bin"|"/sbin"|"/lib"|"/lib64") return 1 ;;
+        [a-zA-Z]:|[a-zA-Z]:/|[a-zA-Z]:\\) return 1 ;; # Windows drive roots (e.g. C:\ or D:\)
+        /[a-zA-Z]|/[a-zA-Z]/) return 1 ;; # MSYS/Git-Bash drive roots (e.g. /c or /d)
+        "$HOME") return 1 ;; # Entire user home directory
+    esac
+
+    # 2. Directory name MUST be TerraMind (case-insensitive)
+    local baseName
+    baseName=$(basename "$absPath" | tr '[:upper:]' '[:lower:]')
+    if [ "$baseName" != "terramind" ]; then
+        return 1
+    fi
+
+    # 3. Must contain TerraMind project signature
+    if [ ! -f "$absPath/package.json" ] || [ ! -d "$absPath/apps/server" ]; then
+        return 1
+    fi
+
+    # 4. Verify package.json contains terramind name
+    if ! grep -qi '"name":.*"terramind"' "$absPath/package.json" 2>/dev/null; then
+        return 1
+    fi
+
+    return 0
+}
 
 echo -e "${WHITE}Welcome to TerraMind Setup${NC}\n"
 echo -e "${CYAN}What would you like to do?${NC}"
@@ -244,9 +279,39 @@ action=${action:-1}
 
 if [ "$action" == "2" ]; then
     echo ""
-    currentDir=$(pwd)
-    read -p "Enter the directory where TerraMind is installed [Default: $currentDir]: " basePath
-    basePath=${basePath:-$currentDir}
+    defaultCandidate=""
+    if is_valid_terramind_dir "$(pwd)"; then
+        defaultCandidate="$(pwd)"
+    elif is_valid_terramind_dir "$(pwd)/TerraMind"; then
+        defaultCandidate="$(pwd)/TerraMind"
+    elif is_valid_terramind_dir "$HOME/TerraMind"; then
+        defaultCandidate="$HOME/TerraMind"
+    fi
+
+    if [ -n "$defaultCandidate" ]; then
+        read -p "Enter the TerraMind installation directory to delete [Default: $defaultCandidate]: " userPath
+        basePath=${userPath:-$defaultCandidate}
+    else
+        read -p "Enter the TerraMind installation directory to delete: " basePath
+    fi
+
+    basePath="${basePath/#\~/$HOME}"
+
+    if [ -z "$basePath" ] || [ ! -d "$basePath" ]; then
+        echo -e "${RED}Error: Directory '$basePath' does not exist.${NC}"
+        exit 1
+    fi
+
+    # SAFETY CHECK: Strictly block deleting anything other than a verified TerraMind folder
+    if ! is_valid_terramind_dir "$basePath"; then
+        echo -e "\n${RED}===========================================================${NC}"
+        echo -e "${RED} ⛔ SAFETY VIOLATION: Refusing to delete '$basePath'!${NC}"
+        echo -e "${RED}===========================================================${NC}"
+        echo -e "${YELLOW} For safety, the TerraMind uninstaller will ONLY delete a folder${NC}"
+        echo -e "${YELLOW} specifically named 'TerraMind' that contains verified project files.${NC}"
+        echo -e "${YELLOW} Drive roots (e.g. C:\, D:\, /) and non-TerraMind folders are strictly protected.${NC}\n"
+        exit 1
+    fi
 
     echo -e "\n${RED}⚠️ WARNING: This will stop TerraMind and remove application files in $basePath!${NC}"
     read -p "Are you sure you want to proceed? (y/N): " confirm
@@ -271,13 +336,16 @@ if [ "$action" == "2" ]; then
         done
     fi
 
-    if [ -d "$basePath" ]; then
+    if is_valid_terramind_dir "$basePath"; then
         # Ensure shell is not inside the directory being removed
         local currPwd=$(pwd 2>/dev/null)
         if [ "$currPwd" = "$basePath" ] || [[ "$currPwd" == "$basePath"/* ]]; then
             cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
         fi
         run_with_spinner "Deleting TerraMind installation ($basePath)" "rm -rf \"$basePath\""
+    else
+        echo -e "${RED}Safety check failed immediately before deletion. Aborting.${NC}"
+        exit 1
     fi
 
     rm -f "$HOME/Desktop/TerraMind.desktop" 2>/dev/null || true
@@ -556,11 +624,27 @@ uninstallScript="$basePath/uninstall-terramind.sh"
 cat << 'EOF' > "$uninstallScript"
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Safety check: Block root and sensitive system paths
+case "$DIR" in
+    ""|"/"|"/root"|"/home"|"$HOME"|/[a-zA-Z]|/[a-zA-Z]/|[a-zA-Z]:|[a-zA-Z]:/|[a-zA-Z]:\\)
+        echo -e "\033[0;31m⛔ SAFETY ERROR: Target '$DIR' is a root/system path. Refusing to delete.\033[0m"
+        exit 1
+        ;;
+esac
+
+dirName=$(basename "$DIR" | tr '[:upper:]' '[:lower:]')
+if [ "$dirName" != "terramind" ] || [ ! -f "$DIR/package.json" ] || [ ! -d "$DIR/apps/server" ]; then
+    echo -e "\033[0;31m⛔ SAFETY ERROR: '$DIR' is not a verified TerraMind folder. Refusing to delete.\033[0m"
+    exit 1
+fi
+
 echo -e "\033[0;31m⚠️ WARNING: This will completely remove TerraMind from $DIR!\033[0m"
 read -p "Are you sure? (y/N): " confirm
 if [[ "$confirm" =~ ^[yY]$ ]]; then
     TM_PID=$(lsof -ti tcp:3080 2>/dev/null || fuser 3080/tcp 2>/dev/null | tr -d ' ')
     [ -n "$TM_PID" ] && kill -9 $TM_PID 2>/dev/null || true
+    cd "$HOME" 2>/dev/null || cd /tmp 2>/dev/null || true
     rm -rf "$DIR"
     echo -e "\033[0;32m✅ TerraMind removed successfully.\033[0m"
 fi
