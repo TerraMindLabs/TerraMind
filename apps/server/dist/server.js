@@ -77851,7 +77851,7 @@ function seedDefaultMcpServers() {
           description: "Official HashiCorp Terraform Registry connector for provider schemas, verified community modules, and version compatibility.",
           transport: "stdio",
           command: "npx",
-          args: JSON.stringify(["-y", "@modelcontextprotocol/server-terraform"]),
+          args: JSON.stringify(["-y", "terraform-mcp-server"]),
           url: "",
           env: JSON.stringify({}),
           enabled: 1,
@@ -78866,6 +78866,8 @@ async function runTerraformCommand(action) {
     cmd = "terraform validate";
   } else if (action === "plan") {
     cmd = "terraform plan -no-color";
+  } else if (action === "tfsec") {
+    cmd = "tfsec . --no-colour";
   }
   try {
     const { stdout, stderr } = await execPromise(cmd, { cwd: WORKSPACE_PATH });
@@ -80174,7 +80176,7 @@ async function workspaceRoutes(fastify2) {
   fastify2.post("/api/workspace/run", async (request, reply) => {
     const { action } = request.body;
     if (!action) {
-      return reply.status(400).send({ error: "action is required (init, fmt, validate, plan)" });
+      return reply.status(400).send({ error: "action is required (init, fmt, validate, plan, tfsec)" });
     }
     try {
       const result = await runTerraformCommand(action);

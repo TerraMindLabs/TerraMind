@@ -108,7 +108,7 @@ export async function writeWorkspaceFile(
   return { path: targetPath, relPath: cleanRelPath, fmtOutput, validateOutput };
 }
 
-export async function runTerraformCommand(action: 'init' | 'fmt' | 'validate' | 'plan'): Promise<{ success: boolean; output: string }> {
+export async function runTerraformCommand(action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec'): Promise<{ success: boolean; output: string }> {
   await ensureWorkspace();
 
   let cmd = 'terraform fmt';
@@ -118,6 +118,8 @@ export async function runTerraformCommand(action: 'init' | 'fmt' | 'validate' | 
     cmd = 'terraform validate';
   } else if (action === 'plan') {
     cmd = 'terraform plan -no-color';
+  } else if (action === 'tfsec') {
+    cmd = 'tfsec . --no-colour';
   }
 
   try {

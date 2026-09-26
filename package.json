@@ -15,7 +15,9 @@
   },
   "dependencies": {
     "@fastify/static": "^7.0.4",
+    "@modelcontextprotocol/server-filesystem": "^2026.8.31",
     "fastify": "^4.28.1",
+    "terraform-mcp-server": "^0.13.0",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

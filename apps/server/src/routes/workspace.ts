@@ -24,11 +24,11 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 2. Run Terraform CLI action (fmt, validate, plan, init)
+  // 2. Run Terraform CLI action (fmt, validate, plan, init, tfsec)
   fastify.post('/api/workspace/run', async (request, reply) => {
-    const { action } = request.body as { action: 'init' | 'fmt' | 'validate' | 'plan' };
+    const { action } = request.body as { action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' };
     if (!action) {
-      return reply.status(400).send({ error: 'action is required (init, fmt, validate, plan)' });
+      return reply.status(400).send({ error: 'action is required (init, fmt, validate, plan, tfsec)' });
     }
 
     try {

@@ -135,6 +135,56 @@ ensure_terraform() {
     return 0
 }
 
+ensure_tfsec() {
+    if command -v tfsec &> /dev/null; then
+        local secVer=$(tfsec --version 2>/dev/null | tail -n 1)
+        echo -e "${GREEN}✅ Found tfsec Security Scanner: ${secVer}${NC}"
+        return 0
+    fi
+
+    echo -e "\n${YELLOW}⚙️ tfsec Security Scanner is not installed. Attempting automatic installation...${NC}"
+
+    local arch="amd64"
+    case $(uname -m) in
+        x86_64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        armv7l) arch="arm" ;;
+    esac
+
+    local tfsecVer="v1.28.14"
+    local tfsecUrl="https://github.com/aquasecurity/tfsec/releases/download/${tfsecVer}/tfsec-linux-${arch}"
+    local targetBin="/usr/local/bin/tfsec"
+
+    if [ -w /usr/local/bin ]; then
+        if curl -fsSL "$tfsecUrl" -o "$targetBin" 2>/dev/null; then
+            chmod +x "$targetBin" 2>/dev/null || true
+        fi
+    elif command -v sudo &> /dev/null; then
+        local tempBin="/tmp/tfsec_$$"
+        if curl -fsSL "$tfsecUrl" -o "$tempBin" 2>/dev/null; then
+            chmod +x "$tempBin" 2>/dev/null || true
+            sudo mv "$tempBin" "$targetBin" 2>/dev/null || true
+        fi
+    fi
+
+    if [ ! -f /usr/local/bin/tfsec ]; then
+        mkdir -p "$HOME/.local/bin"
+        if curl -fsSL "$tfsecUrl" -o "$HOME/.local/bin/tfsec" 2>/dev/null; then
+            chmod +x "$HOME/.local/bin/tfsec" 2>/dev/null || true
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+    fi
+
+    if command -v tfsec &> /dev/null; then
+        local installedVer=$(tfsec --version 2>/dev/null | tail -n 1)
+        echo -e "${GREEN}✅ tfsec Security Scanner installed successfully: ${installedVer}${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}⚠️ Could not automatically install tfsec. You can install it manually from: https://github.com/aquasecurity/tfsec/releases${NC}"
+    return 0
+}
+
 ensure_nodejs() {
     export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
     if command -v node &> /dev/null && command -v npm &> /dev/null; then
@@ -541,6 +591,7 @@ ensure_nodejs
 echo -e "${GREEN}✅ Database: SQLite WAL embedded engine ready (zero setup required).${NC}"
 
 ensure_terraform
+ensure_tfsec
 
 # 3. Deploy TerraMind Codebase if not local
 if [ "$IS_LOCAL_REPO" = false ]; then
@@ -565,9 +616,10 @@ if [ "$IS_LOCAL_REPO" = false ]; then
     fi
 fi
 
-# 4. Install NPM Dependencies across workspaces
-echo -e "\n${YELLOW}📦 Installing project dependencies via npm workspaces...${NC}"
-run_with_spinner "Installing dependencies" "NODE_ENV=development npm install --include=dev" "$basePath"
+# 4. Install NPM Dependencies across workspaces (includes terraform-mcp-server & server-filesystem)
+echo -e "\n${YELLOW}📦 Installing project dependencies & Model Context Protocol (MCP) servers...${NC}"
+run_with_spinner "Installing project & MCP dependencies" "NODE_ENV=development npm install --include=dev" "$basePath"
+echo -e "${GREEN}✅ Pre-installed Model Context Protocol (MCP) servers: terraform-mcp-server & server-filesystem${NC}"
 
 # Ensure build and execution binaries are linked across workspaces
 mkdir -p "$basePath/node_modules/.bin" "$basePath/apps/server/node_modules/.bin" "$basePath/apps/web/node_modules/.bin" 2>/dev/null || true

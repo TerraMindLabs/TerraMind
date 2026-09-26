@@ -679,7 +679,7 @@ export function seedDefaultMcpServers(): void {
           description: 'Official HashiCorp Terraform Registry connector for provider schemas, verified community modules, and version compatibility.',
           transport: 'stdio',
           command: 'npx',
-          args: JSON.stringify(['-y', '@modelcontextprotocol/server-terraform']),
+          args: JSON.stringify(['-y', 'terraform-mcp-server']),
           url: '',
           env: JSON.stringify({}),
           enabled: 1,

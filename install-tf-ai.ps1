@@ -83,6 +83,52 @@ function Ensure-Terraform {
     }
 }
 
+function Ensure-Tfsec {
+    if (Get-Command "tfsec" -ErrorAction SilentlyContinue) {
+        $secVer = (tfsec --version 2>&1 | Select-Object -Last 1)
+        Write-Host " [OK] Found tfsec Security Scanner: $secVer" -ForegroundColor Green
+        return $true
+    }
+
+    Write-Host "`n [!] tfsec Security Scanner is not installed. Attempting automated installation..." -ForegroundColor Yellow
+
+    # Try winget first if available
+    if (Get-Command "winget" -ErrorAction SilentlyContinue) {
+        Write-Host " [pkg] Installing tfsec via winget..." -ForegroundColor Cyan
+        Invoke-CommandWithSpinner -Message "Installing tfsec Security Scanner" -CommandString "winget install aquasecurity.tfsec --accept-package-agreements --accept-source-agreements --silent"
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        if (Get-Command "tfsec" -ErrorAction SilentlyContinue) {
+            Write-Host " [OK] tfsec installed successfully via winget!" -ForegroundColor Green
+            return $true
+        }
+    }
+
+    # Fallback to direct binary download from GitHub releases
+    $tfsecVer = "v1.28.14"
+    $tfsecUrl = "https://github.com/aquasecurity/tfsec/releases/download/$tfsecVer/tfsec-windows-amd64.exe"
+    $installDir = "$env:LOCALAPPDATA\tfsec"
+    $targetExe = Join-Path $installDir "tfsec.exe"
+
+    Write-Host " [net] Downloading tfsec ($tfsecVer)..." -ForegroundColor Cyan
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+        Invoke-WebRequest -Uri $tfsecUrl -OutFile $targetExe -UseBasicParsing
+
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*$installDir*") {
+            [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$installDir", "User")
+            $env:Path = "$env:Path;$installDir"
+        }
+        Write-Host " [OK] tfsec installed to $installDir!" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Warning "Failed to download tfsec: $_"
+        Write-Host " You can install tfsec manually from: https://github.com/aquasecurity/tfsec/releases" -ForegroundColor Yellow
+        return $false
+    }
+}
+
 function Ensure-OllamaRunning {
     if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
         $running = $false
@@ -441,6 +487,7 @@ Write-Host " [OK] Found Node.js: $nodeVer and npm: $npmVer" -ForegroundColor Gre
 Write-Host " [OK] Database: Embedded SQLite with WAL mode ready (zero external DB required)." -ForegroundColor Green
 
 Ensure-Terraform | Out-Null
+Ensure-Tfsec | Out-Null
 
 # 3. Deploy TerraMind Codebase if not local
 if (-not $isLocalRepo) {
@@ -458,9 +505,10 @@ if (-not $isLocalRepo) {
     }
 }
 
-# 4. Install NPM Dependencies across workspaces
-Write-Host "`n [npm] Installing project dependencies via npm workspaces..." -ForegroundColor Cyan
-Invoke-CommandWithSpinner -Message "Installing project dependencies" -CommandString "npm install --include=dev" -WorkingDir $basePath
+# 4. Install NPM Dependencies across workspaces (includes terraform-mcp-server & server-filesystem)
+Write-Host "`n [npm] Installing project dependencies & Model Context Protocol (MCP) servers..." -ForegroundColor Cyan
+Invoke-CommandWithSpinner -Message "Installing project & MCP dependencies" -CommandString "npm install --include=dev" -WorkingDir $basePath
+Write-Host " [OK] Pre-installed Model Context Protocol (MCP) servers: terraform-mcp-server & server-filesystem" -ForegroundColor Green
 
 # 5. Build Web Frontend
 Write-Host "`n [bld] Building web production bundle (Vite / React)..." -ForegroundColor Cyan

@@ -128,6 +128,15 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             📋 plan
           </button>
 
+          <button
+            className="ws-action-btn"
+            onClick={() => handleRunCommand('tfsec' as any)}
+            disabled={isRunning}
+            title="Run 'tfsec' static security scanner to detect misconfigurations"
+          >
+            🛡️ tfsec
+          </button>
+
           {!ollamaOnline && (
             <button
               className="ws-action-btn highlight"
