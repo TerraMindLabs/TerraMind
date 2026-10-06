@@ -399,16 +399,27 @@ if ([string]::IsNullOrWhiteSpace($aiChoice)) { $aiChoice = "3" }
 $geminiApiKey = ""
 $openaiApiKey = ""
 $anthropicApiKey = ""
+$awsRegion = ""
+$awsAccessKey = ""
+$awsSecretKey = ""
+$awsSessionToken = ""
+$azureEndpoint = ""
+$azureApiKey = ""
+$azureDeployment = ""
+$ociRegion = ""
+$ociCompartment = ""
+$ociApiKey = ""
 
 if ($aiChoice -eq "2" -or $aiChoice -eq "3") {
     Write-Host "`n Configure Cloud AI Provider API Keys (optional - can also enter in UI Settings):" -ForegroundColor Cyan
-    Write-Host " [1] Google Gemini   👉 Free API key: https://aistudio.google.com/apikey" -ForegroundColor White
-    Write-Host " [2] OpenAI          👉 API key:      https://platform.openai.com/api-keys" -ForegroundColor White
-    Write-Host " [3] Anthropic       👉 API key:      https://console.anthropic.com/settings/keys" -ForegroundColor White
-    Write-Host " [4] Enter Multiple Keys" -ForegroundColor White
-    Write-Host " [5] Skip for now (Enter anytime via Settings in the Web UI)" -ForegroundColor White
-    $cloudChoice = Read-Host "`n => Enter choice (1-5) [Default: 5]"
-    if ([string]::IsNullOrWhiteSpace($cloudChoice)) { $cloudChoice = "5" }
+    Write-Host " [1] Google Gemini        👉 API key: https://aistudio.google.com/apikey" -ForegroundColor White
+    Write-Host " [2] OpenAI               👉 API key: https://platform.openai.com/api-keys" -ForegroundColor White
+    Write-Host " [3] Anthropic Claude     👉 API key: https://console.anthropic.com/settings/keys" -ForegroundColor White
+    Write-Host " [4] Enter Multiple Keys  👉 Public Cloud (Gemini, OpenAI, Anthropic)" -ForegroundColor White
+    Write-Host " [5] Enterprise Cloud AI  👉 AWS Bedrock, Azure OpenAI, or OCI GenAI" -ForegroundColor White
+    Write-Host " [6] Skip for now (Enter anytime via Settings in the Web UI)" -ForegroundColor White
+    $cloudChoice = Read-Host "`n => Enter choice (1-6) [Default: 6]"
+    if ([string]::IsNullOrWhiteSpace($cloudChoice)) { $cloudChoice = "6" }
 
     switch ($cloudChoice) {
         "1" { $geminiApiKey = Read-Host " Enter Google Gemini API Key" }
@@ -418,6 +429,57 @@ if ($aiChoice -eq "2" -or $aiChoice -eq "3") {
             $geminiApiKey = Read-Host " Enter Google Gemini Key (or press enter to skip)"
             $openaiApiKey = Read-Host " Enter OpenAI Key (or press enter to skip)"
             $anthropicApiKey = Read-Host " Enter Anthropic Key (or press enter to skip)"
+        }
+        "5" {
+            Write-Host "`n Enterprise Cloud AI Setup:" -ForegroundColor Cyan
+            Write-Host " [a] AWS Bedrock (Claude 3.5 Sonnet / Amazon Titan)" -ForegroundColor White
+            Write-Host " [b] Azure AI Foundry (Azure OpenAI gpt-4o)" -ForegroundColor White
+            Write-Host " [c] OCI Generative AI (Cohere Command R+)" -ForegroundColor White
+            Write-Host " [d] Configure All Enterprise Providers" -ForegroundColor White
+            $entChoice = Read-Host "`n => Enter enterprise choice (a-d) [Default: a]"
+            if ([string]::IsNullOrWhiteSpace($entChoice)) { $entChoice = "a" }
+
+            switch ($entChoice.ToLower()) {
+                "a" {
+                    $awsRegion = Read-Host " Enter AWS Region [Default: us-east-1]"
+                    if ([string]::IsNullOrWhiteSpace($awsRegion)) { $awsRegion = "us-east-1" }
+                    $awsAccessKey = Read-Host " Enter AWS Access Key ID"
+                    $awsSecretKey = Read-Host " Enter AWS Secret Access Key"
+                    $awsSessionToken = Read-Host " Enter AWS Session Token (optional, press enter to skip)"
+                }
+                "b" {
+                    $azureEndpoint = Read-Host " Enter Azure OpenAI Endpoint (e.g. https://my-openai.openai.azure.com)"
+                    $azureApiKey = Read-Host " Enter Azure OpenAI API Key"
+                    $azureDeployment = Read-Host " Enter Deployment Name [Default: gpt-4o]"
+                    if ([string]::IsNullOrWhiteSpace($azureDeployment)) { $azureDeployment = "gpt-4o" }
+                }
+                "c" {
+                    $ociRegion = Read-Host " Enter OCI Region [Default: us-chicago-1]"
+                    if ([string]::IsNullOrWhiteSpace($ociRegion)) { $ociRegion = "us-chicago-1" }
+                    $ociCompartment = Read-Host " Enter OCI Compartment OCID"
+                    $ociApiKey = Read-Host " Enter OCI GenAI API Key"
+                }
+                "d" {
+                    Write-Host "`n 1. AWS Bedrock Configuration:" -ForegroundColor Yellow
+                    $awsRegion = Read-Host " AWS Region [Default: us-east-1]"
+                    if ([string]::IsNullOrWhiteSpace($awsRegion)) { $awsRegion = "us-east-1" }
+                    $awsAccessKey = Read-Host " AWS Access Key ID"
+                    $awsSecretKey = Read-Host " AWS Secret Access Key"
+                    $awsSessionToken = Read-Host " AWS Session Token (optional)"
+
+                    Write-Host "`n 2. Azure OpenAI Configuration:" -ForegroundColor Yellow
+                    $azureEndpoint = Read-Host " Azure Endpoint"
+                    $azureApiKey = Read-Host " Azure API Key"
+                    $azureDeployment = Read-Host " Deployment Name [Default: gpt-4o]"
+                    if ([string]::IsNullOrWhiteSpace($azureDeployment)) { $azureDeployment = "gpt-4o" }
+
+                    Write-Host "`n 3. OCI GenAI Configuration:" -ForegroundColor Yellow
+                    $ociRegion = Read-Host " OCI Region [Default: us-chicago-1]"
+                    if ([string]::IsNullOrWhiteSpace($ociRegion)) { $ociRegion = "us-chicago-1" }
+                    $ociCompartment = Read-Host " OCI Compartment OCID"
+                    $ociApiKey = Read-Host " OCI API Key"
+                }
+            }
         }
         default { Write-Host " [cfg] Skipping cloud keys for now. You can add them in Settings > API Keys." -ForegroundColor Yellow }
     }
@@ -548,6 +610,17 @@ if (![string]::IsNullOrWhiteSpace($geminiApiKey)) { $envLines += "GEMINI_API_KEY
 if (![string]::IsNullOrWhiteSpace($openaiApiKey)) { $envLines += "OPENAI_API_KEY=`"$openaiApiKey`"" }
 if (![string]::IsNullOrWhiteSpace($anthropicApiKey)) { $envLines += "ANTHROPIC_API_KEY=`"$anthropicApiKey`"" }
 
+if (![string]::IsNullOrWhiteSpace($azureEndpoint)) { $envLines += "AZURE_OPENAI_ENDPOINT=`"$azureEndpoint`"" }
+if (![string]::IsNullOrWhiteSpace($azureApiKey)) { $envLines += "AZURE_OPENAI_API_KEY=`"$azureApiKey`"" }
+if (![string]::IsNullOrWhiteSpace($azureDeployment)) { $envLines += "AZURE_OPENAI_DEPLOYMENT=`"$azureDeployment`"" }
+if (![string]::IsNullOrWhiteSpace($awsRegion)) { $envLines += "AWS_REGION=`"$awsRegion`"" }
+if (![string]::IsNullOrWhiteSpace($awsAccessKey)) { $envLines += "AWS_ACCESS_KEY_ID=`"$awsAccessKey`"" }
+if (![string]::IsNullOrWhiteSpace($awsSecretKey)) { $envLines += "AWS_SECRET_ACCESS_KEY=`"$awsSecretKey`"" }
+if (![string]::IsNullOrWhiteSpace($awsSessionToken)) { $envLines += "AWS_SESSION_TOKEN=`"$awsSessionToken`"" }
+if (![string]::IsNullOrWhiteSpace($ociRegion)) { $envLines += "OCI_REGION=`"$ociRegion`"" }
+if (![string]::IsNullOrWhiteSpace($ociCompartment)) { $envLines += "OCI_COMPARTMENT_ID=`"$ociCompartment`"" }
+if (![string]::IsNullOrWhiteSpace($ociApiKey)) { $envLines += "OCI_GENAI_API_KEY=`"$ociApiKey`"" }
+
 if ($models.Count -gt 0) {
     $envLines += "DEFAULT_MODEL=`"$($models[0])`""
     $envLines += "OLLAMA_MODELS=`"$($models -join ' ')`""
@@ -560,6 +633,15 @@ if ($models.Count -gt 0) {
     $envLines += "DEFAULT_PROVIDER=`"cloud`""
 } elseif (![string]::IsNullOrWhiteSpace($anthropicApiKey)) {
     $envLines += "DEFAULT_MODEL=`"claude-3-5-sonnet-20241022`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+} elseif (![string]::IsNullOrWhiteSpace($awsAccessKey)) {
+    $envLines += "DEFAULT_MODEL=`"bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+} elseif (![string]::IsNullOrWhiteSpace($azureApiKey)) {
+    $envLines += "DEFAULT_MODEL=`"azure/$azureDeployment`""
+    $envLines += "DEFAULT_PROVIDER=`"cloud`""
+} elseif (![string]::IsNullOrWhiteSpace($ociApiKey)) {
+    $envLines += "DEFAULT_MODEL=`"oci/cohere.command-r-plus`""
     $envLines += "DEFAULT_PROVIDER=`"cloud`""
 }
 Set-Content -Path $envPath -Value ($envLines -join "`r`n") -Encoding UTF8

@@ -530,16 +530,27 @@ aiChoice=${aiChoice:-3}
 geminiApiKey=""
 openaiApiKey=""
 anthropicApiKey=""
+awsRegion=""
+awsAccessKey=""
+awsSecretKey=""
+awsSessionToken=""
+azureEndpoint=""
+azureApiKey=""
+azureDeployment=""
+ociRegion=""
+ociCompartment=""
+ociApiKey=""
 
 if [ "$aiChoice" == "2" ] || [ "$aiChoice" == "3" ]; then
     echo -e "\n${CYAN}Configure Cloud AI Provider API Keys (optional - can also enter in UI Settings):${NC}"
-    echo " 1) Google Gemini   👉 Free API key: https://aistudio.google.com/apikey"
-    echo " 2) OpenAI          👉 API key:      https://platform.openai.com/api-keys"
-    echo " 3) Anthropic       👉 API key:      https://console.anthropic.com/settings/keys"
-    echo " 4) Enter Multiple Keys"
-    echo " 5) Skip for now (Enter anytime via Settings in the Web UI)"
-    read -p "Enter your choice (1-5) [Default: 5]: " cloudChoice
-    cloudChoice=${cloudChoice:-5}
+    echo " 1) Google Gemini        👉 API key: https://aistudio.google.com/apikey"
+    echo " 2) OpenAI               👉 API key: https://platform.openai.com/api-keys"
+    echo " 3) Anthropic Claude     👉 API key: https://console.anthropic.com/settings/keys"
+    echo " 4) Enter Multiple Keys  👉 Public Cloud (Gemini, OpenAI, Anthropic)"
+    echo " 5) Enterprise Cloud AI  👉 AWS Bedrock, Azure OpenAI, or OCI GenAI"
+    echo " 6) Skip for now (Enter anytime via Settings in the Web UI)"
+    read -p "Enter your choice (1-6) [Default: 6]: " cloudChoice
+    cloudChoice=${cloudChoice:-6}
 
     case $cloudChoice in
         1)
@@ -557,6 +568,57 @@ if [ "$aiChoice" == "2" ] || [ "$aiChoice" == "3" ]; then
             read -p "Enter Anthropic Key (or press enter to skip): " anthropicApiKey
             ;;
         5)
+            echo -e "\n${CYAN}Enterprise Cloud AI Setup:${NC}"
+            echo " a) AWS Bedrock (Claude 3.5 Sonnet / Amazon Titan)"
+            echo " b) Azure AI Foundry (Azure OpenAI gpt-4o)"
+            echo " c) OCI Generative AI (Cohere Command R+)"
+            echo " d) Configure All / Multiple Enterprise Providers"
+            read -p "Enter enterprise choice (a-d) [Default: a]: " entChoice
+            entChoice=${entChoice:-a}
+
+            case $entChoice in
+                a)
+                    read -p "Enter AWS Region [Default: us-east-1]: " awsRegion
+                    awsRegion=${awsRegion:-us-east-1}
+                    read -p "Enter AWS Access Key ID: " awsAccessKey
+                    read -p "Enter AWS Secret Access Key: " awsSecretKey
+                    read -p "Enter AWS Session Token (optional, press enter to skip): " awsSessionToken
+                    ;;
+                b)
+                    read -p "Enter Azure OpenAI Endpoint (e.g. https://my-openai.openai.azure.com): " azureEndpoint
+                    read -p "Enter Azure OpenAI API Key: " azureApiKey
+                    read -p "Enter Deployment Name [Default: gpt-4o]: " azureDeployment
+                    azureDeployment=${azureDeployment:-gpt-4o}
+                    ;;
+                c)
+                    read -p "Enter OCI Region [Default: us-chicago-1]: " ociRegion
+                    ociRegion=${ociRegion:-us-chicago-1}
+                    read -p "Enter OCI Compartment OCID: " ociCompartment
+                    read -p "Enter OCI GenAI API Key: " ociApiKey
+                    ;;
+                d)
+                    echo -e "\n${YELLOW}1. AWS Bedrock Configuration:${NC}"
+                    read -p "AWS Region [Default: us-east-1]: " awsRegion
+                    awsRegion=${awsRegion:-us-east-1}
+                    read -p "AWS Access Key ID: " awsAccessKey
+                    read -p "AWS Secret Access Key: " awsSecretKey
+                    read -p "AWS Session Token (optional): " awsSessionToken
+
+                    echo -e "\n${YELLOW}2. Azure OpenAI Configuration:${NC}"
+                    read -p "Azure Endpoint: " azureEndpoint
+                    read -p "Azure API Key: " azureApiKey
+                    read -p "Deployment Name [Default: gpt-4o]: " azureDeployment
+                    azureDeployment=${azureDeployment:-gpt-4o}
+
+                    echo -e "\n${YELLOW}3. OCI GenAI Configuration:${NC}"
+                    read -p "OCI Region [Default: us-chicago-1]: " ociRegion
+                    ociRegion=${ociRegion:-us-chicago-1}
+                    read -p "OCI Compartment OCID: " ociCompartment
+                    read -p "OCI API Key: " ociApiKey
+                    ;;
+            esac
+            ;;
+        6|*)
             echo -e "${YELLOW}⏭️ Skipping Cloud API Keys. You can enter them anytime in the Web UI via Settings > API Keys.${NC}"
             ;;
     esac
@@ -727,6 +789,37 @@ if [ -n "$anthropicApiKey" ]; then
     echo "ANTHROPIC_API_KEY=\"$anthropicApiKey\"" >> "$envDest"
 fi
 
+if [ -n "$azureEndpoint" ]; then
+    echo "AZURE_OPENAI_ENDPOINT=\"$azureEndpoint\"" >> "$envDest"
+fi
+if [ -n "$azureApiKey" ]; then
+    echo "AZURE_OPENAI_API_KEY=\"$azureApiKey\"" >> "$envDest"
+fi
+if [ -n "$azureDeployment" ]; then
+    echo "AZURE_OPENAI_DEPLOYMENT=\"$azureDeployment\"" >> "$envDest"
+fi
+if [ -n "$awsRegion" ]; then
+    echo "AWS_REGION=\"$awsRegion\"" >> "$envDest"
+fi
+if [ -n "$awsAccessKey" ]; then
+    echo "AWS_ACCESS_KEY_ID=\"$awsAccessKey\"" >> "$envDest"
+fi
+if [ -n "$awsSecretKey" ]; then
+    echo "AWS_SECRET_ACCESS_KEY=\"$awsSecretKey\"" >> "$envDest"
+fi
+if [ -n "$awsSessionToken" ]; then
+    echo "AWS_SESSION_TOKEN=\"$awsSessionToken\"" >> "$envDest"
+fi
+if [ -n "$ociRegion" ]; then
+    echo "OCI_REGION=\"$ociRegion\"" >> "$envDest"
+fi
+if [ -n "$ociCompartment" ]; then
+    echo "OCI_COMPARTMENT_ID=\"$ociCompartment\"" >> "$envDest"
+fi
+if [ -n "$ociApiKey" ]; then
+    echo "OCI_GENAI_API_KEY=\"$ociApiKey\"" >> "$envDest"
+fi
+
 if [ ${#models[@]} -gt 0 ]; then
     echo "DEFAULT_MODEL=\"${models[0]}\"" >> "$envDest"
     echo "OLLAMA_MODELS=\"${models[*]}\"" >> "$envDest"
@@ -739,6 +832,15 @@ elif [ -n "$openaiApiKey" ]; then
     echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
 elif [ -n "$anthropicApiKey" ]; then
     echo "DEFAULT_MODEL=\"claude-3-5-sonnet-20241022\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+elif [ -n "$awsAccessKey" ]; then
+    echo "DEFAULT_MODEL=\"bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+elif [ -n "$azureApiKey" ]; then
+    echo "DEFAULT_MODEL=\"azure/${azureDeployment:-gpt-4o}\"" >> "$envDest"
+    echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
+elif [ -n "$ociApiKey" ]; then
+    echo "DEFAULT_MODEL=\"oci/cohere.command-r-plus\"" >> "$envDest"
     echo "DEFAULT_PROVIDER=\"cloud\"" >> "$envDest"
 fi
 echo -e "${GREEN}✅ Created .env configuration.${NC}"
