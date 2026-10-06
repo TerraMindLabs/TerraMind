@@ -102,4 +102,13 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(prompt, /search_modules/);
     assert.match(prompt, /get_provider_schema/);
   });
+
+  test('8. Terraform DevOps Expert enforces modern AWS S3 syntax and multi-block separation', () => {
+    const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
+    assert.match(tfPrompt, /DO NOT COMBINE MULTIPLE FILES INTO A SINGLE CODE BLOCK/i);
+    assert.match(tfPrompt, /MODERN AWS TERRAFORM SYNTAX/i);
+    assert.match(tfPrompt, /aws_s3_bucket_public_access_block/);
+    assert.match(tfPrompt, /aws_s3_bucket_server_side_encryption_configuration/);
+    assert.match(tfPrompt, /NEVER use deprecated inline 'acl = \.\.\.'/i);
+  });
 });

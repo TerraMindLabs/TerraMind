@@ -1113,6 +1113,33 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         const blockCode = match[1];
         if (!blockCode || !blockCode.trim()) continue;
 
+        // Check if a smaller model lumped multiple files into a single code block
+        const fileHeaderRegex = /^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.(?:tf|yaml|yml|json|hcl|sh))(?:\s*\(.*?\))?\s*$/i;
+        const blockLines = blockCode.split('\n');
+        const splitIndices: Array<{ lineIndex: number; filename: string }> = [];
+
+        for (let j = 0; j < blockLines.length; j++) {
+          const trimmed = blockLines[j].trim();
+          const matchHeader = trimmed.match(fileHeaderRegex);
+          if (matchHeader) {
+            splitIndices.push({ lineIndex: j, filename: matchHeader[1].trim() });
+          }
+        }
+
+        if (splitIndices.length > 1) {
+          // Multiple files detected inside one single code block! Split each into its own file
+          for (let s = 0; s < splitIndices.length; s++) {
+            const startLine = splitIndices[s].lineIndex;
+            const endLine = s + 1 < splitIndices.length ? splitIndices[s + 1].lineIndex : blockLines.length;
+            const chunk = blockLines.slice(startLine, endLine).join('\n').trim();
+            const fName = splitIndices[s].filename;
+            if (chunk && !extractedFiles.some((f) => f.filename === fName)) {
+              extractedFiles.push({ filename: fName, content: chunk });
+            }
+          }
+          continue;
+        }
+
         const firstLine = blockCode.trim().split('\n')[0].trim();
         // Look for filename in comments: # path/file.tf, // path/file.tf, <!-- file -->
         const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);

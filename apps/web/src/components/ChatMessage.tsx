@@ -148,6 +148,42 @@ function renderFormattedContent(content: string, onFixWithAi?: (prompt: string, 
   let currentBlockLines: string[] = [];
   let currentTextLines: string[] = [];
 
+  const pushCodeTokens = (blockLines: string[], lang: string) => {
+    if (blockLines.length === 0) return;
+    const fileHeaderRegex = /^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.(?:tf|yaml|yml|json|hcl|sh))(?:\s*\(.*?\))?\s*$/i;
+
+    const splitIndices: Array<{ lineIndex: number; filename: string }> = [];
+    for (let j = 0; j < blockLines.length; j++) {
+      const trimmed = blockLines[j].trim();
+      const match = trimmed.match(fileHeaderRegex);
+      if (match) {
+        splitIndices.push({ lineIndex: j, filename: match[1].trim() });
+      }
+    }
+
+    if (splitIndices.length > 1) {
+      // Multiple file boundaries detected inside this single code block! Split them into separate file snippet cards.
+      for (let s = 0; s < splitIndices.length; s++) {
+        const startLine = splitIndices[s].lineIndex;
+        const endLine = s + 1 < splitIndices.length ? splitIndices[s + 1].lineIndex : blockLines.length;
+        const chunk = blockLines.slice(startLine, endLine).join('\n').trim();
+        if (chunk) {
+          tokens.push({
+            type: 'code',
+            content: chunk,
+            language: lang || 'hcl'
+          });
+        }
+      }
+    } else {
+      tokens.push({
+        type: 'code',
+        content: blockLines.join('\n'),
+        language: lang || 'hcl'
+      });
+    }
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith('```')) {
@@ -160,11 +196,7 @@ function renderFormattedContent(content: string, onFixWithAi?: (prompt: string, 
         currentLang = line.replace('```', '').trim();
         currentBlockLines = [];
       } else {
-        tokens.push({
-          type: 'code',
-          content: currentBlockLines.join('\n'),
-          language: currentLang || 'hcl'
-        });
+        pushCodeTokens(currentBlockLines, currentLang || 'hcl');
         inCode = false;
         currentBlockLines = [];
         currentLang = '';
@@ -179,11 +211,7 @@ function renderFormattedContent(content: string, onFixWithAi?: (prompt: string, 
   }
 
   if (inCode && currentBlockLines.length > 0) {
-    tokens.push({
-      type: 'code',
-      content: currentBlockLines.join('\n'),
-      language: currentLang || 'hcl'
-    });
+    pushCodeTokens(currentBlockLines, currentLang || 'hcl');
   } else if (currentTextLines.length > 0) {
     tokens.push({ type: 'text', content: currentTextLines.join('\n') });
   }

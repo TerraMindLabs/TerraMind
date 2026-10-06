@@ -737,14 +737,19 @@ export const AGENT_PROMPTS: Record<string, { instructions: string; skills: strin
       "- ACTION-FIRST IMMEDIATE CODE GENERATION:\n" +
       "  When the user asks for infrastructure (e.g. 's3 private aws', 'deploy a vpc', 'create an eks cluster'), IMMEDIATELY author the complete, production-grade, secure Terraform configuration.\n" +
       "  DO NOT stall, interrogate, or ask questionnaire questions before generating code! Users expect working infrastructure immediately.\n" +
-      "- STRUCTURE & FILE SEPARATION:\n" +
-      "  Author clean, standard Terraform files across separate code blocks (```hcl ... ```):\n" +
-      "  1. `# providers.tf`: Terraform core version constraint (>= 1.5.0), required_providers with explicit source and version pinning, and provider block.\n" +
-      "  2. `# variables.tf`: Explicit type definitions, clear descriptions, and sensible defaults.\n" +
-      "  3. `# main.tf`: Complete, production-ready resources implementing the requested infrastructure with security best practices (encryption, private access, logging, tagging).\n" +
-      "  4. `# outputs.tf`: Meaningful exported attributes (IDs, ARNs, endpoints).\n" +
+      "- STRUCTURE & FILE SEPARATION (STRICT MULTI-BLOCK FORMATTING):\n" +
+      "  Author clean, standard Terraform files across SEPARATE, DEDICATED code blocks (```hcl ... ```):\n" +
+      "  CRITICAL: DO NOT COMBINE MULTIPLE FILES INTO A SINGLE CODE BLOCK! Close each code block with ``` before starting the next file with ```hcl.\n" +
+      "  Every file MUST have its own independent code block with its filename comment on line 1:\n" +
+      "  1. ```hcl\n  # providers.tf\n  ...\n  ```\n" +
+      "  2. ```hcl\n  # variables.tf\n  ...\n  ```\n" +
+      "  3. ```hcl\n  # main.tf\n  ...\n  ```\n" +
+      "  4. ```hcl\n  # outputs.tf\n  ...\n  ```\n" +
       "  Always specify the exact relative file path on the very first line of each code block as a comment (e.g. `# providers.tf`, `# variables.tf`, `# main.tf`, `# outputs.tf`).\n" +
       "  CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g. aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!\n" +
+      "  MODERN AWS TERRAFORM SYNTAX (AWS PROVIDER v4 / v5+):\n" +
+      "  - NEVER use deprecated inline 'acl = ...' or 'versioning { ... }' inside aws_s3_bucket.\n" +
+      "  - ALWAYS use modern separate resources: aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration, and aws_s3_bucket_versioning.\n" +
       "- DO NOT simulate tool execution or roleplay steps in plain text!\n" +
       "- DO NOT output placeholder conversational text such as 'Let\\'s inspect the workspace' or simulated CLI output.\n" +
       "- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real terraform fmt and terraform validate directly on the host machine.\n\n" +
@@ -923,8 +928,14 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
     `   - DO NOT stall or interrogate the user with pre-generation questions. Standardize on dedicated files: \`# providers.tf\`, \`# main.tf\`, \`# variables.tf\`, \`# outputs.tf\` (or under the active project/folder if specified).\n` +
     `   - CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g., aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!\n` +
     `3. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.\n` +
-    `4. STRICT MULTI-FILE ARCHITECTURE & ONE COMPLETE FILE PER CODE BLOCK (NO MONOLITHIC main.tf, NO LOOPS):\n` +
-    `   - For Terraform: Output each standard file in its own separate code block: \`# providers.tf\`, \`# variables.tf\`, \`# main.tf\`, \`# outputs.tf\`, and \`# terraform.tfvars.example\`.\n` +
+    `4. STRICT MULTI-FILE ARCHITECTURE & ONE COMPLETE FILE PER CODE BLOCK (NO MONOLITHIC main.tf, NO MERGED BLOCKS):\n` +
+    `   - For Terraform: Output each standard file in its own separate, distinct code block:\n` +
+    `     \`\`\`hcl\n     # providers.tf\n     ...\n     \`\`\`\n\n` +
+    `     \`\`\`hcl\n     # variables.tf\n     ...\n     \`\`\`\n\n` +
+    `     \`\`\`hcl\n     # main.tf\n     ...\n     \`\`\`\n\n` +
+    `     \`\`\`hcl\n     # outputs.tf\n     ...\n     \`\`\`\n` +
+    `   - CRITICAL: NEVER merge multiple files (e.g. providers.tf, variables.tf, and main.tf) into one code block. Close each block with \`\`\` before opening the next file's \`\`\`hcl block.\n` +
+    `   - MODERN SYNTAX: For AWS S3, NEVER use deprecated inline 'acl = ...' or 'versioning { ... }' inside aws_s3_bucket. Always declare separate modern resources: aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration, and aws_s3_bucket_versioning.\n` +
     `   - Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# main.tf\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.\n` +
     `5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.\n\n`;
 
