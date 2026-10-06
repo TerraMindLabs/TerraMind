@@ -80920,13 +80920,18 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
                 let hasEmitted = false;
+                let chunkBuffer = "";
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
-                  const chunk = decoder.decode(value);
-                  const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+                  chunkBuffer += decoder.decode(value, { stream: true });
+                  const lines = chunkBuffer.split("\n");
+                  chunkBuffer = lines.pop() || "";
                   for (const line of lines) {
-                    const raw = line.replace("data: ", "").trim();
+                    const trimmed = line.trim();
+                    if (!trimmed || !trimmed.startsWith("data: ")) continue;
+                    const raw = trimmed.replace(/^data:\s*/, "").trim();
+                    if (!raw || raw === "[DONE]") continue;
                     try {
                       const data = JSON.parse(raw);
                       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -80934,7 +80939,24 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
                         streamToken(text);
                         hasEmitted = true;
                       }
-                    } catch {
+                    } catch (err) {
+                    }
+                  }
+                }
+                if (chunkBuffer.trim()) {
+                  const trimmed = chunkBuffer.trim();
+                  if (trimmed.startsWith("data: ")) {
+                    const raw = trimmed.replace(/^data:\s*/, "").trim();
+                    if (raw && raw !== "[DONE]") {
+                      try {
+                        const data = JSON.parse(raw);
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (text) {
+                          streamToken(text);
+                          hasEmitted = true;
+                        }
+                      } catch {
+                      }
                     }
                   }
                 }
