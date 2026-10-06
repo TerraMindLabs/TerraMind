@@ -2038,7 +2038,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'var(--card-bg)',
+              background: 'var(--card-bg, var(--side))',
               border: '1px solid var(--border)',
               borderRadius: '12px',
               padding: '18px 24px',
@@ -2161,7 +2161,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div
                   key={server.id}
                   style={{
-                    background: 'var(--card-bg)',
+                    background: 'var(--card-bg, var(--card, #131d31))',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
                     padding: '20px 24px',
@@ -2393,7 +2393,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: 'rgba(0, 0, 0, 0.65)',
+                background: 'rgba(0, 0, 0, 0.72)',
+                backdropFilter: 'blur(6px)',
+                WebkitBackdropFilter: 'blur(6px)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2404,7 +2406,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div
                 style={{
-                  background: 'var(--card-bg)',
+                  background: 'var(--card-bg, var(--card, #131d31))',
                   border: '1px solid var(--border)',
                   borderRadius: '16px',
                   padding: '28px',

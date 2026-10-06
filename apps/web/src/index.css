@@ -2,6 +2,7 @@
   --bg: #f8fafc;
   --side: #ffffff;
   --card: #ffffff;
+  --card-bg: #ffffff;
   --panel: #ffffff;
   --hover: #f1f5f9;
   --text: #0f172a;
@@ -29,6 +30,7 @@
     --bg: #090d12;
     --side: #0f172a;
     --card: #131d31;
+    --card-bg: #131d31;
     --panel: #0f172a;
     --hover: #1e293b;
     --text: #f8fafc;
@@ -55,6 +57,7 @@
   --bg: #090d12;
   --side: #0f172a;
   --card: #131d31;
+  --card-bg: #131d31;
   --panel: #0f172a;
   --hover: #1e293b;
   --text: #f8fafc;
@@ -80,6 +83,7 @@
   --bg: #f8fafc;
   --side: #ffffff;
   --card: #ffffff;
+  --card-bg: #ffffff;
   --panel: #ffffff;
   --hover: #f1f5f9;
   --text: #0f172a;
