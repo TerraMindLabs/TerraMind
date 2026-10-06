@@ -753,15 +753,29 @@ export const AGENT_PROMPTS: Record<string, { instructions: string; skills: strin
       "- DO NOT simulate tool execution or roleplay steps in plain text!\n" +
       "- DO NOT output placeholder conversational text such as 'Let\\'s inspect the workspace' or simulated CLI output.\n" +
       "- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real terraform fmt and terraform validate directly on the host machine.\n\n" +
-      "ARCHITECTURE & CODE STANDARDS:\n" +
-      "1. Project & Directory Organization:\n" +
-      "   - Group infrastructure into a dedicated project directory (e.g., `aws-vpc-production/` or `<project-name>/`).\n" +
-      "   - Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n" +
-      "2. Community-Standard File Layout:\n" +
-      "   Inside every project directory, strictly structure files into `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, and `terraform.tfvars.example`.\n" +
-      "3. Security & State Best Practices:\n" +
-      "   - NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n" +
-      "   - Enforce least privilege, private subnets, security groups, and encryption at rest.\n\n" +
+      "ARCHITECTURE & EXPLICIT GENERATION STRATEGIES:\n" +
+      "TerraMind supports 4 explicit architectural generation strategies built on a unified resource-planning, security-scanning, and validation engine.\n" +
+      "Select or default to the optimal strategy based on the user's scenario:\n\n" +
+      "1. Strategy: FLAT / SIMPLE (Default for: Quick test, PoC, single resource, or small infrastructure)\n" +
+      "   - Structure: All files placed directly in root or target directory: `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, `terraform.tfvars.example`.\n" +
+      "   - Direct resources ready for immediate `terraform init && terraform apply` without indirection.\n\n" +
+      "2. Strategy: MODULE-BASED (Default for: Reusable infrastructure components & libraries)\n" +
+      "   - Structure: Encapsulated child modules under `modules/<component>/` (with their own `main.tf`, `variables.tf`, `outputs.tf`) called by root `main.tf` (`module \"<name>\" { source = \"./modules/<component>\" ... }`).\n" +
+      "   - Promotes reusable, composable architecture with clear contract inputs/outputs.\n\n" +
+      "3. Strategy: ENVIRONMENT + MODULES (Default for: Multi-environment lifecycles: Dev, Staging, Production)\n" +
+      "   - Structure: Segregated environment roots `environments/dev/`, `environments/staging/`, `environments/prod/` calling shared `modules/<component>/` with environment-specific tfvars overrides and backend keys.\n" +
+      "   - Isolates failure blast radius and prevents dev changes from impacting production state.\n\n" +
+      "4. Strategy: LAYER-BASED (Default for: Complex infrastructure organized by team responsibility)\n" +
+      "   - Structure: Dedicated architectural layers such as `01-networking/`, `02-security/`, `03-database/`, `04-compute/`.\n" +
+      "   - CRITICAL TECHNICAL RULE: Terraform does NOT automatically traverse or load .tf files in nested child subdirectories!\n" +
+      "     Therefore, when generating Layer-Based structures, you MUST either:\n" +
+      "     (a) Structure each layer as an independent Terraform root with its own `providers.tf`, referencing earlier layers using `data \"terraform_remote_state\"`, OR\n" +
+      "     (b) Orchestrate from root with explicit `module \"networking\" { source = \"./01-networking\" }` blocks in root `main.tf`.\n" +
+      "     NEVER scatter unlinked .tf files in nested subdirectories without a root module caller or independent root configurations, or `terraform init` will ignore them!\n\n" +
+      "GENERAL BEST PRACTICES:\n" +
+      "- Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n" +
+      "- NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n" +
+      "- Enforce least privilege, private subnets, security groups, and encryption at rest.\n\n" +
       "SKILL USAGE RULES:\n" +
       "- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n" +
       "- NEVER call a skill proactively or as a greeting.\n" +

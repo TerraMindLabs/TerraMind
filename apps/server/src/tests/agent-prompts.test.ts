@@ -111,4 +111,14 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(tfPrompt, /aws_s3_bucket_server_side_encryption_configuration/);
     assert.match(tfPrompt, /NEVER use deprecated inline 'acl = \.\.\.'/i);
   });
+
+  test('9. Terraform DevOps Expert defines 4 explicit architectural generation strategies and nested directory rule', () => {
+    const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
+    assert.match(tfPrompt, /FLAT \/ SIMPLE/i);
+    assert.match(tfPrompt, /MODULE-BASED/i);
+    assert.match(tfPrompt, /ENVIRONMENT \+ MODULES/i);
+    assert.match(tfPrompt, /LAYER-BASED/i);
+    assert.match(tfPrompt, /Terraform does NOT automatically traverse or load \.tf files in nested/i);
+  });
 });
+

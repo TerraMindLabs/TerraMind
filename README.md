@@ -70,6 +70,23 @@ TerraMind's installer allows you to select models tailored to your machine's har
 | **Llama 3.1 (8B)** | ~4.7 GB | **8 GB - 12 GB RAM** | 8-Core CPU / 6GB+ VRAM | **Flagship 8B Generalist.** Excellent for end-to-end documentation, CI/CD pipeline authoring, and DevOps troubleshooting. | `ollama run llama3.1` |
 | **Qwen 2.5 Coder (14B)** | ~9.0 GB | **16 GB RAM** | 16 GB+ RAM / Dedicated GPU | **Enterprise Full-Stack.** Handles complex multi-file deployments and cross-module Terraform dependencies across extensive codebases. | `ollama run qwen2.5-coder:14b` |
 
+---
+
+### 🏛️ Architectural Generation Strategies
+
+TerraMind treats infrastructure architecture as four explicit generation strategies powered by a unified resource-planning, security-scanning, and verification engine. All four strategies reuse the same automated quality gates (`terraform fmt`, `terraform validate`, `tfsec`, and `Infracost`):
+
+| User Scenario | Recommended Strategy | Layout & Orchestration Model |
+| :--- | :--- | :--- |
+| **Quick test or small infrastructure** | **Flat / Simple** | Direct resources authored in `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, `terraform.tfvars.example` without indirection. Ready for immediate `terraform apply`. |
+| **Reusable infrastructure components** | **Module-Based** | Reusable child modules under `modules/<component>/` with root caller `main.tf` (`module "<name>" { source = "./modules/<component>" ... }`). Clean composability and parameter contracts. |
+| **Dev, staging, and production lifecycles** | **Environment + Modules** | Isolated environment roots `environments/{dev,staging,prod}/` invoking shared `modules/<component>/` with per-environment tfvars overrides and dedicated remote state keys. |
+| **Complex infrastructure by responsibility** | **Layer-Based** | Segregated architectural tiers (`01-networking/`, `02-security/`, `03-database/`, `04-compute/`). Explicitly orchestrated via root caller modules or sequential root configs using `terraform_remote_state`. |
+
+> [!NOTE]
+> **Nested Directory Technical Detail:** The Terraform CLI does not automatically scan or load `.tf` files placed inside nested child subdirectories. When generating Layer-Based architectures, TerraMind explicitly authors root module callers or isolated root state configurations so that `terraform init` and `terraform plan` run reliably without silently missing nested definitions.
+
+---
 
 ## ⚡ Quick Start (One-Liner Installation)
 You do not need to clone this repository manually. Run the single command below in your terminal, and TerraMind will install directly into your chosen directory with zero dead weight:
