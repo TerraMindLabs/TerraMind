@@ -557,27 +557,31 @@ function App() {
     setMenuOpen(false);
   };
 
-  const handleToggleProvider = () => {
-    if (provider === 'ollama') {
+  const handleSelectProvider = (newProvider: 'ollama' | 'cloud') => {
+    if (newProvider === 'ollama') {
+      setProvider('ollama');
+      if (localModels.length > 0) {
+        if (!model || cloudModels.includes(model)) {
+          setModel(localModels[0]);
+        }
+      }
+      setMenuTab('ollama');
+    } else {
+      setProvider('cloud');
       if (cloudModels.length > 0) {
-        setProvider('cloud');
         if (!model || localModels.includes(model)) {
           setModel(cloudModels[0]);
         }
       } else {
-        setSettingsOpen(true);
+        setSettingsSection('keys');
+        setRailTab('settings');
+        setSidebarOpen(true);
       }
-    } else {
-      if (localModels.length > 0) {
-        setProvider('ollama');
-        if (!model || cloudModels.includes(model)) {
-          setModel(localModels[0]);
-        }
-      } else {
-        setProvider('ollama');
-      }
+      setMenuTab('cloud');
     }
   };
+
+
 
   const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
   const currentProject = projects.find((p) => p.id === selectedProjectId);
@@ -1398,11 +1402,46 @@ function App() {
             {/* Bottom action row inside the input section */}
             <div className="box-bottom-bar">
               <div className="composer-left-actions">
-                {!hasAnyModels ? (
-                  /* Filled primary button while offline */
+                {/* AI Source Segmented Switch: Local vs Cloud API Key */}
+                <div className="source-segmented-switch">
                   <button
                     type="button"
-                    className="primary-action-btn"
+                    className={`source-switch-pill ${provider === 'ollama' ? 'active' : ''}`}
+                    onClick={() => handleSelectProvider('ollama')}
+                    title={ollamaOnline ? 'Using Local Ollama (Offline / Private)' : 'Local Ollama is offline'}
+                  >
+                    <span className={`status-dot ${ollamaOnline ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                    <span>🖥️ Local</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`source-switch-pill ${provider === 'cloud' ? 'active' : ''}`}
+                    onClick={() => handleSelectProvider('cloud')}
+                    title={cloudModels.length > 0 ? 'Using Cloud AI via API Keys' : 'Configure Cloud API Keys'}
+                  >
+                    <span className={`status-dot ${cloudModels.length > 0 ? 'online-dot' : 'warning-dot'}`} style={{ width: '6px', height: '6px' }} />
+                    <span>☁️ API Key AI</span>
+                  </button>
+                </div>
+
+                {provider === 'ollama' && localModels.length === 0 ? (
+                  <button
+                    type="button"
+                    className="composer-pill-btn composer-key-btn highlight"
+                    onClick={() => {
+                      setSettingsSection('ollama');
+                      setRailTab('settings');
+                      setSidebarOpen(true);
+                    }}
+                    title="Install or pull local models in Ollama settings"
+                  >
+                    <span>📥 Pull Local Model</span>
+                  </button>
+                ) : provider === 'cloud' && cloudModels.length === 0 ? (
+                  <button
+                    type="button"
+                    className="composer-pill-btn composer-key-btn highlight"
                     onClick={() => {
                       setSettingsSection('keys');
                       setRailTab('settings');
@@ -1410,95 +1449,82 @@ function App() {
                     }}
                     title="Configure Cloud API Keys in Settings"
                   >
-                    <span>⚙️</span>
-                    <span>Add API Key</span>
+                    <span>🔑 Add API Key</span>
                   </button>
                 ) : (
-                  <>
-                    {/* Model Selector Pill inside the input box */}
-                    <button
-                      type="button"
-                      className="composer-pill-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!menuOpen) {
-                          if (model.startsWith('bedrock/') || model.startsWith('azure/') || model.startsWith('oci/')) {
-                            setMenuTab('enterprise');
-                          } else if (provider === 'cloud') {
-                            setMenuTab('cloud');
-                          } else {
-                            setMenuTab('ollama');
-                          }
+                  /* Model Selector Pill inside the input box */
+                  <button
+                    type="button"
+                    className="composer-pill-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!menuOpen) {
+                        if (model.startsWith('bedrock/') || model.startsWith('azure/') || model.startsWith('oci/')) {
+                          setMenuTab('enterprise');
+                        } else if (provider === 'cloud') {
+                          setMenuTab('cloud');
+                        } else {
+                          setMenuTab('ollama');
                         }
-                        setMenuOpen(!menuOpen);
-                      }}
-                      title="Select AI Model"
-                    >
-                      <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        {provider === 'ollama' ? (
-                          '🖥️ Local'
-                        ) : model.startsWith('bedrock/') ? (
-                          <>
-                            <img src="/icons/aws.png" alt="AWS" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
-                            <span>AWS Bedrock</span>
-                          </>
-                        ) : model.startsWith('azure/') ? (
-                          <>
-                            <img src="/icons/azure.png" alt="Azure" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
-                            <span>Azure AI</span>
-                          </>
-                        ) : model.startsWith('oci/') ? (
-                          <>
-                            <img src="/icons/oci.png" alt="OCI" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
-                            <span>OCI GenAI</span>
-                          </>
-                        ) : (
-                          '☁️ Cloud'
-                        )}
-                      </span>
-                      <span style={{ opacity: 0.4 }}>•</span>
-                      <span>{modelDisplayName}</span>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M6 9l6 6 6-6" />
-                      </svg>
-                    </button>
-
-                    {/* Quick Toggle between Local and Cloud */}
-                    <button
-                      type="button"
-                      className="composer-pill-btn"
-                      onClick={handleToggleProvider}
-                      title={provider === 'ollama' ? 'Switch to Cloud AI' : 'Switch to Local Ollama'}
-                    >
-                      {provider === 'ollama' ? 'Switch to Cloud ☁️' : 'Switch to Ollama 🖥️'}
-                    </button>
-
-                    {/* Settings Button */}
-                    <button
-                      type="button"
-                      className="composer-pill-btn"
-                      onClick={() => {
-                        const targetSection: SettingsSection = provider === 'ollama'
-                          ? 'ollama'
-                          : model.startsWith('bedrock/')
-                          ? 'bedrock'
-                          : model.startsWith('azure/')
-                          ? 'azure'
-                          : model.startsWith('oci/')
-                          ? 'oci'
-                          : 'keys';
-                        setSettingsSection(targetSection);
-                        setRailTab('settings');
-                        setSidebarOpen(true);
-                      }}
-                      title="Open Settings in Left Sidebar"
-                      style={{ padding: '3px 8px' }}
-                    >
-                      ⚙️
-                    </button>
-                  </>
+                      }
+                      setMenuOpen(!menuOpen);
+                    }}
+                    title="Select AI Model"
+                  >
+                    <span className={`status-dot ${(provider === 'ollama' ? ollamaOnline : cloudModels.length > 0) ? 'online-dot' : 'offline-dot'}`} style={{ width: '6px', height: '6px' }} />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      {provider === 'ollama' ? (
+                        '🖥️ Local'
+                      ) : model.startsWith('bedrock/') ? (
+                        <>
+                          <img src="/icons/aws.png" alt="AWS" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                          <span>AWS Bedrock</span>
+                        </>
+                      ) : model.startsWith('azure/') ? (
+                        <>
+                          <img src="/icons/azure.png" alt="Azure" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                          <span>Azure AI</span>
+                        </>
+                      ) : model.startsWith('oci/') ? (
+                        <>
+                          <img src="/icons/oci.png" alt="OCI" style={{ width: '13px', height: '13px', objectFit: 'contain' }} />
+                          <span>OCI GenAI</span>
+                        </>
+                      ) : (
+                        '☁️ Cloud'
+                      )}
+                    </span>
+                    <span style={{ opacity: 0.4 }}>•</span>
+                    <span>{modelDisplayName}</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
                 )}
+
+                {/* Settings Button */}
+                <button
+                  type="button"
+                  className="composer-pill-btn"
+                  onClick={() => {
+                    const targetSection: SettingsSection = provider === 'ollama'
+                      ? 'ollama'
+                      : model.startsWith('bedrock/')
+                      ? 'bedrock'
+                      : model.startsWith('azure/')
+                      ? 'azure'
+                      : model.startsWith('oci/')
+                      ? 'oci'
+                      : 'keys';
+                    setSettingsSection(targetSection);
+                    setRailTab('settings');
+                    setSidebarOpen(true);
+                  }}
+                  title="Open Settings in Left Sidebar"
+                  style={{ padding: '3px 8px' }}
+                >
+                  ⚙️
+                </button>
               </div>
 
               {/* Send or Stop Button */}
