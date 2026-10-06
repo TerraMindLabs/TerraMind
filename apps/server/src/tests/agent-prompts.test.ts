@@ -29,12 +29,12 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(AGENT_PROMPTS['agent_cicd-pipeline-engineer'].instructions, /CI\/CD|pipelines/i);
   });
 
-  test('2. Global Workspace prompt enforces action-first immediate generation without stalling inquiries', () => {
+  test('2. Global Workspace prompt enforces anti-tutorial guardrail and architectural structure confirmation', () => {
     const prompt = buildSystemPrompt('agent_k8s-gitops-architect');
 
     assert.match(prompt, /Global Workspace/i);
-    assert.match(prompt, /ACTION-FIRST IMMEDIATE GENERATION/i);
-    assert.match(prompt, /DO NOT stall or interrogate/i);
+    assert.match(prompt, /STRICT ANTI-TUTORIAL GUARDRAIL/i);
+    assert.match(prompt, /ARCHITECTURAL WORKDIR & STRUCTURE CONFIRMATION/i);
   });
 
   test('3. Project workspace prompt injects active project context and target directory', () => {
@@ -62,20 +62,20 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(prompt, /CONCISE & TARGETED SCOPE/i);
   });
 
-  test('5. Terraform DevOps Expert enforces action-first immediate code generation and structure', () => {
+  test('5. Terraform DevOps Expert enforces 5-stage architect lifecycle and multi-block structure', () => {
     const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
 
-    assert.match(tfPrompt, /ACTION-FIRST IMMEDIATE CODE GENERATION/i);
+    assert.match(tfPrompt, /5-STAGE ARCHITECT INTERACTION LIFECYCLE/i);
     assert.match(tfPrompt, /providers\.tf/);
     assert.match(tfPrompt, /variables\.tf/);
     assert.match(tfPrompt, /main\.tf/);
     assert.match(tfPrompt, /outputs\.tf/);
   });
 
-  test('6. Terraform DevOps prompt enforces generating actual resources without stalling questions', () => {
+  test('6. Terraform DevOps prompt enforces anti-tutorial guardrail and actual resource generation', () => {
     const tfPrompt = AGENT_PROMPTS['agent_tf-devops-expert'].instructions;
 
-    assert.match(tfPrompt, /DO NOT stall, interrogate, or ask/i);
+    assert.match(tfPrompt, /STRICT ANTI-TUTORIAL GUARDRAIL/i);
     assert.match(tfPrompt, /ALWAYS author the ACTUAL resource blocks in main\.tf/i);
   });
 
