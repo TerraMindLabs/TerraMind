@@ -255,17 +255,18 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
                 return true;
               })
-              .map((m: any) => m.name.replace(/^models\//, ''));
+              .map((m: any) => m.name.replace(/^models\//, ''))
+              .filter((name: string) => !['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash'].includes(name));
 
-            // Sort prioritizing latest working stable models (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash)
+            // Sort prioritizing latest working stable models (gemini-flash-latest, gemini-3.7-flash, gemini-3.6-flash, gemini-3.8-flash)
             fetched.sort((a: string, b: string) => {
               const score = (name: string) => {
-                if (name === 'gemini-2.5-flash') return 100;
-                if (name === 'gemini-2.0-flash') return 95;
-                if (name === 'gemini-1.5-flash') return 90;
-                if (name === 'gemini-2.5-pro') return 85;
-                if (name === 'gemini-2.0-flash-lite') return 80;
-                if (name === 'gemini-1.5-pro') return 75;
+                if (name === 'gemini-flash-latest') return 100;
+                if (name === 'gemini-3.7-flash') return 95;
+                if (name === 'gemini-3.6-flash') return 90;
+                if (name === 'gemini-3.8-flash') return 85;
+                if (name === 'gemini-flash-lite-latest') return 80;
+                if (name === 'gemini-pro-latest') return 75;
                 if (name.includes('flash')) return 50;
                 return 10;
               };
@@ -282,7 +283,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
       // If fetching fails or times out, but geminiKey was configured, supply verified default models
       if (!cloudModels.some((m) => m.startsWith('gemini'))) {
-        cloudModels.push('gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash');
+        cloudModels.push(
+          'gemini-flash-latest',
+          'gemini-3.7-flash',
+          'gemini-3.6-flash',
+          'gemini-3.8-flash',
+          'gemini-flash-lite-latest'
+        );
       }
     }
 
@@ -995,18 +1002,25 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         (targetModel.startsWith('bedrock') && !hasBedrock) ||
         (targetModel.startsWith('oci') && !hasOci)
       ) {
-        if (geminiKey) targetModel = 'gemini-2.5-flash';
+        if (geminiKey) targetModel = 'gemini-flash-latest';
         else if (openaiKey) targetModel = 'gpt-4o';
         else if (anthropicKey) targetModel = 'claude-3-5-sonnet-20241022';
         else if (hasAzure) targetModel = `azure/${settings['azure_openai_deployment'] || 'gpt-4o'}`;
         else if (hasBedrock) targetModel = `bedrock/${settings['aws_bedrock_model'] || 'anthropic.claude-3-5-sonnet-20241022-v2:0'}`;
         else if (hasOci) targetModel = `oci/${settings['oci_genai_model'] || 'cohere.command-r-plus'}`;
-        else targetModel = 'gemini-2.5-flash';
+        else targetModel = 'gemini-flash-latest';
       }
 
-      // If user had an obsolete or non-existent Gemini tag, normalize to verified stable model
-      if (targetModel.startsWith('gemini') && (targetModel === 'gemini-3.6-flash' || targetModel === 'gemini-3-flash-preview')) {
-        targetModel = 'gemini-2.5-flash';
+      // If user had a retired or 404-returning Gemini tag, normalize to verified stable canonical model
+      if (
+        targetModel.startsWith('gemini') &&
+        (targetModel === 'gemini-2.5-flash' ||
+          targetModel === 'gemini-2.0-flash' ||
+          targetModel === 'gemini-1.5-flash' ||
+          targetModel === 'gemini-1.5-pro' ||
+          targetModel === 'gemini-2.5-pro')
+      ) {
+        targetModel = 'gemini-flash-latest';
       }
 
       const isGemini = targetModel.startsWith('gemini');
@@ -1030,7 +1044,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         );
       } else if (isGemini && geminiKey) {
         sendStatus(`Connecting to Google Gemini (${targetModel})...`, 'connecting');
-        const geminiFallbacks = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+        const geminiFallbacks = [
+          'gemini-flash-latest',
+          'gemini-3.7-flash',
+          'gemini-3.6-flash',
+          'gemini-flash-lite-latest',
+          'gemini-3.8-flash'
+        ];
         if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith('gemini')) {
           geminiFallbacks.unshift(targetModel);
         }
@@ -1044,7 +1064,12 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
             // Sanitize messages: exclude prior error notices to prevent invalid prompt format
             const sanitizedMessages = messages.filter(
-              (m) => m && m.content && !m.content.startsWith('> ⚠️') && !m.content.startsWith('> 🔑')
+              (m) =>
+                m &&
+                m.content &&
+                !m.content.startsWith('> ⚠️') &&
+                !m.content.startsWith('> 🔑') &&
+                !m.content.startsWith('> ℹ️')
             );
             const validMessages = sanitizedMessages.length > 0 ? sanitizedMessages : messages;
 
@@ -1053,25 +1078,53 @@ export default async function chatRoutes(fastify: FastifyInstance) {
               parts: [{ text: m.content || ' ' }]
             }));
 
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents
-              })
-            });
+            let res: Response | null = null;
+            let lastFetchError: any = null;
 
-            if (!res.ok) {
-              const err = await res.text();
+            // Retry up to 2 attempts for transient socket drop / 503 capacity spikes
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000);
+                res = await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents
+                  }),
+                  signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                if (res.ok || res.status !== 503) {
+                  break;
+                }
+              } catch (e: any) {
+                lastFetchError = e;
+                if (attempt < 2) {
+                  await new Promise((r) => setTimeout(r, 1000));
+                }
+              }
+            }
+
+            if (!res || !res.ok) {
+              const status = res ? res.status : 503;
+              let errText = '';
+              try {
+                if (res) errText = await res.text();
+              } catch {}
+              if (!errText && lastFetchError) {
+                errText = lastFetchError.message || 'Connection reset by remote host';
+              }
+
               const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
-              if (nextModel && (res.status === 503 || res.status === 429 || res.status === 404 || res.status === 500)) {
+              if (nextModel && (status === 503 || status === 429 || status === 404 || status === 500 || !res)) {
                 streamToken(
-                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${res.status}). Automatically switching to \`${nextModel}\`...*\n\n`
+                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${status}). Automatically switching to \`${nextModel}\`...*\n\n`
                 );
                 return await streamGemini(nextModel, triedModels);
               }
-              streamToken(`> ⚠️ **Gemini Error (${res.status}):** ${err}`);
+              streamToken(`> ⚠️ **Gemini Error (${status}):** ${errText}`);
               return false;
             }
 

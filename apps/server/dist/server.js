@@ -80142,15 +80142,15 @@ async function chatRoutes(fastify2) {
                 return false;
               }
               return true;
-            }).map((m) => m.name.replace(/^models\//, ""));
+            }).map((m) => m.name.replace(/^models\//, "")).filter((name) => !["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash"].includes(name));
             fetched.sort((a, b) => {
               const score = (name) => {
-                if (name === "gemini-2.5-flash") return 100;
-                if (name === "gemini-2.0-flash") return 95;
-                if (name === "gemini-1.5-flash") return 90;
-                if (name === "gemini-2.5-pro") return 85;
-                if (name === "gemini-2.0-flash-lite") return 80;
-                if (name === "gemini-1.5-pro") return 75;
+                if (name === "gemini-flash-latest") return 100;
+                if (name === "gemini-3.7-flash") return 95;
+                if (name === "gemini-3.6-flash") return 90;
+                if (name === "gemini-3.8-flash") return 85;
+                if (name === "gemini-flash-lite-latest") return 80;
+                if (name === "gemini-pro-latest") return 75;
                 if (name.includes("flash")) return 50;
                 return 10;
               };
@@ -80165,7 +80165,13 @@ async function chatRoutes(fastify2) {
         console.error("Failed to fetch dynamic Gemini models:", err);
       }
       if (!cloudModels.some((m) => m.startsWith("gemini"))) {
-        cloudModels.push("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash");
+        cloudModels.push(
+          "gemini-flash-latest",
+          "gemini-3.7-flash",
+          "gemini-3.6-flash",
+          "gemini-3.8-flash",
+          "gemini-flash-lite-latest"
+        );
       }
     }
     if (openaiKey) {
@@ -80802,16 +80808,16 @@ Make sure model \`${targetModel}\` is downloaded via \`ollama pull ${targetModel
         const hasBedrock = Boolean(settings["aws_bedrock_access_key"] && settings["aws_bedrock_secret_key"]);
         const hasOci = Boolean(settings["oci_genai_compartment_id"] && settings["oci_genai_api_key"]);
         if (!targetModel || targetModel.startsWith("gemini") && !geminiKey || targetModel.startsWith("gpt") && !openaiKey || targetModel.startsWith("claude") && !anthropicKey || targetModel.startsWith("azure") && !hasAzure || targetModel.startsWith("bedrock") && !hasBedrock || targetModel.startsWith("oci") && !hasOci) {
-          if (geminiKey) targetModel = "gemini-2.5-flash";
+          if (geminiKey) targetModel = "gemini-flash-latest";
           else if (openaiKey) targetModel = "gpt-4o";
           else if (anthropicKey) targetModel = "claude-3-5-sonnet-20241022";
           else if (hasAzure) targetModel = `azure/${settings["azure_openai_deployment"] || "gpt-4o"}`;
           else if (hasBedrock) targetModel = `bedrock/${settings["aws_bedrock_model"] || "anthropic.claude-3-5-sonnet-20241022-v2:0"}`;
           else if (hasOci) targetModel = `oci/${settings["oci_genai_model"] || "cohere.command-r-plus"}`;
-          else targetModel = "gemini-2.5-flash";
+          else targetModel = "gemini-flash-latest";
         }
-        if (targetModel.startsWith("gemini") && (targetModel === "gemini-3.6-flash" || targetModel === "gemini-3-flash-preview")) {
-          targetModel = "gemini-2.5-flash";
+        if (targetModel.startsWith("gemini") && (targetModel === "gemini-2.5-flash" || targetModel === "gemini-2.0-flash" || targetModel === "gemini-1.5-flash" || targetModel === "gemini-1.5-pro" || targetModel === "gemini-2.5-pro")) {
+          targetModel = "gemini-flash-latest";
         }
         const isGemini = targetModel.startsWith("gemini");
         const isAnthropic = targetModel.startsWith("claude");
@@ -80839,7 +80845,13 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
           );
         } else if (isGemini && geminiKey) {
           sendStatus(`Connecting to Google Gemini (${targetModel})...`, "connecting");
-          const geminiFallbacks = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          const geminiFallbacks = [
+            "gemini-flash-latest",
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-flash-lite-latest",
+            "gemini-3.8-flash"
+          ];
           if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith("gemini")) {
             geminiFallbacks.unshift(targetModel);
           }
@@ -80849,33 +80861,59 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
               sendStatus(`Generating response with Google Gemini (${modelToUse})...`, "generating");
               const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${geminiKey}`;
               const sanitizedMessages = messages.filter(
-                (m) => m && m.content && !m.content.startsWith("> \u26A0\uFE0F") && !m.content.startsWith("> \u{1F511}")
+                (m) => m && m.content && !m.content.startsWith("> \u26A0\uFE0F") && !m.content.startsWith("> \u{1F511}") && !m.content.startsWith("> \u2139\uFE0F")
               );
               const validMessages = sanitizedMessages.length > 0 ? sanitizedMessages : messages;
               const contents = validMessages.map((m) => ({
                 role: m.role === "assistant" ? "model" : "user",
                 parts: [{ text: m.content || " " }]
               }));
-              const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  systemInstruction: { parts: [{ text: systemPrompt }] },
-                  contents
-                })
-              });
-              if (!res.ok) {
-                const err = await res.text();
+              let res = null;
+              let lastFetchError = null;
+              for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), 6e4);
+                  res = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      systemInstruction: { parts: [{ text: systemPrompt }] },
+                      contents
+                    }),
+                    signal: controller.signal
+                  });
+                  clearTimeout(timeoutId);
+                  if (res.ok || res.status !== 503) {
+                    break;
+                  }
+                } catch (e) {
+                  lastFetchError = e;
+                  if (attempt < 2) {
+                    await new Promise((r) => setTimeout(r, 1e3));
+                  }
+                }
+              }
+              if (!res || !res.ok) {
+                const status = res ? res.status : 503;
+                let errText = "";
+                try {
+                  if (res) errText = await res.text();
+                } catch {
+                }
+                if (!errText && lastFetchError) {
+                  errText = lastFetchError.message || "Connection reset by remote host";
+                }
                 const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
-                if (nextModel && (res.status === 503 || res.status === 429 || res.status === 404 || res.status === 500)) {
+                if (nextModel && (status === 503 || status === 429 || status === 404 || status === 500 || !res)) {
                   streamToken(
-                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${res.status}). Automatically switching to \`${nextModel}\`...*
+                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${status}). Automatically switching to \`${nextModel}\`...*
 
 `
                   );
                   return await streamGemini(nextModel, triedModels);
                 }
-                streamToken(`> \u26A0\uFE0F **Gemini Error (${res.status}):** ${err}`);
+                streamToken(`> \u26A0\uFE0F **Gemini Error (${status}):** ${errText}`);
                 return false;
               }
               if (res.body) {

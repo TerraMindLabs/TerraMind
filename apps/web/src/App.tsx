@@ -155,6 +155,8 @@ function formatModelName(modelId: string): string {
   }
 
   return modelId
+    .replace('gemini-3.8-flash', 'Gemini 3.8 Flash')
+    .replace('gemini-3.7-flash', 'Gemini 3.7 Flash')
     .replace('gemini-3.6-flash', 'Gemini 3.6 Flash')
     .replace('gemini-3-flash-preview', 'Gemini 3 Flash (Preview)')
     .replace('gemini-3.5-flash-lite', 'Gemini 3.5 Flash Lite')
