@@ -596,28 +596,48 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      sendEvent({ status: `Connecting to Ollama library for '${modelName}'...`, percent: 0 });
+      sendEvent({ status: `Connecting to Ollama registry for '${modelName}'...`, percent: 0 });
 
       const controller = new AbortController();
-      // Allow up to 30 minutes for large downloads
+      // Allow up to 30 minutes for large model downloads
       const timeout = setTimeout(() => controller.abort(), 1800000);
       
       const baseUrl = getOllamaBaseUrl();
-      const res = await fetch(`${baseUrl}/api/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: modelName, stream: true }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        sendEvent({ error: errorText || `Ollama returned error (${res.status})` });
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}/api/pull`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: modelName, stream: true }),
+          signal: controller.signal
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(timeout);
+        sendEvent({
+          error: `Cannot connect to Ollama daemon at ${baseUrl}. Ensure Ollama is active. (${fetchErr.message})`,
+          failed: true
+        });
         reply.raw.write('data: [DONE]\n\n');
         reply.raw.end();
         return;
       }
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = `Ollama returned error (${res.status})`;
+        try {
+          const errObj = JSON.parse(errorText);
+          if (errObj.error) errorMsg = errObj.error;
+        } catch {}
+        sendEvent({ error: errorMsg, failed: true });
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+        return;
+      }
+
+      let hasError = false;
+      let finalErrorMessage = '';
 
       if (res.body) {
         const reader = res.body.getReader();
@@ -637,12 +657,17 @@ export default async function chatRoutes(fastify: FastifyInstance) {
             try {
               const parsed = JSON.parse(trimmed);
               if (parsed.error) {
+                hasError = true;
                 const isStreamDrop = parsed.error.includes('stream reading error') || parsed.error.includes('wsarecv') || parsed.error.includes('forcibly closed');
+                const isNotFound = parsed.error.includes('file does not exist') || parsed.error.includes('not found') || parsed.error.includes('manifest');
                 const cleanError = isStreamDrop
-                  ? 'Registry connection temporarily dropped during download. Click Download again to resume from the cached chunks.'
+                  ? 'Registry connection temporarily dropped during download. Click Download again to resume from cached chunks.'
+                  : isNotFound
+                  ? `Model '${modelName}' was not found in the Ollama library. Please verify the tag or choose from the verified model library.`
                   : parsed.error;
-                sendEvent({ error: cleanError });
-                continue;
+                finalErrorMessage = cleanError;
+                sendEvent({ error: cleanError, failed: true });
+                break;
               }
               let percent = 0;
               if (parsed.total && parsed.completed) {
@@ -657,15 +682,18 @@ export default async function chatRoutes(fastify: FastifyInstance) {
               });
             } catch {}
           }
+          if (hasError) break;
         }
       }
 
-      sendEvent({ status: `Successfully downloaded '${modelName}'!`, percent: 100, success: true });
+      if (!hasError) {
+        sendEvent({ status: `Successfully downloaded '${modelName}'!`, percent: 100, success: true });
+      }
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();
     } catch (err: any) {
       fastify.log.error(err);
-      reply.raw.write(`data: ${JSON.stringify({ error: err.message || 'Error pulling Ollama model' })}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ error: err.message || 'Error pulling Ollama model', failed: true })}\n\n`);
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();
     }

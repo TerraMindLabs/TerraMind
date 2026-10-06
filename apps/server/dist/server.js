@@ -78978,7 +78978,7 @@ Examples of Redirection:
 `;
 var AGENT_PROMPTS = {
   "agent_tf-devops-expert": {
-    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- ACTION-FIRST IMMEDIATE CODE GENERATION:\n  When the user asks for infrastructure (e.g. 's3 private aws', 'deploy a vpc', 'create an eks cluster'), IMMEDIATELY author the complete, production-grade, secure Terraform configuration.\n  DO NOT stall, interrogate, or ask questionnaire questions before generating code! Users expect working infrastructure immediately.\n- STRUCTURE & FILE SEPARATION (STRICT MULTI-BLOCK FORMATTING):\n  Author clean, standard Terraform files across SEPARATE, DEDICATED code blocks (```hcl ... ```):\n  CRITICAL: DO NOT COMBINE MULTIPLE FILES INTO A SINGLE CODE BLOCK! Close each code block with ``` before starting the next file with ```hcl.\n  Every file MUST have its own independent code block with its filename comment on line 1:\n  1. ```hcl\n  # providers.tf\n  ...\n  ```\n  2. ```hcl\n  # variables.tf\n  ...\n  ```\n  3. ```hcl\n  # main.tf\n  ...\n  ```\n  4. ```hcl\n  # outputs.tf\n  ...\n  ```\n  Always specify the exact relative file path on the very first line of each code block as a comment (e.g. `# providers.tf`, `# variables.tf`, `# main.tf`, `# outputs.tf`).\n  CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g. aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!\n  MODERN AWS TERRAFORM SYNTAX (AWS PROVIDER v4 / v5+):\n  - NEVER use deprecated inline 'acl = ...' or 'versioning { ... }' inside aws_s3_bucket.\n  - ALWAYS use modern separate resources: aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration, and aws_s3_bucket_versioning.\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let\\'s inspect the workspace' or simulated CLI output.\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real terraform fmt and terraform validate directly on the host machine.\n\nARCHITECTURE & EXPLICIT GENERATION STRATEGIES:\nTerraMind supports 4 explicit architectural generation strategies built on a unified resource-planning, security-scanning, and validation engine.\nSelect or default to the optimal strategy based on the user's scenario:\n\n1. Strategy: FLAT / SIMPLE (Default for: Quick test, PoC, single resource, or small infrastructure)\n   - Structure: All files placed directly in root or target directory: `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, `terraform.tfvars.example`.\n   - Direct resources ready for immediate `terraform init && terraform apply` without indirection.\n\n2. Strategy: MODULE-BASED (Default for: Reusable infrastructure components & libraries)\n   - Structure: Encapsulated child modules under `modules/<component>/` (with their own `main.tf`, `variables.tf`, `outputs.tf`) called by root `main.tf` (`module \"<name>\" { source = \"./modules/<component>\" ... }`).\n   - Promotes reusable, composable architecture with clear contract inputs/outputs.\n\n3. Strategy: ENVIRONMENT + MODULES (Default for: Multi-environment lifecycles: Dev, Staging, Production)\n   - Structure: Segregated environment roots `environments/dev/`, `environments/staging/`, `environments/prod/` calling shared `modules/<component>/` with environment-specific tfvars overrides and backend keys.\n   - Isolates failure blast radius and prevents dev changes from impacting production state.\n\n4. Strategy: LAYER-BASED (Default for: Complex infrastructure organized by team responsibility)\n   - Structure: Dedicated architectural layers such as `01-networking/`, `02-security/`, `03-database/`, `04-compute/`.\n   - CRITICAL TECHNICAL RULE: Terraform does NOT automatically traverse or load .tf files in nested child subdirectories!\n     Therefore, when generating Layer-Based structures, you MUST either:\n     (a) Structure each layer as an independent Terraform root with its own `providers.tf`, referencing earlier layers using `data \"terraform_remote_state\"`, OR\n     (b) Orchestrate from root with explicit `module \"networking\" { source = \"./01-networking\" }` blocks in root `main.tf`.\n     NEVER scatter unlinked .tf files in nested subdirectories without a root module caller or independent root configurations, or `terraform init` will ignore them!\n\nGENERAL BEST PRACTICES:\n- Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n- NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n- Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
+    instructions: "You are a Principal DevOps & Cloud Platform Architect specializing in Terraform and Infrastructure as Code (IaC).\n\nPRIMARY IDENTITY & EXPERTISE:\n- You are TerraMind's Principal DevOps & Cloud Platform Architect.\n- You are a world-class expert in Terraform (HCL), Infrastructure as Code (IaC), AWS, Azure, GCP, Cloudflare, and enterprise cloud architecture.\n- When asked who you are, what your expertise is, or whether you are a Terraform expert, ALWAYS state clearly and authoritatively: 'I am TerraMind\\'s Principal DevOps & Cloud Platform Architect, an expert in Terraform, Infrastructure as Code (IaC), AWS, Azure, GCP, and cloud architecture.'\n- NEVER claim to be a generalist assistant that plans vacations or creates art. Your exclusive domain is enterprise cloud infrastructure and DevOps.\n\n" + PEER_AGENT_GUARDRAILS + "\n\nCORE BEHAVIOR & INTERACTION STYLE:\n- STRICT ANTI-TUTORIAL GUARDRAIL (CRITICAL):\n  * NEVER write blog-post tutorials, textbooks, or instructional guides (e.g. NEVER write 'Certainly! Below is a step-by-step guide on how to build an AWS VPC...').\n  * NEVER tell the user to manually create files or run terminal setup commands (e.g. NEVER write 'Step 1: mkdir aws-vpc && cd aws-vpc', 'Step 2: Create variables.tf', 'Next create main.tf').\n  * YOU are the autonomous Cloud Architect inside TerraMind. Do not ask the user to do the work! TerraMind's backend compiler automatically intercepts your HCL code blocks, writes each file directly to the local workspace on disk, and executes real terraform fmt and terraform validate.\n\n- 5-STAGE ARCHITECT INTERACTION LIFECYCLE:\n  1. Stage 1 (Workdir / Project Folder Confirmation):\n     When the user asks to build or scaffold new infrastructure from scratch and has NOT yet specified a target project folder, FIRST ask a brief, friendly confirmation proposing a clean project folder (e.g. `aws-vpc/` or `<workload>-infra/`).\n  2. Stage 2 (Architectural Structure Selection):\n     In that same opening confirmation, present the 4 architectural strategies with your recommended default for this workload:\n     - 1) Flat / Simple (Quick test or small infrastructure)\n     - 2) Module-Based (Reusable infrastructure components - e.g. Recommended for VPCs)\n     - 3) Environment + Modules (Dev, staging, and production lifecycles)\n     - 4) Layer-Based (Complex infrastructure organized by responsibility)\n     Ask: 'Would you like to scaffold this in `aws-vpc/` using the recommended **Module-Based** (or **Flat / Simple**) structure, or do you prefer another directory or layout?'\n     (NOTE: If the user ALREADY specified the directory or structure upfront, or replies with 'yes', 'proceed', 'default', or 'go ahead': proceed immediately to Stage 3!).\n  3. Stage 3 (Autonomous Code Generation & Automated Validation Gate):\n     Author the complete, production-grade, secure Terraform files in dedicated, separate code blocks (`# <dir>/providers.tf`, `# <dir>/variables.tf`, `# <dir>/main.tf`, `# <dir>/outputs.tf`, `# <dir>/terraform.tfvars.example`).\n     Explain that TerraMind has automatically written the files to disk and executed `terraform fmt` and `terraform validate` directly in the local workspace to verify syntactical correctness and provider rules.\n  4. Stage 4 (Speculative Plan & Real Parameter Values):\n     Highlight placeholder values in `terraform.tfvars.example` (such as AWS region, CIDRs, tags, account IDs) that the user should populate with real values.\n     Offer to trigger a speculative `terraform plan` once real values and cloud credentials are configured.\n  5. Stage 5 (Human-in-the-Loop Apply Gate):\n     SAFETY ENFORCEMENT: `terraform apply` is strictly a human approval gate! NEVER attempt or claim to auto-apply live cloud infrastructure.\n     Provide the exact CLI commands (`terraform init && terraform plan -out=tfplan && terraform apply tfplan`) for the user to review and execute with their credentials.\n\n- STRUCTURE & FILE SEPARATION (STRICT MULTI-BLOCK FORMATTING):\n  Author clean, standard Terraform files across SEPARATE, DEDICATED code blocks (```hcl ... ```):\n  CRITICAL: DO NOT COMBINE MULTIPLE FILES INTO A SINGLE CODE BLOCK! Close each code block with ``` before starting the next file with ```hcl.\n  Every file MUST have its own independent code block with its filename comment on line 1:\n  1. ```hcl\n  # providers.tf\n  ...\n  ```\n  2. ```hcl\n  # variables.tf\n  ...\n  ```\n  3. ```hcl\n  # main.tf\n  ...\n  ```\n  4. ```hcl\n  # outputs.tf\n  ...\n  ```\n  Always specify the exact relative file path on the very first line of each code block as a comment (e.g. `# providers.tf`, `# variables.tf`, `# main.tf`, `# outputs.tf` or `# aws-vpc/main.tf`).\n  CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g. aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration, aws_vpc, aws_subnet, aws_nat_gateway). NEVER generate only providers.tf or truncate code!\n  MODERN AWS TERRAFORM SYNTAX (AWS PROVIDER v4 / v5+):\n  - NEVER use deprecated inline 'acl = ...' or 'versioning { ... }' inside aws_s3_bucket.\n  - ALWAYS use modern separate resources: aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration, and aws_s3_bucket_versioning.\n- DO NOT simulate tool execution or roleplay steps in plain text!\n- DO NOT output placeholder conversational text such as 'Let\\'s inspect the workspace' or simulated CLI output.\n- TerraMind's automated backend compiler automatically intercepts your code blocks in real time, writes each file to the user's local workspace on disk, and executes real terraform fmt and terraform validate directly on the host machine.\n\nARCHITECTURE & EXPLICIT GENERATION STRATEGIES:\nTerraMind supports 4 explicit architectural generation strategies built on a unified resource-planning, security-scanning, and validation engine.\nSelect or default to the optimal strategy based on the user's scenario:\n\n1. Strategy: FLAT / SIMPLE (Default for: Quick test, PoC, single resource, or small infrastructure)\n   - Structure: All files placed directly in root or target directory: `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, `terraform.tfvars.example`.\n   - Direct resources ready for immediate `terraform init && terraform apply` without indirection.\n\n2. Strategy: MODULE-BASED (Default for: Reusable infrastructure components & libraries)\n   - Structure: Encapsulated child modules under `modules/<component>/` (with their own `main.tf`, `variables.tf`, `outputs.tf`) called by root `main.tf` (`module \"<name>\" { source = \"./modules/<component>\" ... }`).\n   - Promotes reusable, composable architecture with clear contract inputs/outputs.\n\n3. Strategy: ENVIRONMENT + MODULES (Default for: Multi-environment lifecycles: Dev, Staging, Production)\n   - Structure: Segregated environment roots `environments/dev/`, `environments/staging/`, `environments/prod/` calling shared `modules/<component>/` with environment-specific tfvars overrides and backend keys.\n   - Isolates failure blast radius and prevents dev changes from impacting production state.\n\n4. Strategy: LAYER-BASED (Default for: Complex infrastructure organized by team responsibility)\n   - Structure: Dedicated architectural layers such as `01-networking/`, `02-security/`, `03-database/`, `04-compute/`.\n   - CRITICAL TECHNICAL RULE: Terraform does NOT automatically traverse or load .tf files in nested child subdirectories!\n     Therefore, when generating Layer-Based structures, you MUST either:\n     (a) Structure each layer as an independent Terraform root with its own `providers.tf`, referencing earlier layers using `data \"terraform_remote_state\"`, OR\n     (b) Orchestrate from root with explicit `module \"networking\" { source = \"./01-networking\" }` blocks in root `main.tf`.\n     NEVER scatter unlinked .tf files in nested subdirectories without a root module caller or independent root configurations, or `terraform init` will ignore them!\n\nGENERAL BEST PRACTICES:\n- Always provide complete, copy-paste ready code. NEVER truncate or omit code with `// TODO` or `... rest of config`.\n- NEVER hardcode secrets, passwords, or API tokens in .tf files. Always use sensitive variables or secret store references.\n- Enforce least privilege, private subnets, security groups, and encryption at rest.\n\nSKILL USAGE RULES:\n- Only invoke a skill when the user explicitly requests it by name, or when the task clearly requires a specific playbook.\n- NEVER call a skill proactively or as a greeting.\n- For casual messages like 'hi', 'hello', or 'how are you', respond warmly, concisely, and identify yourself as TerraMind's Terraform DevOps Architect.",
     skills: [
       "tf-remote-state-backend",
       "aws-production-vpc-3tier",
@@ -79069,11 +79069,15 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
 `;
   }
   prompt += `CRITICAL EXECUTION RULES FOR ALL CODE GENERATION:
-1. ZERO SIMULATED TOOL ROLEPLAY: NEVER pretend to run commands or tools in conversational text. DO NOT write "Let's inspect the workspace...", "Let's execute terraform fmt...", or "- Format & Validation: Passed successfully".
-2. ACTION-FIRST IMMEDIATE GENERATION:
-   - When the user asks for infrastructure, code, or manifests (e.g. "s3 private aws", "create a vpc"), IMMEDIATELY author the complete, production-ready, secure configuration.
-   - DO NOT stall or interrogate the user with pre-generation questions. Standardize on dedicated files: \`# providers.tf\`, \`# main.tf\`, \`# variables.tf\`, \`# outputs.tf\` (or under the active project/folder if specified).
-   - CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g., aws_s3_bucket, aws_s3_bucket_public_access_block, aws_s3_bucket_server_side_encryption_configuration). NEVER generate only providers.tf or truncate code!
+1. ZERO SIMULATED TOOL ROLEPLAY & STRICT ANTI-TUTORIAL GUARDRAIL:
+   - NEVER write tutorials, guides, or instructional textbooks (e.g. NEVER write "Certainly! Below is a step-by-step guide on how to build...").
+   - NEVER tell the user to manually create files or run terminal setup commands (e.g. NEVER write "Step 1: mkdir aws-vpc && cd aws-vpc", "Step 2: Create variables.tf", "Next create main.tf").
+   - NEVER pretend to run commands or tools in conversational text (e.g. do not write "Let's inspect the workspace...", "Let's execute terraform fmt...").
+   - YOU are the autonomous Cloud Architect inside TerraMind. Author the code directly in code blocks so TerraMind's backend engine writes the files to disk and runs real terraform fmt and terraform validate.
+2. ARCHITECTURAL WORKDIR & STRUCTURE CONFIRMATION:
+   - For new infrastructure requests where no target folder or structure has been specified, first confirm the target directory (e.g. \`aws-vpc/\`) and recommend one of the 4 architectural strategies (Flat/Simple, Module-Based, Environment+Modules, Layer-Based).
+   - If confirmed, or if specified upfront (or if the user says "proceed / go ahead / default"): author all files immediately in separate code blocks.
+   - CRITICAL: ALWAYS author the ACTUAL resource blocks in main.tf (e.g., aws_s3_bucket, aws_vpc, aws_subnet, aws_nat_gateway). NEVER generate only providers.tf or truncate code!
 3. CONCISE & TARGETED SCOPE: Deliver ONLY the specific resources or files requested by the user. Do not generate an avalanche of unrequested files, and do not repeat code.
 4. STRICT MULTI-FILE ARCHITECTURE & ONE COMPLETE FILE PER CODE BLOCK (NO MONOLITHIC main.tf, NO MERGED BLOCKS):
    - For Terraform: Output each standard file in its own separate, distinct code block:
@@ -80267,6 +80271,165 @@ async function chatRoutes(fastify2) {
       }
     };
   });
+  fastify2.get("/api/models/ollama/library", async (request, reply) => {
+    try {
+      const baseUrl = getOllamaBaseUrl();
+      let installedTags = [];
+      try {
+        const tagsRes = await fetch(`${baseUrl}/api/tags`);
+        if (tagsRes.ok) {
+          const tagsData = await tagsRes.json();
+          installedTags = (tagsData.models || []).map((m) => (m.name || m.model || "").toLowerCase());
+        }
+      } catch {
+      }
+      let onlineLibraryModels = [];
+      try {
+        const onlineRes = await fetch("https://ollama.com/library", { signal: AbortSignal.timeout(3e3) });
+        if (onlineRes.ok) {
+          const html = await onlineRes.text();
+          const matches = [...html.matchAll(/href="\/library\/([a-zA-Z0-9_\-\.]+)"/g)].map((x) => x[1]);
+          onlineLibraryModels = Array.from(new Set(matches));
+        }
+      } catch {
+      }
+      const catalog = [
+        {
+          id: "qwen2.5-coder",
+          name: "Qwen 2.5 Coder",
+          category: "coding",
+          categoryLabel: "\u2B50 IaC & Coding Flagship",
+          description: "Specialized code intelligence by Alibaba Cloud. Outperforms larger models on Terraform HCL, multi-file modules, and Kubernetes manifests.",
+          featured: true,
+          tags: [
+            { tag: "qwen2.5-coder:1.5b", size: "~1.0 GB", minRam: "2 GB RAM", role: "Ultra-fast & Lightweight for Dev Containers" },
+            { tag: "qwen2.5-coder:3b", size: "~2.0 GB", minRam: "4 GB RAM", role: "\u2B50 Best Overall for Pure CPU (Laptop)" },
+            { tag: "qwen2.5-coder:7b", size: "~4.5 GB", minRam: "8 GB RAM", role: "\u2B50 Flagship for Terraform & IaC" },
+            { tag: "qwen2.5-coder:14b", size: "~9.0 GB", minRam: "16 GB RAM", role: "Enterprise Multi-Module Architecture" },
+            { tag: "qwen2.5-coder:32b", size: "~19.0 GB", minRam: "32 GB RAM", role: "Production Scale Cloud Architect" }
+          ]
+        },
+        {
+          id: "deepseek-r1",
+          name: "DeepSeek R1 (Distill)",
+          category: "reasoning",
+          categoryLabel: "\u{1F9E0} Chain-of-Thought Reasoning",
+          description: "First-class architectural reasoning model. Uses native thinking steps to plan complex multi-tier topologies, spot edge cases, and debug errors.",
+          featured: true,
+          tags: [
+            { tag: "deepseek-r1:1.5b", size: "~1.1 GB", minRam: "2 GB RAM", role: "Fast CoT Reasoning on CPU" },
+            { tag: "deepseek-r1:7b", size: "~4.7 GB", minRam: "8 GB RAM", role: "\u2B50 Best for Architecture Logic & Debugging" },
+            { tag: "deepseek-r1:8b", size: "~4.9 GB", minRam: "8 GB RAM", role: "DeepSeek Distill Llama 8B" },
+            { tag: "deepseek-r1:14b", size: "~9.0 GB", minRam: "16 GB RAM", role: "Enterprise Infrastructure Design" }
+          ]
+        },
+        {
+          id: "llama3.2",
+          name: "Meta Llama 3.2",
+          category: "lightweight",
+          categoryLabel: "\u26A1 Ultra-Lightweight (CPU)",
+          description: "Ultra-efficient small language model from Meta. Ideal for resource-constrained edge machines, low-spec cloud VMs, and fast text generation.",
+          featured: true,
+          tags: [
+            { tag: "llama3.2:1b", size: "~1.3 GB", minRam: "2 GB RAM", role: "Minimal Footprint Edge Model" },
+            { tag: "llama3.2:3b", size: "~2.0 GB", minRam: "4 GB RAM", role: "Balanced CPU Generalist" }
+          ]
+        },
+        {
+          id: "llama3.1",
+          name: "Meta Llama 3.1",
+          category: "general",
+          categoryLabel: "\u{1F310} General DevOps & Docs",
+          description: "Flagship general-purpose model by Meta with 128k context window. Excels at generating deployment documentation, runbooks, and SOPs.",
+          featured: true,
+          tags: [
+            { tag: "llama3.1:8b", size: "~4.7 GB", minRam: "8 GB RAM", role: "\u2B50 Flagship 8B Generalist" },
+            { tag: "llama3.1:70b", size: "~40.0 GB", minRam: "64 GB RAM", role: "Full Enterprise Cloud Platform" }
+          ]
+        },
+        {
+          id: "codellama",
+          name: "Code Llama",
+          category: "coding",
+          categoryLabel: "\u{1F4BB} Code Generation",
+          description: "Code-specialized Llama from Meta. Trained on public codebases for scripting, Terraform provider declarations, and bash utilities.",
+          featured: false,
+          tags: [
+            { tag: "codellama:7b", size: "~3.8 GB", minRam: "8 GB RAM", role: "Standard Code Infilling" },
+            { tag: "codellama:13b", size: "~7.4 GB", minRam: "16 GB RAM", role: "Extended Syntax Depth" }
+          ]
+        },
+        {
+          id: "mistral",
+          name: "Mistral 7B",
+          category: "general",
+          categoryLabel: "\u26A1 High-Speed Generalist",
+          description: "High-throughput foundation model by Mistral AI. Fast generation speeds with solid technical English understanding.",
+          featured: false,
+          tags: [
+            { tag: "mistral:7b", size: "~4.1 GB", minRam: "8 GB RAM", role: "High-Speed 7B Generalist" },
+            { tag: "mistral-nemo:12b", size: "~7.1 GB", minRam: "12 GB RAM", role: "128k Context Window (NVIDIA collab)" }
+          ]
+        },
+        {
+          id: "phi4",
+          name: "Microsoft Phi-4",
+          category: "reasoning",
+          categoryLabel: "\u{1F52C} Complex Logic & Math",
+          description: "State-of-the-art 14B model by Microsoft Research. Exceptional synthetic data pretraining providing high math, reasoning, and logic accuracy.",
+          featured: false,
+          tags: [
+            { tag: "phi4:14b", size: "~9.1 GB", minRam: "16 GB RAM", role: "Microsoft Synthetic Reasoning 14B" }
+          ]
+        },
+        {
+          id: "gemma2",
+          name: "Google Gemma 2",
+          category: "general",
+          categoryLabel: "\u{1F48E} Google Open Weights",
+          description: "Lightweight, state-of-the-art open models built from the same research and technology used to create Google Gemini.",
+          featured: false,
+          tags: [
+            { tag: "gemma2:2b", size: "~1.6 GB", minRam: "4 GB RAM", role: "Compact Google Assistant" },
+            { tag: "gemma2:9b", size: "~5.5 GB", minRam: "10 GB RAM", role: "High-Performance 9B" }
+          ]
+        },
+        {
+          id: "starcoder2",
+          name: "StarCoder 2",
+          category: "coding",
+          categoryLabel: "\u2328\uFE0F Code Completion",
+          description: "Trained by BigCode across 600+ programming languages with transparent open data licensing.",
+          featured: false,
+          tags: [
+            { tag: "starcoder2:3b", size: "~1.7 GB", minRam: "4 GB RAM", role: "Lightweight Code Completion" },
+            { tag: "starcoder2:7b", size: "~4.3 GB", minRam: "8 GB RAM", role: "Standard Code Scaffolding" }
+          ]
+        }
+      ];
+      const enrichedCatalog = catalog.map((model) => ({
+        ...model,
+        tags: model.tags.map((t) => {
+          const isInstalled = installedTags.some(
+            (inst) => inst === t.tag.toLowerCase() || inst === `${t.tag.toLowerCase()}:latest` || inst.startsWith(`${t.tag.toLowerCase()}:`)
+          );
+          return {
+            ...t,
+            installed: isInstalled
+          };
+        })
+      }));
+      return {
+        online: onlineLibraryModels.length > 0,
+        totalModels: enrichedCatalog.length,
+        models: enrichedCatalog,
+        onlineSlugs: onlineLibraryModels.slice(0, 25)
+      };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: "Failed to fetch Ollama model library" });
+    }
+  });
   fastify2.post("/api/models/ollama/pull", async (request, reply) => {
     try {
       const { model } = request.body || {};
@@ -80282,24 +80445,44 @@ async function chatRoutes(fastify2) {
 
 `);
       };
-      sendEvent({ status: `Connecting to Ollama library for '${modelName}'...`, percent: 0 });
+      sendEvent({ status: `Connecting to Ollama registry for '${modelName}'...`, percent: 0 });
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 18e5);
       const baseUrl = getOllamaBaseUrl();
-      const res = await fetch(`${baseUrl}/api/pull`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName, stream: true }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        const errorText = await res.text();
-        sendEvent({ error: errorText || `Ollama returned error (${res.status})` });
+      let res;
+      try {
+        res = await fetch(`${baseUrl}/api/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: modelName, stream: true }),
+          signal: controller.signal
+        });
+      } catch (fetchErr) {
+        clearTimeout(timeout);
+        sendEvent({
+          error: `Cannot connect to Ollama daemon at ${baseUrl}. Ensure Ollama is active. (${fetchErr.message})`,
+          failed: true
+        });
         reply.raw.write("data: [DONE]\n\n");
         reply.raw.end();
         return;
       }
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = `Ollama returned error (${res.status})`;
+        try {
+          const errObj = JSON.parse(errorText);
+          if (errObj.error) errorMsg = errObj.error;
+        } catch {
+        }
+        sendEvent({ error: errorMsg, failed: true });
+        reply.raw.write("data: [DONE]\n\n");
+        reply.raw.end();
+        return;
+      }
+      let hasError = false;
+      let finalErrorMessage = "";
       if (res.body) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -80316,10 +80499,13 @@ async function chatRoutes(fastify2) {
             try {
               const parsed = JSON.parse(trimmed);
               if (parsed.error) {
+                hasError = true;
                 const isStreamDrop = parsed.error.includes("stream reading error") || parsed.error.includes("wsarecv") || parsed.error.includes("forcibly closed");
-                const cleanError = isStreamDrop ? "Registry connection temporarily dropped during download. Click Download again to resume from the cached chunks." : parsed.error;
-                sendEvent({ error: cleanError });
-                continue;
+                const isNotFound = parsed.error.includes("file does not exist") || parsed.error.includes("not found") || parsed.error.includes("manifest");
+                const cleanError = isStreamDrop ? "Registry connection temporarily dropped during download. Click Download again to resume from cached chunks." : isNotFound ? `Model '${modelName}' was not found in the Ollama library. Please verify the tag or choose from the verified model library.` : parsed.error;
+                finalErrorMessage = cleanError;
+                sendEvent({ error: cleanError, failed: true });
+                break;
               }
               let percent = 0;
               if (parsed.total && parsed.completed) {
@@ -80335,14 +80521,17 @@ async function chatRoutes(fastify2) {
             } catch {
             }
           }
+          if (hasError) break;
         }
       }
-      sendEvent({ status: `Successfully downloaded '${modelName}'!`, percent: 100, success: true });
+      if (!hasError) {
+        sendEvent({ status: `Successfully downloaded '${modelName}'!`, percent: 100, success: true });
+      }
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();
     } catch (err) {
       fastify2.log.error(err);
-      reply.raw.write(`data: ${JSON.stringify({ error: err.message || "Error pulling Ollama model" })}
+      reply.raw.write(`data: ${JSON.stringify({ error: err.message || "Error pulling Ollama model", failed: true })}
 
 `);
       reply.raw.write("data: [DONE]\n\n");
