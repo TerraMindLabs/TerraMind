@@ -42,9 +42,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [openaiKey, setOpenaiKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [infracostKey, setInfracostKey] = useState('');
   const [hasOpenai, setHasOpenai] = useState(false);
   const [hasGemini, setHasGemini] = useState(false);
   const [hasAnthropic, setHasAnthropic] = useState(false);
+  const [hasInfracost, setHasInfracost] = useState(false);
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysSaved, setKeysSaved] = useState(false);
 
@@ -157,9 +159,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setHasOpenai(Boolean(data.hasOpenaiKey || data.has_openai));
         setHasGemini(Boolean(data.hasGeminiKey || data.has_gemini));
         setHasAnthropic(Boolean(data.hasAnthropicKey || data.has_anthropic));
+        setHasInfracost(Boolean(data.hasInfracostKey || data.has_infracost));
         if (data.openaiApiKey) setOpenaiKey(data.openaiApiKey);
         if (data.geminiApiKey) setGeminiKey(data.geminiApiKey);
         if (data.anthropicApiKey) setAnthropicKey(data.anthropicApiKey);
+        if (data.infracostApiKey) setInfracostKey(data.infracostApiKey);
 
         // AWS Bedrock
         setHasBedrock(Boolean(data.hasAwsBedrock || data.has_bedrock));
@@ -393,7 +397,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         body: JSON.stringify({
           openaiApiKey: openaiKey || undefined,
           geminiApiKey: geminiKey || undefined,
-          anthropicApiKey: anthropicKey || undefined
+          anthropicApiKey: anthropicKey || undefined,
+          infracostApiKey: infracostKey || undefined
         })
       });
       if (res.ok) {
@@ -1074,6 +1079,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setAnthropicKey(e.target.value)}
                 style={{ width: '100%', padding: '11px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', fontFamily: 'monospace' }}
               />
+            </div>
+
+            <div style={{ marginBottom: '26px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>Infracost API Key (Cloud Pricing & FinOps)</span>
+                  {hasInfracost && <span style={{ color: '#10b981', fontSize: '12px' }}>✓ Configured</span>}
+                </label>
+                <a href="https://dashboard.infracost.io" target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: '#3b82f6', textDecoration: 'none' }}>
+                  Get Free Key ↗
+                </a>
+              </div>
+              <input
+                type="password"
+                placeholder={hasInfracost ? '•••••••••••••••••••••••• (Leave blank to keep)' : 'ico-...'}
+                value={infracostKey}
+                onChange={(e) => setInfracostKey(e.target.value)}
+                style={{ width: '100%', padding: '11px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', fontFamily: 'monospace' }}
+              />
+              <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '5px' }}>
+                Powers real-time monthly cloud cost estimation for AWS, Azure, and GCP. Free API key from <a href="https://dashboard.infracost.io" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>dashboard.infracost.io</a>.
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '18px' }}>
