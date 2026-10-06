@@ -44,17 +44,20 @@ TerraMind automatically injects production-grade architecture blueprints and SOP
 
 ## 🤖 Flexible AI Engines & Direct Key Generation Links
 
-TerraMind gives you full freedom over your AI models. Choose between 100% offline local models, premier cloud models, or a hybrid setup:
+TerraMind gives you full freedom over your AI models. Choose between 100% offline local models, premier cloud models, or enterprise cloud AI services:
 
-| Provider | Type | Direct API Key / Model Link | Notes |
+| Provider | Type | Configuration / Direct Link | Notes |
 | :--- | :--- | :--- | :--- |
-| **Local Ollama** | 100% Offline / Private | [https://ollama.com/library](https://ollama.com/library) | Free, zero cloud fees, private. Auto-installed by setup script. |
-| **Google Gemini** | Cloud AI | [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Generous free tier, fast inference, 1M+ context window. |
-| **OpenAI** | Cloud AI | [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys) | GPT-4o, GPT-4o-mini support. |
+| **Local Ollama** | 100% Offline / Private | [https://ollama.com/library](https://ollama.com/library) | Zero cloud fees, 100% air-gapped private. Auto-installed by setup script. |
+| **Google Gemini** | Cloud AI | [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Ultra-fast inference, reasoning, and 1M+ context window. |
+| **OpenAI** | Cloud AI | [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys) | GPT-4o, GPT-4o-mini, and reasoning models. |
 | **Anthropic Claude** | Cloud AI | [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Claude 3.5 Sonnet, Claude 3.7 Sonnet reasoning. |
+| **AWS Bedrock** | Enterprise Cloud AI | [AWS Management Console](https://aws.amazon.com/bedrock/) | Enterprise IAM auth, Claude 3.5 Sonnet & Amazon Titan in your VPC. |
+| **Azure OpenAI** | Enterprise Cloud AI | [Azure AI Foundry](https://ai.azure.com/) | Custom endpoint & deployment (`gpt-4o`) with Azure compliance. |
+| **OCI GenAI** | Enterprise Cloud AI | [Oracle Cloud Infrastructure](https://www.oracle.com/artificial-intelligence/) | Dedicated OCI Compartment OCID & Cohere Command R+ models. |
 
 > [!TIP]
-> **No Forced Keys:** If you select Local Ollama during installation, TerraMind will **never** prompt or force you to enter a Gemini or cloud API key. You can also run purely offline or enter cloud keys later via **Settings > Provider Keys** in the web interface.
+> **No Forced Keys & Offline Flexibility:** If you select Local Ollama during installation, TerraMind will **never** force you to enter cloud API keys. You can run completely offline, or configure public cloud keys and enterprise cloud credentials anytime via the interactive installer or under **Settings > Provider Keys** in the web interface.
 
 ### 🧠 Local Ollama Models & Hardware RAM Matrix
 
