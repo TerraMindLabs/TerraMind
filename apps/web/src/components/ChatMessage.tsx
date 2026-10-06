@@ -313,10 +313,23 @@ const CodeSnippet: React.FC<{
     code.includes('module ');
 
   return (
-    <div className="code-container" style={{ borderRadius: '6px', overflow: 'hidden', margin: '8px 0' }}>
+    <div className="code-container">
       <div className="code-header-bar">
-        <span>{language} {isSaveable ? `(${getTargetFilename()})` : ''}</span>
-        <div className="code-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
+          <strong style={{ fontWeight: 600 }}>{isSaveable ? getTargetFilename() : language}</strong>
+          {isSaveable && (
+            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'var(--hover)', color: 'var(--muted)', fontWeight: 500 }}>
+              {language}
+            </span>
+          )}
+        </span>
+        <div className="code-actions">
           {isSaveable && (
             <button
               className="code-btn save"
@@ -324,18 +337,19 @@ const CodeSnippet: React.FC<{
               disabled={saving}
               title="Save to Workspace and run full verification gate: fmt + validate + tfsec + Infracost + plan"
               style={{
-                backgroundColor: verification?.overallStatus === 'passed' ? '#10b981' : undefined
+                backgroundColor: verification?.overallStatus === 'passed' ? 'rgba(16, 185, 129, 0.2)' : undefined,
+                borderColor: verification?.overallStatus === 'passed' ? 'var(--green)' : undefined
               }}
             >
               {saved ? (
-                <>✓ {saveStatus || 'Verified'}</>
+                <>✓ {saveStatus || 'Passed Gate'}</>
               ) : (
-                <>{saving ? 'Auditing...' : '🚀 Deploy & Verify Gate'}</>
+                <>{saving ? 'Auditing...' : 'Run Pre-Flight Gate'}</>
               )}
             </button>
           )}
-          <button className="code-btn" onClick={handleCopy}>
-            {copied ? '✓ Copied' : 'Copy code'}
+          <button className="code-btn" onClick={handleCopy} title="Copy code snippet">
+            {copied ? '✓ Copied' : 'Copy'}
           </button>
         </div>
       </div>

@@ -1276,6 +1276,36 @@ function App() {
           }}
         />
 
+        {/* 5-Stage Architect Workflow Stepper Rail (Linear / Vercel Precision Style) */}
+        <div className="architect-stepper-rail">
+          <div className="stepper-stages">
+            <div className="stepper-stage passed" title="Target workspace directory confirmation">
+              <span className="stepper-badge">✓</span>
+              <span>1. Workdir</span>
+            </div>
+            <span className="stepper-arrow">→</span>
+            <div className="stepper-stage passed" title="Architectural strategy (Module / Flat / Env / Layer)">
+              <span className="stepper-badge">✓</span>
+              <span>2. Strategy</span>
+            </div>
+            <span className="stepper-arrow">→</span>
+            <div className={`stepper-stage ${isGenerating ? 'active' : messages.length > 0 ? 'passed' : ''}`} title="Autonomous code authoring and automated terraform fmt & validate">
+              {isGenerating ? <span className="stepper-badge-pulse" /> : <span className="stepper-badge">✓</span>}
+              <span>3. Code Gen & Validate</span>
+            </div>
+            <span className="stepper-arrow">→</span>
+            <div className="stepper-stage" title="Speculative plan with real variable values">
+              <span style={{ fontSize: '10px', opacity: 0.7, padding: '0 4px', border: '1px solid var(--border)', borderRadius: '3px' }}>4</span>
+              <span>4. Speculative Plan</span>
+            </div>
+            <span className="stepper-arrow">→</span>
+            <div className="stepper-stage gate" title="Apply Gate: Strict operator safety approval">
+              <span className="stepper-badge-gate">5</span>
+              <span>Apply Gate (Operator Gate)</span>
+            </div>
+          </div>
+        </div>
+
         {/* Scrollable messages container */}
         <div className="scroll" id="scroll">
           <div className="col" id="msgs">

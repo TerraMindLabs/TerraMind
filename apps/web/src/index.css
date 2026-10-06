@@ -1,78 +1,104 @@
 :root {
-  --bg: #ffffff;
-  --side: #f8fafc;
+  --bg: #f8fafc;
+  --side: #ffffff;
+  --card: #ffffff;
+  --panel: #ffffff;
   --hover: #f1f5f9;
   --text: #0f172a;
   --muted: #64748b;
   --border: #e2e8f0;
+  --border-subtle: rgba(15, 23, 42, 0.06);
   --user: #f8fafc;
   --btn: #0f172a;
   --btnt: #ffffff;
-  --accent: #0f172a;
-  --accent-hover: #1e293b;
-  --accent-light: #f1f5f9;
-  --accent-ring: rgba(15, 23, 42, 0.12);
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-light: rgba(2, 132, 199, 0.08);
+  --accent-ring: rgba(2, 132, 199, 0.2);
   --green: #10b981;
-  --blue: #3b82f6;
-  --code-bg: #13141a;
-  --code-text: #e2e8f0;
+  --blue: #0284c7;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --code-bg: #0f172a;
+  --code-text: #f8fafc;
   box-sizing: border-box;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #121316;
-    --side: #18191e;
-    --hover: #22232a;
+    --bg: #090d12;
+    --side: #0f172a;
+    --card: #131d31;
+    --panel: #0f172a;
+    --hover: #1e293b;
     --text: #f8fafc;
-    --muted: #94a3b8;
-    --border: #282a33;
-    --user: #1a1b22;
+    --muted: #64748b;
+    --border: #1e293b;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --user: #131d31;
     --btn: #f8fafc;
-    --btnt: #0f172a;
-    --accent: #f8fafc;
-    --accent-hover: #e2e8f0;
-    --accent-light: rgba(255, 255, 255, 0.08);
-    --accent-ring: rgba(255, 255, 255, 0.15);
-    --code-bg: #0f1015;
-    --code-text: #e2e8f0;
+    --btnt: #090d12;
+    --accent: #38bdf8;
+    --accent-hover: #7dd3fc;
+    --accent-light: rgba(56, 189, 248, 0.12);
+    --accent-ring: rgba(56, 189, 248, 0.25);
+    --green: #10b981;
+    --blue: #38bdf8;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --code-bg: #070a0f;
+    --code-text: #e0e2ea;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #121316;
-  --side: #18191e;
-  --hover: #22232a;
+  --bg: #090d12;
+  --side: #0f172a;
+  --card: #131d31;
+  --panel: #0f172a;
+  --hover: #1e293b;
   --text: #f8fafc;
-  --muted: #94a3b8;
-  --border: #282a33;
-  --user: #1a1b22;
+  --muted: #64748b;
+  --border: #1e293b;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --user: #131d31;
   --btn: #f8fafc;
-  --btnt: #0f172a;
-  --accent: #f8fafc;
-  --accent-hover: #e2e8f0;
-  --accent-light: rgba(255, 255, 255, 0.08);
-  --accent-ring: rgba(255, 255, 255, 0.15);
-  --code-bg: #0f1015;
-  --code-text: #e2e8f0;
+  --btnt: #090d12;
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-light: rgba(56, 189, 248, 0.12);
+  --accent-ring: rgba(56, 189, 248, 0.25);
+  --green: #10b981;
+  --blue: #38bdf8;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --code-bg: #070a0f;
+  --code-text: #e0e2ea;
 }
 
 :root[data-theme="light"] {
-  --bg: #ffffff;
-  --side: #f8fafc;
+  --bg: #f8fafc;
+  --side: #ffffff;
+  --card: #ffffff;
+  --panel: #ffffff;
   --hover: #f1f5f9;
   --text: #0f172a;
   --muted: #64748b;
   --border: #e2e8f0;
+  --border-subtle: rgba(15, 23, 42, 0.06);
   --user: #f8fafc;
   --btn: #0f172a;
   --btnt: #ffffff;
-  --accent: #0f172a;
-  --accent-hover: #1e293b;
-  --accent-light: #f1f5f9;
-  --accent-ring: rgba(15, 23, 42, 0.12);
-  --code-bg: #13141a;
-  --code-text: #e2e8f0;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-light: rgba(2, 132, 199, 0.08);
+  --accent-ring: rgba(2, 132, 199, 0.2);
+  --green: #10b981;
+  --blue: #0284c7;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --code-bg: #0f172a;
+  --code-text: #f8fafc;
 }
 
 * {
@@ -93,7 +119,8 @@ html, body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.6 -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  font: 14px/1.6 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1035,76 +1062,176 @@ button:focus-visible, input:focus-visible {
   }
 }
 
-/* Code Snippet Blocks */
+/* 5-Stage Architect Workflow Stepper Rail (Linear / Vercel Precision Style) */
+.architect-stepper-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 16px;
+  background: var(--side);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.stepper-stages {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.stepper-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stepper-stage.passed {
+  color: var(--text);
+}
+
+.stepper-stage.active {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--accent-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-ring);
+}
+
+.stepper-stage.gate {
+  color: var(--muted);
+}
+
+.stepper-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.stepper-badge-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: pulse 1.8s infinite;
+}
+
+.stepper-badge-gate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.stepper-arrow {
+  color: var(--muted);
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+/* Code Snippet Blocks - Instrument-Grade Precision */
 .code-container {
-  margin: 14px 0;
-  background: #12131a;
-  color: #e2e8f0;
-  border-radius: 12px;
+  margin: 10px 0;
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .code-header-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  background: #1a1b24;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 12px;
+  padding: 6px 12px;
+  background: var(--side);
+  border-bottom: 1px solid var(--border);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
 }
 
 .code-header-bar span {
-  text-transform: uppercase;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  text-transform: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .code-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
 }
 
 .code-btn {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.07);
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   transition: all 0.15s ease;
   font-weight: 500;
+  cursor: pointer;
 }
 
 .code-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--muted);
 }
 
 .code-btn.save {
-  background: rgba(255, 255, 255, 0.12);
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 .code-btn.save:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(16, 185, 129, 0.2);
   color: #fff;
+  border-color: var(--green);
 }
 
 .code-container pre {
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin: 0;
   overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Monaco, Consolas, monospace;
-  font-size: 13.5px;
-  line-height: 1.6;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .code-container code {
