@@ -1,3 +1,1 @@
-![alt text](image.png)
-
-can we give option ucder teh chatbox so user can switch between Local and APi key Ai for the agent ?
+- [x] Give option under/inside the chatbox so user can switch between Local (Ollama) and Cloud (API Key) AI for the agent (Implemented with dedicated segmented switch and 1-click model/key config).
