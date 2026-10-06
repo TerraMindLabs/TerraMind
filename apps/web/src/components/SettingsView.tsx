@@ -61,6 +61,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [ollamaConfigSaved, setOllamaConfigSaved] = useState(false);
   const [ollamaSaving, setOllamaSaving] = useState(false);
 
+  // Ollama Library Catalog state
+  const [libraryModels, setLibraryModels] = useState<Array<{
+    id: string;
+    name: string;
+    category: 'coding' | 'reasoning' | 'general' | 'lightweight' | 'vision';
+    categoryLabel: string;
+    description: string;
+    featured?: boolean;
+    tags: Array<{
+      tag: string;
+      size: string;
+      minRam: string;
+      role?: string;
+      installed: boolean;
+    }>;
+  }>>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryCategory, setLibraryCategory] = useState<'all' | 'coding' | 'reasoning' | 'lightweight' | 'general'>('all');
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [pullingTag, setPullingTag] = useState<string | null>(null);
+
   // 5. AWS Bedrock state
   const [bedrockRegion, setBedrockRegion] = useState('us-east-1');
   const [bedrockAccessKey, setBedrockAccessKey] = useState('');
@@ -178,7 +199,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .catch(() => {});
 
     fetchMcpServers();
+    fetchLibraryCatalog();
   }, []);
+
+  const fetchLibraryCatalog = async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch('/api/models/ollama/library');
+      if (res.ok) {
+        const data = await res.json();
+        setLibraryModels(data.models || []);
+      }
+    } catch (e) {
+      console.error('Failed to load Ollama library catalog', e);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
 
   const fetchMcpServers = async () => {
     setMcpLoading(true);
@@ -493,28 +530,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handlePullModel = async (modelName: string) => {
     if (!modelName.trim()) return;
+    const cleanTag = modelName.trim();
     setPulling(true);
-    setPullStatus(`Pulling ${modelName}...`);
+    setPullingTag(cleanTag);
+    setPullStatus(`Pulling ${cleanTag}... (this may take a few minutes depending on download size)`);
     try {
       const res = await fetch('/api/models/ollama/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelName })
+        body: JSON.stringify({ model: cleanTag })
       });
       if (res.ok) {
-        setPullStatus(`Successfully downloaded ${modelName}!`);
+        setPullStatus(`Successfully downloaded ${cleanTag}!`);
         const mRes = await fetch('/api/models');
         const mData = await mRes.json();
         setInstalledModels(mData.localModels || []);
         setNewModelInput('');
+        fetchLibraryCatalog();
       } else {
-        setPullStatus(`Failed to download ${modelName}.`);
+        setPullStatus(`Failed to download ${cleanTag}. Check Ollama host connectivity.`);
       }
     } catch {
       setPullStatus('Network error downloading model.');
     } finally {
       setPulling(false);
-      setTimeout(() => setPullStatus(null), 5000);
+      setPullingTag(null);
+      setTimeout(() => setPullStatus(null), 6000);
     }
   };
 
@@ -1179,32 +1220,380 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </form>
 
-          <div style={{ marginBottom: '26px' }}>
-            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-              Download / Pull New Local Model
-            </label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <input
-                type="text"
-                placeholder="e.g. qwen2.5-coder:1.5b, llama3.2, deepseek-r1:7b..."
-                value={newModelInput}
-                onChange={(e) => setNewModelInput(e.target.value)}
-                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px' }}
-              />
-              <button
-                type="button"
-                disabled={pulling || !newModelInput.trim()}
-                onClick={() => handlePullModel(newModelInput)}
-                style={{ padding: '10px 22px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#ffffff', fontSize: '13px', fontWeight: 600, cursor: pulling ? 'wait' : 'pointer' }}
-              >
-                {pulling ? 'Pulling...' : 'Pull Model'}
-              </button>
+          {/* Live Ollama Model Library & One-Click Pull Catalog */}
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                  Download & Pull Local Models
+                </label>
+                <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                  Browse verified high-performance models tailored to your machine's hardware and RAM.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={fetchLibraryCatalog}
+                  disabled={libraryLoading}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--side)',
+                    color: 'var(--text)',
+                    fontSize: '11.5px',
+                    fontWeight: 500,
+                    cursor: libraryLoading ? 'wait' : 'pointer'
+                  }}
+                  title="Re-query live Ollama library and check local installation status"
+                >
+                  <span style={{ fontSize: '12px' }}>{libraryLoading ? '⏳' : '🔄'}</span>
+                  <span>{libraryLoading ? 'Fetching...' : 'Refresh Library'}</span>
+                </button>
+
+                <a
+                  href="https://ollama.com/library"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--side)',
+                    color: 'var(--accent)',
+                    fontSize: '11.5px',
+                    textDecoration: 'none',
+                    fontWeight: 500
+                  }}
+                >
+                  <span>🌐 ollama.com/library</span>
+                  <span style={{ fontSize: '10px' }}>↗</span>
+                </a>
+              </div>
             </div>
-            {pullStatus && (
-              <div style={{ marginTop: '8px', fontSize: '12px', color: '#3b82f6', fontWeight: 500 }}>
-                {pullStatus}
+
+            {/* Active Download Progress Banner */}
+            {pulling && (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid var(--accent)',
+                  color: 'var(--text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}
+              >
+                <span className="spinner" style={{ width: '16px', height: '16px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--accent)' }}>
+                    Downloading {pullingTag || 'model'}...
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                    {pullStatus || 'Streaming model layers directly from Ollama library. Please keep this tab open.'}
+                  </div>
+                </div>
               </div>
             )}
+
+            {/* Category Filter Pills & Instant Search Filter */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                background: 'var(--side)',
+                border: '1px solid var(--border)',
+                marginBottom: '14px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                {/* Category Pills */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: `All (${libraryModels.length || 9})` },
+                    { id: 'coding', label: '⭐ IaC & Coding' },
+                    { id: 'reasoning', label: '🧠 Reasoning' },
+                    { id: 'lightweight', label: '⚡ Low RAM (<4GB)' },
+                    { id: 'general', label: '🌐 General' }
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setLibraryCategory(cat.id as any)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid',
+                        borderColor: libraryCategory === cat.id ? 'var(--accent)' : 'var(--border)',
+                        background: libraryCategory === cat.id ? 'var(--accent-light)' : 'transparent',
+                        color: libraryCategory === cat.id ? 'var(--accent)' : 'var(--muted)',
+                        fontSize: '11.5px',
+                        fontWeight: libraryCategory === cat.id ? 600 : 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Instant Search Bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '220px', flex: '1 1 220px', maxWidth: '320px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search by tag, RAM, size (e.g. qwen, 7b, cpu)..."
+                    value={librarySearch}
+                    onChange={(e) => setLibrarySearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg)',
+                      color: 'var(--text)',
+                      fontSize: '12px'
+                    }}
+                  />
+                  {librarySearch && (
+                    <button
+                      type="button"
+                      onClick={() => setLibrarySearch('')}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'var(--muted)',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Live Model Cards Catalog */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              {(libraryModels.length === 0 && libraryLoading) ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+                  <span className="spinner" style={{ width: '14px', height: '14px', display: 'inline-block', marginRight: '8px' }} />
+                  Loading live model catalog from Ollama...
+                </div>
+              ) : (
+                libraryModels
+                  .filter((m) => {
+                    if (libraryCategory !== 'all' && m.category !== libraryCategory) return false;
+                    if (librarySearch.trim()) {
+                      const q = librarySearch.toLowerCase().trim();
+                      const matchName = m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+                      const matchDesc = m.description.toLowerCase().includes(q);
+                      const matchTags = m.tags.some((t) => t.tag.toLowerCase().includes(q) || t.minRam.toLowerCase().includes(q) || (t.role && t.role.toLowerCase().includes(q)));
+                      return matchName || matchDesc || matchTags;
+                    }
+                    return true;
+                  })
+                  .map((model) => (
+                    <div
+                      key={model.id}
+                      style={{
+                        padding: '14px 16px',
+                        borderRadius: '8px',
+                        background: 'var(--side)',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}
+                    >
+                      {/* Model Card Header */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <strong style={{ fontSize: '13.5px', color: 'var(--text)', fontWeight: 600 }}>
+                              {model.name}
+                            </strong>
+                            <span
+                              style={{
+                                fontSize: '10.5px',
+                                fontWeight: 600,
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                background: model.category === 'coding' ? 'rgba(56, 189, 248, 0.12)' : model.category === 'reasoning' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                color: model.category === 'coding' ? 'var(--accent)' : model.category === 'reasoning' ? 'var(--amber)' : 'var(--green)'
+                              }}
+                            >
+                              {model.categoryLabel}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px', lineHeight: 1.4 }}>
+                            {model.description}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tag Variants with Hardware Specs & 1-Click Pull Button */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '6px', borderTop: '1px solid var(--border)' }}>
+                        {model.tags.map((t) => {
+                          const isCurrentlyPulling = pulling && pullingTag === t.tag;
+                          const isInstalled = t.installed || installedModels.some((inst) => inst === t.tag || inst === `${t.tag}:latest` || inst.startsWith(`${t.tag}:`));
+
+                          return (
+                            <div
+                              key={t.tag}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                background: 'var(--bg)',
+                                border: '1px solid var(--border)',
+                                fontSize: '12px',
+                                gap: '8px',
+                                flexWrap: 'wrap'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <code style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600, color: 'var(--text)' }}>
+                                  {t.tag}
+                                </code>
+                                <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: 'var(--hover)', color: 'var(--muted)' }}>
+                                  📦 {t.size}
+                                </span>
+                                <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: 'var(--hover)', color: 'var(--muted)' }}>
+                                  🧠 {t.minRam}
+                                </span>
+                                {t.role && (
+                                  <span style={{ fontSize: '11px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                                    • {t.role}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div>
+                                {isInstalled ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 600,
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(16, 185, 129, 0.15)',
+                                      color: 'var(--green)'
+                                    }}
+                                  >
+                                    ✓ Installed
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePullModel(t.tag)}
+                                    disabled={pulling}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 600,
+                                      padding: '4px 12px',
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      background: isCurrentlyPulling ? 'var(--hover)' : 'var(--btn)',
+                                      color: isCurrentlyPulling ? 'var(--muted)' : 'var(--btnt)',
+                                      cursor: pulling ? 'not-allowed' : 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    {isCurrentlyPulling ? '⏳ Pulling...' : '📥 1-Click Pull'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Custom Ollama Model Tag Input (for unlisted/niche models) */}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '8px',
+                background: 'var(--side)',
+                border: '1px dashed var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+                Or enter any custom Ollama model tag:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. qwen2.5-coder:1.5b, llama3.2, deepseek-r1:7b, my-org/custom:latest..."
+                  value={newModelInput}
+                  onChange={(e) => setNewModelInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    fontSize: '12.5px'
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handlePullModel(newModelInput);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={pulling || !newModelInput.trim()}
+                  onClick={() => handlePullModel(newModelInput)}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: 'var(--btn)',
+                    color: 'var(--btnt)',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: pulling ? 'wait' : 'pointer'
+                  }}
+                >
+                  {pulling ? 'Pulling...' : 'Pull Custom Tag'}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div>

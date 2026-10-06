@@ -410,7 +410,176 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // 6b. Pull a new Ollama model with real-time SSE streaming progress
+  // 6b. Fetch Live Ollama Model Library & Catalog with RAM/hardware specifications
+  fastify.get('/api/models/ollama/library', async (request, reply) => {
+    try {
+      const baseUrl = getOllamaBaseUrl();
+      let installedTags: string[] = [];
+      try {
+        const tagsRes = await fetch(`${baseUrl}/api/tags`);
+        if (tagsRes.ok) {
+          const tagsData: any = await tagsRes.json();
+          installedTags = (tagsData.models || []).map((m: any) => (m.name || m.model || '').toLowerCase());
+        }
+      } catch {
+        // Ollama may be offline or starting
+      }
+
+      // Check if remote library is online
+      let onlineLibraryModels: string[] = [];
+      try {
+        const onlineRes = await fetch('https://ollama.com/library', { signal: AbortSignal.timeout(3000) });
+        if (onlineRes.ok) {
+          const html = await onlineRes.text();
+          const matches = [...html.matchAll(/href="\/library\/([a-zA-Z0-9_\-\.]+)"/g)].map((x) => x[1]);
+          onlineLibraryModels = Array.from(new Set(matches));
+        }
+      } catch {
+        // Fallback to static catalog if internet is unavailable or slow
+      }
+
+      const catalog = [
+        {
+          id: 'qwen2.5-coder',
+          name: 'Qwen 2.5 Coder',
+          category: 'coding',
+          categoryLabel: '⭐ IaC & Coding Flagship',
+          description: 'Specialized code intelligence by Alibaba Cloud. Outperforms larger models on Terraform HCL, multi-file modules, and Kubernetes manifests.',
+          featured: true,
+          tags: [
+            { tag: 'qwen2.5-coder:1.5b', size: '~1.0 GB', minRam: '2 GB RAM', role: 'Ultra-fast & Lightweight for Dev Containers' },
+            { tag: 'qwen2.5-coder:3b', size: '~2.0 GB', minRam: '4 GB RAM', role: '⭐ Best Overall for Pure CPU (Laptop)' },
+            { tag: 'qwen2.5-coder:7b', size: '~4.5 GB', minRam: '8 GB RAM', role: '⭐ Flagship for Terraform & IaC' },
+            { tag: 'qwen2.5-coder:14b', size: '~9.0 GB', minRam: '16 GB RAM', role: 'Enterprise Multi-Module Architecture' },
+            { tag: 'qwen2.5-coder:32b', size: '~19.0 GB', minRam: '32 GB RAM', role: 'Production Scale Cloud Architect' }
+          ]
+        },
+        {
+          id: 'deepseek-r1',
+          name: 'DeepSeek R1 (Distill)',
+          category: 'reasoning',
+          categoryLabel: '🧠 Chain-of-Thought Reasoning',
+          description: 'First-class architectural reasoning model. Uses native thinking steps to plan complex multi-tier topologies, spot edge cases, and debug errors.',
+          featured: true,
+          tags: [
+            { tag: 'deepseek-r1:1.5b', size: '~1.1 GB', minRam: '2 GB RAM', role: 'Fast CoT Reasoning on CPU' },
+            { tag: 'deepseek-r1:7b', size: '~4.7 GB', minRam: '8 GB RAM', role: '⭐ Best for Architecture Logic & Debugging' },
+            { tag: 'deepseek-r1:8b', size: '~4.9 GB', minRam: '8 GB RAM', role: 'DeepSeek Distill Llama 8B' },
+            { tag: 'deepseek-r1:14b', size: '~9.0 GB', minRam: '16 GB RAM', role: 'Enterprise Infrastructure Design' }
+          ]
+        },
+        {
+          id: 'llama3.2',
+          name: 'Meta Llama 3.2',
+          category: 'lightweight',
+          categoryLabel: '⚡ Ultra-Lightweight (CPU)',
+          description: 'Ultra-efficient small language model from Meta. Ideal for resource-constrained edge machines, low-spec cloud VMs, and fast text generation.',
+          featured: true,
+          tags: [
+            { tag: 'llama3.2:1b', size: '~1.3 GB', minRam: '2 GB RAM', role: 'Minimal Footprint Edge Model' },
+            { tag: 'llama3.2:3b', size: '~2.0 GB', minRam: '4 GB RAM', role: 'Balanced CPU Generalist' }
+          ]
+        },
+        {
+          id: 'llama3.1',
+          name: 'Meta Llama 3.1',
+          category: 'general',
+          categoryLabel: '🌐 General DevOps & Docs',
+          description: 'Flagship general-purpose model by Meta with 128k context window. Excels at generating deployment documentation, runbooks, and SOPs.',
+          featured: true,
+          tags: [
+            { tag: 'llama3.1:8b', size: '~4.7 GB', minRam: '8 GB RAM', role: '⭐ Flagship 8B Generalist' },
+            { tag: 'llama3.1:70b', size: '~40.0 GB', minRam: '64 GB RAM', role: 'Full Enterprise Cloud Platform' }
+          ]
+        },
+        {
+          id: 'codellama',
+          name: 'Code Llama',
+          category: 'coding',
+          categoryLabel: '💻 Code Generation',
+          description: 'Code-specialized Llama from Meta. Trained on public codebases for scripting, Terraform provider declarations, and bash utilities.',
+          featured: false,
+          tags: [
+            { tag: 'codellama:7b', size: '~3.8 GB', minRam: '8 GB RAM', role: 'Standard Code Infilling' },
+            { tag: 'codellama:13b', size: '~7.4 GB', minRam: '16 GB RAM', role: 'Extended Syntax Depth' }
+          ]
+        },
+        {
+          id: 'mistral',
+          name: 'Mistral 7B',
+          category: 'general',
+          categoryLabel: '⚡ High-Speed Generalist',
+          description: 'High-throughput foundation model by Mistral AI. Fast generation speeds with solid technical English understanding.',
+          featured: false,
+          tags: [
+            { tag: 'mistral:7b', size: '~4.1 GB', minRam: '8 GB RAM', role: 'High-Speed 7B Generalist' },
+            { tag: 'mistral-nemo:12b', size: '~7.1 GB', minRam: '12 GB RAM', role: '128k Context Window (NVIDIA collab)' }
+          ]
+        },
+        {
+          id: 'phi4',
+          name: 'Microsoft Phi-4',
+          category: 'reasoning',
+          categoryLabel: '🔬 Complex Logic & Math',
+          description: 'State-of-the-art 14B model by Microsoft Research. Exceptional synthetic data pretraining providing high math, reasoning, and logic accuracy.',
+          featured: false,
+          tags: [
+            { tag: 'phi4:14b', size: '~9.1 GB', minRam: '16 GB RAM', role: 'Microsoft Synthetic Reasoning 14B' }
+          ]
+        },
+        {
+          id: 'gemma2',
+          name: 'Google Gemma 2',
+          category: 'general',
+          categoryLabel: '💎 Google Open Weights',
+          description: 'Lightweight, state-of-the-art open models built from the same research and technology used to create Google Gemini.',
+          featured: false,
+          tags: [
+            { tag: 'gemma2:2b', size: '~1.6 GB', minRam: '4 GB RAM', role: 'Compact Google Assistant' },
+            { tag: 'gemma2:9b', size: '~5.5 GB', minRam: '10 GB RAM', role: 'High-Performance 9B' }
+          ]
+        },
+        {
+          id: 'starcoder2',
+          name: 'StarCoder 2',
+          category: 'coding',
+          categoryLabel: '⌨️ Code Completion',
+          description: 'Trained by BigCode across 600+ programming languages with transparent open data licensing.',
+          featured: false,
+          tags: [
+            { tag: 'starcoder2:3b', size: '~1.7 GB', minRam: '4 GB RAM', role: 'Lightweight Code Completion' },
+            { tag: 'starcoder2:7b', size: '~4.3 GB', minRam: '8 GB RAM', role: 'Standard Code Scaffolding' }
+          ]
+        }
+      ];
+
+      // Mark installed tags
+      const enrichedCatalog = catalog.map((model) => ({
+        ...model,
+        tags: model.tags.map((t) => {
+          const isInstalled = installedTags.some(
+            (inst) => inst === t.tag.toLowerCase() || inst === `${t.tag.toLowerCase()}:latest` || inst.startsWith(`${t.tag.toLowerCase()}:`)
+          );
+          return {
+            ...t,
+            installed: isInstalled
+          };
+        })
+      }));
+
+      return {
+        online: onlineLibraryModels.length > 0,
+        totalModels: enrichedCatalog.length,
+        models: enrichedCatalog,
+        onlineSlugs: onlineLibraryModels.slice(0, 25)
+      };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch Ollama model library' });
+    }
+  });
+
+  // 6c. Pull a new Ollama model with real-time SSE streaming progress
   fastify.post('/api/models/ollama/pull', async (request, reply) => {
     try {
       const { model } = (request.body as any) || {};
