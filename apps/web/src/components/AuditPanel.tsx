@@ -69,6 +69,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   const [selectedTargetFile, setSelectedTargetFile] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [hoveredToolId, setHoveredToolId] = useState<string | null>(null);
   const [hoveredToolDesc, setHoveredToolDesc] = useState<string | null>(null);
   const [syncedFiles, setSyncedFiles] = useState<WorkspaceFile[]>(workspaceFiles);
 
@@ -282,44 +283,63 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               { id: 'terraform-docs' as const, label: '📝 tf-docs', sub: 'Module README', desc: 'Generates Markdown input/output/provider tables for Terraform modules.' },
               { id: 'schema' as const, label: '🧬 Schema', sub: 'Provider attrs', desc: 'Inspects live Terraform provider resource schemas and attributes.' },
               { id: 'plan' as const, label: '📋 Speculative Plan', sub: 'Preview resource changes before apply', desc: 'Runs a dry-run plan to preview resources to add, change, or destroy without applying.', fullWidth: true }
-            ].map((tool) => (
-              <button
-                key={tool.id}
-                type="button"
-                title={tool.desc}
-                onClick={() => handleRun(tool.id)}
-                onMouseEnter={() => setHoveredToolDesc(tool.desc)}
-                onMouseLeave={() => setHoveredToolDesc(null)}
-                onFocus={() => setHoveredToolDesc(tool.desc)}
-                onBlur={() => setHoveredToolDesc(null)}
-                disabled={isRunning}
-                style={{
-                  gridColumn: tool.fullWidth ? 'span 2' : undefined,
-                  padding: '7px 9px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg)',
-                  color: 'var(--text)',
-                  fontSize: '11.5px',
-                  fontWeight: 600,
-                  cursor: isRunning ? 'not-allowed' : 'pointer',
-                  textAlign: 'left',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px'
-                }}
-              >
-                <span>{tool.label}</span>
-                <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--muted)' }}>{tool.sub}</span>
-              </button>
-            ))}
+            ].map((tool) => {
+              const isHovered = hoveredToolId === tool.id;
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  title={tool.desc}
+                  onClick={() => handleRun(tool.id)}
+                  onMouseEnter={() => {
+                    setHoveredToolId(tool.id);
+                    setHoveredToolDesc(tool.desc);
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredToolId(null);
+                    setHoveredToolDesc(null);
+                  }}
+                  onFocus={() => {
+                    setHoveredToolId(tool.id);
+                    setHoveredToolDesc(tool.desc);
+                  }}
+                  onBlur={() => {
+                    setHoveredToolId(null);
+                    setHoveredToolDesc(null);
+                  }}
+                  disabled={isRunning}
+                  style={{
+                    gridColumn: tool.fullWidth ? 'span 2' : undefined,
+                    padding: '7px 9px',
+                    borderRadius: '6px',
+                    border: isHovered ? '1px solid #10b981' : '1px solid var(--border)',
+                    background: isHovered ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg)',
+                    color: 'var(--text)',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    cursor: isRunning ? 'not-allowed' : 'pointer',
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    transform: isHovered && !isRunning ? 'translateY(-1px)' : 'none',
+                    boxShadow: isHovered && !isRunning ? '0 2px 8px rgba(16, 185, 129, 0.18)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>{tool.label}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 400, color: isHovered ? '#10b981' : 'var(--muted)' }}>{tool.sub}</span>
+                </button>
+              );
+            })}
           </div>
           <div style={{
             fontSize: '11px',
             lineHeight: '1.35',
-            color: hoveredToolDesc ? 'var(--text)' : 'var(--muted)',
-            background: 'var(--hover)',
-            border: '1px solid var(--border)',
+            fontWeight: 500,
+            color: '#10b981',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
             borderRadius: '5px',
             padding: '6px 8px',
             minHeight: '30px',
