@@ -79039,9 +79039,12 @@ var AGENT_PROMPTS = {
     ]
   }
 };
-function buildSystemPrompt(agentId, projectContext, customMcpServers) {
+function buildSystemPrompt(agentId, projectContext, customMcpServers, options) {
   const agent = AGENT_PROMPTS[agentId] || AGENT_PROMPTS["agent_tf-devops-expert"];
-  let prompt = agent.instructions + "\n\n";
+  const compact = Boolean(options?.compact);
+  let prompt = compact ? `${agent.instructions.split("\n\n")[0]}
+
+` : agent.instructions + "\n\n";
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---
 `;
   if (projectContext) {
@@ -79080,7 +79083,7 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
   } catch {
     mcpList = customMcpServers || [];
   }
-  if (mcpList && mcpList.length > 0) {
+  if (mcpList && mcpList.length > 0 && !compact) {
     prompt += `--- ACTIVE MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS ---
 `;
     prompt += `The following external Model Context Protocol (MCP) servers are active and accessible:
@@ -79091,6 +79094,11 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
 `;
     }
     prompt += `Agents are authorized to adhere to these MCP tools, cloud schema validators, and registry specifications.
+
+`;
+  } else if (mcpList && mcpList.length > 0 && compact) {
+    const names = mcpList.map((s) => s.name).join(", ");
+    prompt += `Active MCPs: ${names}.
 
 `;
   }
@@ -79132,7 +79140,7 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
 5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.
 
 `;
-  if (agent.skills && agent.skills.length > 0) {
+  if (!compact && agent.skills && agent.skills.length > 0) {
     prompt += "--- SKILLS & SPECIALIZATIONS ---\n";
     for (const skillId of agent.skills) {
       const skill = SKILLS[skillId];
@@ -79433,8 +79441,9 @@ async function execInWorkspace(cmd, effectiveDir, env, options) {
   const res = await execPromise(cmd, { cwd: effectiveDir, env, timeout });
   return { stdout: res.stdout, stderr: res.stderr, sandboxed: false };
 }
-async function listWorkspaceFiles() {
+async function listWorkspaceFiles(options) {
   await ensureWorkspace();
+  const includeContent = options?.includeContent !== false;
   const files = [];
   async function walkDir(currentDir, relativePrefix, depth = 0) {
     if (depth > 4) return;
@@ -79448,7 +79457,7 @@ async function listWorkspaceFiles() {
           await walkDir(fullPath, relPath, depth + 1);
         } else if (entry.isFile() && (entry.name.endsWith(".tf") || entry.name.endsWith(".tfvars") || entry.name.endsWith(".json") || entry.name.endsWith(".yaml") || entry.name.endsWith(".yml") || entry.name.endsWith(".md"))) {
           const stat = await import_promises.default.stat(fullPath);
-          const content = await import_promises.default.readFile(fullPath, "utf8");
+          const content = includeContent ? await import_promises.default.readFile(fullPath, "utf8") : void 0;
           files.push({ name: relPath, size: stat.size, content });
         }
       }
@@ -79786,7 +79795,7 @@ async function verifyWorkspaceFile(targetRelPath) {
     overallStatus
   };
 }
-async function writeWorkspaceFile(filename, content) {
+async function writeWorkspaceFile(filename, content, options) {
   await ensureWorkspace();
   if (filename.includes("..") || filename.includes("/../") || filename.includes("\\..\\")) {
     throw new Error("Access denied: target path escapes workspace");
@@ -79800,7 +79809,7 @@ async function writeWorkspaceFile(filename, content) {
   await import_promises.default.mkdir(import_path3.default.dirname(targetPath), { recursive: true });
   await import_promises.default.writeFile(targetPath, content, "utf8");
   let verification;
-  if (cleanRelPath.endsWith(".tf")) {
+  if (!options?.skipVerify && cleanRelPath.endsWith(".tf")) {
     try {
       verification = await verifyWorkspaceFile(cleanRelPath);
     } catch (e) {
@@ -81611,7 +81620,7 @@ async function chatRoutes(fastify2) {
       sendStatus("Loading local workspace context & files...", "context");
       let projectContext = void 0;
       try {
-        const files = await listWorkspaceFiles();
+        const files = await listWorkspaceFiles({ includeContent: false });
         if (projectId) {
           const proj = getProjectById(projectId);
           projectContext = {
@@ -81632,7 +81641,9 @@ async function chatRoutes(fastify2) {
         fastify2.log.warn({ err: e }, "Could not load workspace files for agent context");
       }
       const settings = getAllSettings();
-      const systemPrompt = buildSystemPrompt(agentId, projectContext);
+      const systemPrompt = buildSystemPrompt(agentId, projectContext, void 0, {
+        compact: provider === "ollama"
+      });
       const geminiKey = settings["gemini_api_key"] || process.env.GEMINI_API_KEY;
       const openaiKey = settings["openai_api_key"] || process.env.OPENAI_API_KEY;
       const anthropicKey = settings["anthropic_api_key"] || process.env.ANTHROPIC_API_KEY;
@@ -81726,18 +81737,20 @@ ollama serve
         }
         sendStatus(`Processing prompt with '${targetModel}'...`, "generating");
         try {
+          const recentMessages = messages.slice(-10);
           const ollamaRes = await fetch(`${baseUrl}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               model: targetModel,
-              messages: [{ role: "system", content: systemPrompt }, ...messages],
+              messages: [{ role: "system", content: systemPrompt }, ...recentMessages],
+              keep_alive: "30m",
               options: {
-                num_ctx: 16384,
-                num_predict: 4096,
+                num_ctx: 6144,
+                num_predict: 3072,
                 temperature: 0.2,
-                repeat_penalty: 1.18,
-                repeat_last_n: 128,
+                repeat_penalty: 1.15,
+                repeat_last_n: 64,
                 top_p: 0.9,
                 top_k: 40
               },
@@ -82163,7 +82176,13 @@ Please configure your OCI Compartment ID and Auth Key in **Settings > Enterprise
           const resp = await fetch(`${baseUrl}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: corrModel, messages: corrMessages, options: { temperature: 0.1, num_ctx: 16384 }, stream: false })
+            body: JSON.stringify({
+              model: corrModel,
+              messages: corrMessages,
+              keep_alive: "30m",
+              options: { temperature: 0.1, num_ctx: 6144, num_predict: 2048 },
+              stream: false
+            })
           });
           if (resp.ok) {
             const d = await resp.json();
@@ -82233,20 +82252,11 @@ Please configure your OCI Compartment ID and Auth Key in **Settings > Enterprise
         const writtenRelPaths = [];
         for (const file of extractedFiles) {
           try {
-            const writeRes = await writeWorkspaceFile(file.filename, file.content);
+            const writeRes = await writeWorkspaceFile(file.filename, file.content, { skipVerify: true });
             writtenRelPaths.push(writeRes.relPath);
-            let report = `- \u{1F4C4} **\`${writeRes.relPath}\`**: Auto-saved to workspace.`;
-            if (writeRes.fmtOutput) {
-              report += `
-  - \`fmt\`: ${writeRes.fmtOutput}`;
-            }
-            if (writeRes.validateOutput) {
-              report += `
-  - \`validate\`: ${writeRes.validateOutput}`;
-            }
-            validationReports.push(report);
+            validationReports.push(`- \u{1F4C4} **\`${writeRes.relPath}\`**: Auto-saved to workspace.`);
           } catch (writeErr) {
-            validationReports.push(`- \u26A0\uFE0F **\`${file.filename}\`**: Save/validation error: ${writeErr.message}`);
+            validationReports.push(`- \u26A0\uFE0F **\`${file.filename}\`**: Save error: ${writeErr.message}`);
           }
         }
         const maxRetries = Math.max(0, Math.min(3, parseInt(getSetting("max_self_correction_retries") || "3", 10) || 3));
@@ -82266,7 +82276,7 @@ ${lastStructured.summaryText}
           const fixedRelPaths = [];
           for (const ff of fixedFiles) {
             try {
-              const writeRes = await writeWorkspaceFile(ff.filename, ff.content);
+              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, { skipVerify: true });
               fixedRelPaths.push(writeRes.relPath);
             } catch {
             }

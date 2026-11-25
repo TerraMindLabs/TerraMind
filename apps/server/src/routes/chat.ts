@@ -846,7 +846,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     sendStatus('Loading local workspace context & files...', 'context');
     let projectContext: any = undefined;
     try {
-      const files = await listWorkspaceFiles();
+      const files = await listWorkspaceFiles({ includeContent: false });
       if (projectId) {
         const proj = getProjectById(projectId);
         projectContext = {
@@ -868,7 +868,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     }
 
     const settings = getAllSettings();
-    const systemPrompt = buildSystemPrompt(agentId, projectContext);
+    const systemPrompt = buildSystemPrompt(agentId, projectContext, undefined, {
+      compact: provider === 'ollama'
+    });
 
     const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
     const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
@@ -956,18 +958,20 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       sendStatus(`Processing prompt with '${targetModel}'...`, 'generating');
 
       try {
+        const recentMessages = messages.slice(-10);
         const ollamaRes = await fetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: targetModel,
-            messages: [{ role: 'system', content: systemPrompt }, ...messages],
+            messages: [{ role: 'system', content: systemPrompt }, ...recentMessages],
+            keep_alive: '30m',
             options: {
-              num_ctx: 16384,
-              num_predict: 4096,
+              num_ctx: 6144,
+              num_predict: 3072,
               temperature: 0.2,
-              repeat_penalty: 1.18,
-              repeat_last_n: 128,
+              repeat_penalty: 1.15,
+              repeat_last_n: 64,
               top_p: 0.9,
               top_k: 40
             },
@@ -1478,7 +1482,13 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           const resp = await fetch(`${baseUrl}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: corrModel, messages: corrMessages, options: { temperature: 0.1, num_ctx: 16384 }, stream: false })
+            body: JSON.stringify({
+              model: corrModel,
+              messages: corrMessages,
+              keep_alive: '30m',
+              options: { temperature: 0.1, num_ctx: 6144, num_predict: 2048 },
+              stream: false
+            })
           });
           if (resp.ok) {
             const d = (await resp.json()) as any;
@@ -1552,18 +1562,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
         for (const file of extractedFiles) {
           try {
-            const writeRes = await writeWorkspaceFile(file.filename, file.content);
+            const writeRes = await writeWorkspaceFile(file.filename, file.content, { skipVerify: true });
             writtenRelPaths.push(writeRes.relPath);
-            let report = `- 📄 **\`${writeRes.relPath}\`**: Auto-saved to workspace.`;
-            if (writeRes.fmtOutput) {
-              report += `\n  - \`fmt\`: ${writeRes.fmtOutput}`;
-            }
-            if (writeRes.validateOutput) {
-              report += `\n  - \`validate\`: ${writeRes.validateOutput}`;
-            }
-            validationReports.push(report);
+            validationReports.push(`- 📄 **\`${writeRes.relPath}\`**: Auto-saved to workspace.`);
           } catch (writeErr: any) {
-            validationReports.push(`- ⚠️ **\`${file.filename}\`**: Save/validation error: ${writeErr.message}`);
+            validationReports.push(`- ⚠️ **\`${file.filename}\`**: Save error: ${writeErr.message}`);
           }
         }
 
@@ -1587,7 +1590,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           const fixedRelPaths: string[] = [];
           for (const ff of fixedFiles) {
             try {
-              const writeRes = await writeWorkspaceFile(ff.filename, ff.content);
+              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, { skipVerify: true });
               fixedRelPaths.push(writeRes.relPath);
             } catch {}
           }

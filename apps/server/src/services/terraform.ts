@@ -194,8 +194,9 @@ export async function execInWorkspace(
   return { stdout: res.stdout, stderr: res.stderr, sandboxed: false };
 }
 
-export async function listWorkspaceFiles(): Promise<Array<{ name: string; size: number; content?: string }>> {
+export async function listWorkspaceFiles(options?: { includeContent?: boolean }): Promise<Array<{ name: string; size: number; content?: string }>> {
   await ensureWorkspace();
+  const includeContent = options?.includeContent !== false;
   const files: Array<{ name: string; size: number; content?: string }> = [];
 
   async function walkDir(currentDir: string, relativePrefix: string, depth = 0) {
@@ -218,7 +219,7 @@ export async function listWorkspaceFiles(): Promise<Array<{ name: string; size: 
             entry.name.endsWith('.md'))
         ) {
           const stat = await fs.stat(fullPath);
-          const content = await fs.readFile(fullPath, 'utf8');
+          const content = includeContent ? await fs.readFile(fullPath, 'utf8') : undefined;
           files.push({ name: relPath, size: stat.size, content });
         }
       }
@@ -653,7 +654,8 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
 
 export async function writeWorkspaceFile(
   filename: string,
-  content: string
+  content: string,
+  options?: { skipVerify?: boolean }
 ): Promise<{
   path: string;
   relPath: string;
@@ -679,9 +681,9 @@ export async function writeWorkspaceFile(
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, content, 'utf8');
 
-  // Automatic Pre-flight Gate: fmt + validate + tfsec + infracost + plan
+  // Automatic Pre-flight Gate: fmt + validate + trivy + infracost + plan (skipped during batch writes)
   let verification: FileVerificationResult | undefined;
-  if (cleanRelPath.endsWith('.tf')) {
+  if (!options?.skipVerify && cleanRelPath.endsWith('.tf')) {
     try {
       verification = await verifyWorkspaceFile(cleanRelPath);
     } catch (e) {

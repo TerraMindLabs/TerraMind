@@ -912,10 +912,18 @@ export interface ProjectContext {
   files?: Array<{ name: string; size: number; content?: string }>;
 }
 
-export function buildSystemPrompt(agentId: string, projectContext?: ProjectContext, customMcpServers?: McpServer[]): string {
+export function buildSystemPrompt(
+  agentId: string,
+  projectContext?: ProjectContext,
+  customMcpServers?: McpServer[],
+  options?: { compact?: boolean }
+): string {
   const agent = AGENT_PROMPTS[agentId] || AGENT_PROMPTS["agent_tf-devops-expert"];
+  const compact = Boolean(options?.compact);
 
-  let prompt = agent.instructions + "\n\n";
+  let prompt = compact
+    ? `${agent.instructions.split('\n\n')[0]}\n\n`
+    : agent.instructions + "\n\n";
 
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---\n`;
   if (projectContext) {
@@ -948,7 +956,7 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
     mcpList = customMcpServers || [];
   }
 
-  if (mcpList && mcpList.length > 0) {
+  if (mcpList && mcpList.length > 0 && !compact) {
     prompt += `--- ACTIVE MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS ---\n`;
     prompt += `The following external Model Context Protocol (MCP) servers are active and accessible:\n`;
     for (const s of mcpList) {
@@ -958,6 +966,9 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
       prompt += `- [${s.name}] (${s.transport.toUpperCase()}): ${s.description} -> Available Tools: [${toolNames}]\n`;
     }
     prompt += `Agents are authorized to adhere to these MCP tools, cloud schema validators, and registry specifications.\n\n`;
+  } else if (mcpList && mcpList.length > 0 && compact) {
+    const names = mcpList.map((s) => s.name).join(', ');
+    prompt += `Active MCPs: ${names}.\n\n`;
   }
 
   prompt +=
@@ -983,7 +994,7 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
     `   - Output each file completely from beginning to end in a single code block (\`\`\`hcl or \`\`\`yaml) with the target relative filename on line 1 as a comment (e.g. \`# main.tf\`). NEVER fragment files into multiple parts, NEVER write '(continued)' blocks, and NEVER output duplicate files.\n` +
     `5. AUTOMATIC COMPILATION & VALIDATION: The TerraMind backend engine intercepts your code blocks in real time, writes the files to disk in the local workspace under the specified folder, and runs real validation directly on the host machine.\n\n`;
 
-  if (agent.skills && agent.skills.length > 0) {
+  if (!compact && agent.skills && agent.skills.length > 0) {
     prompt += "--- SKILLS & SPECIALIZATIONS ---\n";
     for (const skillId of agent.skills) {
       const skill = SKILLS[skillId];
