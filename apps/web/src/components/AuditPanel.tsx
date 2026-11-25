@@ -38,8 +38,13 @@ export interface InfracostSummary {
 
 export interface FileVerificationResult {
   filename: string;
+  tfBinary?: 'terraform' | 'tofu';
+  sandboxed?: boolean;
+  scanner?: 'trivy' | 'tfsec' | 'unavailable';
+  planJsonScanned?: boolean;
   fmt: { success: boolean; formatted: boolean; output: string };
   validate: { success: boolean; errorCount: number; warningCount: number; diagnostics: ValidationFinding[] };
+  trivy?: { success: boolean; issueCount: number; findings: SecurityFinding[]; scanner: string; planJsonScanned: boolean };
   tfsec: { success: boolean; issueCount: number; findings: SecurityFinding[] };
   infracost: InfracostSummary;
   plan: { success: boolean; summary: string };
@@ -71,7 +76,24 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   const [costSummary, setCostSummary] = useState<InfracostSummary | null>(null);
   const [terminalOutput, setTerminalOutput] = useState<string | null>(null);
 
-  const handleRun = async (action: 'verify' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost') => {
+  type AuditAction =
+    | 'verify'
+    | 'fmt'
+    | 'validate'
+    | 'plan'
+    | 'trivy'
+    | 'infracost'
+    | 'tflint'
+    | 'checkov'
+    | 'conftest'
+    | 'kubeconform'
+    | 'helm'
+    | 'actionlint'
+    | 'terraform-docs'
+    | 'schema'
+    | 'graph';
+
+  const handleRun = async (action: AuditAction) => {
     setIsRunning(true);
     setActiveTool(action);
 
@@ -85,10 +107,10 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 
       if (action === 'verify' && data.verification) {
         setVerification(data.verification);
-        setSecurityFindings(data.verification.tfsec.findings || []);
+        setSecurityFindings(data.verification.trivy?.findings || data.verification.tfsec?.findings || []);
         setValidationFindings(data.verification.validate.diagnostics || []);
         setCostSummary(data.verification.infracost || null);
-      } else if (action === 'tfsec') {
+      } else if (action === 'trivy') {
         const findings: SecurityFinding[] = data.findings || [];
         setSecurityFindings(findings);
       } else if (action === 'validate') {
@@ -96,9 +118,22 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
         setValidationFindings(valFindings);
       } else if (action === 'infracost') {
         if (data.costSummary) setCostSummary(data.costSummary);
+      } else if (Array.isArray(data.findings)) {
+        const mapped: SecurityFinding[] = data.findings.map((f: any, idx: number) => ({
+          id: f.ruleId || `${action}-${idx}`,
+          rule_id: f.ruleId || action,
+          severity: f.severity || 'MEDIUM',
+          description: f.message || '',
+          resource: '',
+          filename: f.filename || selectedTargetFile || 'workspace',
+          startLine: f.line || 1,
+          endLine: f.line || 1,
+          resolution: f.resolution || `Fix ${action} finding`
+        }));
+        setSecurityFindings(mapped);
       }
 
-      setTerminalOutput(data.output || (data.success ? 'Execution finished.' : 'Completed.'));
+      setTerminalOutput(data.mermaid ? `${data.output}\n\n${data.mermaid}` : data.output || (data.success ? 'Execution finished.' : 'Completed.'));
     } catch (e: any) {
       setTerminalOutput(`Execution error: ${e.message}`);
     } finally {
@@ -256,7 +291,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 
             <button
               type="button"
-              onClick={() => handleRun('tfsec')}
+              onClick={() => handleRun('trivy')}
               disabled={isRunning}
               style={{
                 padding: '6px 8px',
@@ -270,7 +305,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 textAlign: 'left'
               }}
             >
-              🛡️ tfsec
+              🛡️ Trivy
             </button>
 
             <button
@@ -291,6 +326,37 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
             >
               💰 Infracost
             </button>
+
+            {[
+              { id: 'tflint' as const, label: '📐 TFLint' },
+              { id: 'checkov' as const, label: '🔒 Checkov' },
+              { id: 'conftest' as const, label: '⚖️ OPA / Conftest' },
+              { id: 'kubeconform' as const, label: '☸️ kubeconform' },
+              { id: 'helm' as const, label: '⛵ Helm Lint' },
+              { id: 'actionlint' as const, label: '🔄 actionlint' },
+              { id: 'terraform-docs' as const, label: '📝 tf-docs' },
+              { id: 'schema' as const, label: '🧬 Schema' }
+            ].map((tool) => (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => handleRun(tool.id)}
+                disabled={isRunning}
+                style={{
+                  padding: '6px 8px',
+                  borderRadius: '5px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--text)',
+                  fontSize: '11.5px',
+                  fontWeight: 500,
+                  cursor: isRunning ? 'not-allowed' : 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                {tool.label}
+              </button>
+            ))}
 
             <button
               type="button"

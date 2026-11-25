@@ -142,7 +142,14 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
 
       // Ollama Host & Auto-Start Configuration
       ollamaHost: settings['ollama_host'] || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
-      ollamaAutoStart: settings['ollama_auto_start'] !== 'false'
+      ollamaAutoStart: settings['ollama_auto_start'] !== 'false',
+
+      // Engine, Sandbox, Self-Correction & GitOps Configuration
+      tfBinary: (settings['tf_binary'] || process.env.TF_BINARY || 'terraform') === 'tofu' ? 'tofu' : 'terraform',
+      sandboxMode: settings['sandbox_mode'] === 'true' || process.env.TERRAMIND_SANDBOX === 'true',
+      maxSelfCorrectionRetries: parseInt(settings['max_self_correction_retries'] || '3', 10) || 3,
+      githubToken: settings['github_token'] ? maskKey(settings['github_token']) : '',
+      hasGithubToken: Boolean(settings['github_token'] || process.env.GITHUB_TOKEN)
     };
   });
 
@@ -214,6 +221,21 @@ export default async function authAndSettingsRoutes(fastify: FastifyInstance) {
     }
     if (body.ollamaAutoStart !== undefined) {
       setSetting('ollama_auto_start', String(body.ollamaAutoStart));
+    }
+
+    // Engine, Sandbox, Self-Correction & GitOps Configuration
+    if (body.tfBinary !== undefined) {
+      setSetting('tf_binary', body.tfBinary === 'tofu' ? 'tofu' : 'terraform');
+    }
+    if (body.sandboxMode !== undefined) {
+      setSetting('sandbox_mode', String(Boolean(body.sandboxMode)));
+    }
+    if (body.maxSelfCorrectionRetries !== undefined) {
+      const clamped = Math.max(0, Math.min(3, parseInt(String(body.maxSelfCorrectionRetries), 10) || 3));
+      setSetting('max_self_correction_retries', String(clamped));
+    }
+    if (body.githubToken !== undefined && !String(body.githubToken).includes('••••')) {
+      setSetting('github_token', String(body.githubToken).trim());
     }
 
     return { success: true };

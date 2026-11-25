@@ -4,8 +4,23 @@ import {
   listWorkspaceFiles,
   writeWorkspaceFile,
   runTerraformCommand,
-  verifyWorkspaceFile
+  verifyWorkspaceFile,
+  getExecutionEnvironmentInfo
 } from '../services/terraform';
+import {
+  checkCliToolchain,
+  runTflint,
+  runCheckov,
+  runConftest,
+  runKubeconform,
+  runHelmLint,
+  runActionlint,
+  runTerraformDocs,
+  getLiveProviderSchema,
+  generateArchitectureGraph,
+  createGitOpsPullRequest
+} from '../services/devops-tools';
+import { EVAL_BENCHMARKS, runEvalBenchmarkSuite } from '../services/eval-suite';
 import { isOllamaRunning, isOllamaInstalled, startOllamaDaemon, installOllama, getOllamaBaseUrl } from '../services/ollama';
 import { getSetting } from '../db';
 
@@ -13,12 +28,16 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
   // 1. Get workspace status and file list
   fastify.get('/api/workspace', async (request, reply) => {
     try {
-      const files = await listWorkspaceFiles();
-      const ollamaActive = await isOllamaRunning();
+      const [files, ollamaActive, executionEnv] = await Promise.all([
+        listWorkspaceFiles(),
+        isOllamaRunning(),
+        getExecutionEnvironmentInfo()
+      ]);
       return {
         path: WORKSPACE_PATH,
         files,
-        ollamaActive
+        ollamaActive,
+        executionEnv
       };
     } catch (err: any) {
       fastify.log.error(err);
@@ -26,22 +45,113 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 2. Run Terraform CLI action (fmt, validate, plan, init, tfsec, infracost, verify)
+  // 2. Run DevOps / Terraform CLI action
   fastify.post('/api/workspace/run', async (request, reply) => {
-    const { action, targetFile } = request.body as {
-      action: 'init' | 'fmt' | 'validate' | 'plan' | 'tfsec' | 'infracost' | 'verify';
+    const { action, targetFile, resourceType } = request.body as {
+      action:
+        | 'init'
+        | 'fmt'
+        | 'validate'
+        | 'plan'
+        | 'trivy'
+        | 'tfsec'
+        | 'infracost'
+        | 'verify'
+        | 'tflint'
+        | 'checkov'
+        | 'conftest'
+        | 'kubeconform'
+        | 'helm'
+        | 'actionlint'
+        | 'terraform-docs'
+        | 'schema'
+        | 'graph';
       targetFile?: string;
+      resourceType?: string;
     };
     if (!action) {
-      return reply.status(400).send({ error: 'action is required (init, fmt, validate, plan, tfsec, infracost, verify)' });
+      return reply.status(400).send({ error: 'action is required' });
     }
 
     try {
-      const result = await runTerraformCommand(action, targetFile);
-      return result;
+      switch (action) {
+        case 'tflint':
+          return await runTflint(targetFile);
+        case 'checkov':
+          return await runCheckov(targetFile);
+        case 'conftest':
+          return await runConftest(targetFile);
+        case 'kubeconform':
+          return await runKubeconform(targetFile);
+        case 'helm':
+          return await runHelmLint(targetFile);
+        case 'actionlint':
+          return await runActionlint(targetFile);
+        case 'terraform-docs':
+          return await runTerraformDocs(targetFile);
+        case 'schema':
+          return await getLiveProviderSchema(resourceType, targetFile);
+        case 'graph':
+          return await generateArchitectureGraph(targetFile);
+        default:
+          return await runTerraformCommand(action, targetFile);
+      }
     } catch (err: any) {
       fastify.log.error(err);
-      return reply.status(500).send({ error: 'Failed to run Terraform action' });
+      return reply.status(500).send({ error: 'Failed to run workspace action' });
+    }
+  });
+
+  // 2c. Query CLI toolchain installation status
+  fastify.get('/api/workspace/tools', async (request, reply) => {
+    try {
+      const tools = await checkCliToolchain();
+      return { tools };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to check CLI toolchain' });
+    }
+  });
+
+  // 2d. Generate Mermaid architecture graph from workspace
+  fastify.get('/api/workspace/graph', async (request, reply) => {
+    try {
+      const { targetFile } = (request.query as { targetFile?: string }) || {};
+      return await generateArchitectureGraph(targetFile);
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to generate architecture graph' });
+    }
+  });
+
+  // 2e. GitOps / Pull Request Mode
+  fastify.post('/api/workspace/gitops/pr', async (request, reply) => {
+    try {
+      const body = (request.body as {
+        branchName?: string;
+        commitMessage?: string;
+        prTitle?: string;
+        targetBase?: string;
+      }) || {};
+      return await createGitOpsPullRequest(body);
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'Failed to execute GitOps PR workflow' });
+    }
+  });
+
+  // 2f. Automated Eval Benchmark Suite
+  fastify.get('/api/workspace/evals', async () => {
+    return { benchmarks: EVAL_BENCHMARKS };
+  });
+
+  fastify.post('/api/workspace/evals/run', async (request, reply) => {
+    try {
+      const body = (request.body as { provider?: 'ollama' | 'cloud'; model?: string; caseIds?: string[] }) || {};
+      return await runEvalBenchmarkSuite(body);
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: err.message || 'Failed to run eval benchmark suite' });
     }
   });
 

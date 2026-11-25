@@ -79,6 +79,19 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
   const [securityFindings, setSecurityFindings] = useState<SecurityFinding[]>([]);
   const [validationFindings, setValidationFindings] = useState<ValidationFinding[]>([]);
   const [costSummary, setCostSummary] = useState<InfracostSummary | null>(null);
+  const [executionEnv, setExecutionEnv] = useState<{ tfBinary: 'terraform' | 'tofu'; sandboxMode: boolean; dockerAvailable: boolean }>({
+    tfBinary: 'terraform',
+    sandboxMode: false,
+    dockerAvailable: false
+  });
+  const [graphModalOpen, setGraphModalOpen] = useState(false);
+  const [graphMermaid, setGraphMermaid] = useState('');
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [prModalOpen, setPrModalOpen] = useState(false);
+  const [prBranch, setPrBranch] = useState('terramind/iac-update');
+  const [prCommitMsg, setPrCommitMsg] = useState('feat(iac): add validated TerraMind infrastructure');
+  const [prRunning, setPrRunning] = useState(false);
+  const [prResult, setPrResult] = useState<{ success: boolean; message: string; prUrl?: string; summaryMarkdown?: string } | null>(null);
 
   const fetchWorkspace = async () => {
     try {
@@ -87,10 +100,44 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
         const data = await res.json();
         if (data.path) setWorkspacePath(data.path);
         if (data.files) setFiles(data.files);
+        if (data.executionEnv) setExecutionEnv(data.executionEnv);
         if (typeof data.ollamaActive === 'boolean') onOllamaStatusChange(data.ollamaActive);
       }
     } catch (e) {
       console.error('Failed to load workspace:', e);
+    }
+  };
+
+  const handleOpenGraphPreview = async () => {
+    setGraphModalOpen(true);
+    setGraphLoading(true);
+    try {
+      const res = await fetch('/api/workspace/graph');
+      const data = await res.json();
+      setGraphMermaid(data.mermaid || 'flowchart TD\n  empty["No resources found"]');
+    } catch (e: any) {
+      setGraphMermaid(`flowchart TD\n  err["Error: ${e.message}"]`);
+    } finally {
+      setGraphLoading(false);
+    }
+  };
+
+  const handleRunGitOpsPr = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPrRunning(true);
+    setPrResult(null);
+    try {
+      const res = await fetch('/api/workspace/gitops/pr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchName: prBranch, commitMessage: prCommitMsg })
+      });
+      const data = await res.json();
+      setPrResult(data);
+    } catch (err: any) {
+      setPrResult({ success: false, message: err.message });
+    } finally {
+      setPrRunning(false);
     }
   };
 
@@ -220,6 +267,36 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             {files.length} {files.length === 1 ? 'file' : 'files'}
           </span>
 
+          <span
+            title={`Active IaC Engine: ${executionEnv.tfBinary}${executionEnv.sandboxMode ? ' (Docker Sandboxed)' : ''}`}
+            style={{
+              fontSize: '11px',
+              padding: '2px 7px',
+              borderRadius: '4px',
+              background: executionEnv.tfBinary === 'tofu' ? 'rgba(168, 85, 247, 0.14)' : 'rgba(59, 130, 246, 0.12)',
+              color: executionEnv.tfBinary === 'tofu' ? '#a855f7' : 'var(--blue)',
+              fontWeight: 600
+            }}
+          >
+            {executionEnv.tfBinary === 'tofu' ? 'OpenTofu' : 'Terraform'}
+          </span>
+
+          {executionEnv.sandboxMode && (
+            <span
+              title="Commands run inside ephemeral rootless Docker container"
+              style={{
+                fontSize: '11px',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: 'rgba(16, 185, 129, 0.14)',
+                color: '#10b981',
+                fontWeight: 600
+              }}
+            >
+              🐳 Sandboxed
+            </span>
+          )}
+
           {costSummary?.totalMonthlyCost && (
             <span style={{
               fontSize: '11.5px',
@@ -280,6 +357,48 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
             }}
           >
             <span>💰</span> Infracost
+          </button>
+
+          <button
+            className="ws-action-btn"
+            onClick={handleOpenGraphPreview}
+            title="Preview resource dependency graph from workspace"
+            style={{
+              padding: '4px 10px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <span>🗺️</span> Architecture
+          </button>
+
+          <button
+            className="ws-action-btn"
+            onClick={() => { setPrResult(null); setPrModalOpen(true); }}
+            title="Create Git branch, commit validated IaC, and open PR with Trivy + Infracost summary"
+            style={{
+              padding: '4px 10px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontSize: '11.5px',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <span>🔀</span> GitOps PR
           </button>
 
           {!ollamaOnline && (
@@ -905,10 +1024,126 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
                 wordBreak: 'break-all',
                 color: 'var(--text)'
               }}>
-                <code>{terminalOutput || 'Ready. Click Pre-flight Gate, fmt, validate, plan, tfsec, or Infracost to execute commands.'}</code>
+                <code>{terminalOutput || 'Ready. Click Pre-flight Gate, fmt, validate, plan, Trivy, or Infracost to execute commands.'}</code>
               </pre>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Interactive Architecture Preview Modal */}
+      {graphModalOpen && (
+        <div
+          onClick={() => setGraphModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--side)', border: '1px solid var(--border)', borderRadius: '10px',
+              width: '100%', maxWidth: '680px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--text)' }}>🗺️ Interactive Architecture Preview (Mermaid)</strong>
+              <button onClick={() => setGraphModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              Generated from <code>{executionEnv.tfBinary} graph</code> and workspace <code>.tf</code> resources.
+            </div>
+            <pre style={{
+              margin: 0, padding: '12px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)',
+              color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', maxHeight: '340px', overflow: 'auto', whiteSpace: 'pre-wrap'
+            }}>
+              {graphLoading ? 'Generating architecture graph...' : graphMermaid}
+            </pre>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={() => navigator.clipboard?.writeText(graphMermaid)}
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', fontSize: '12px' }}
+              >
+                Copy Mermaid
+              </button>
+              <button
+                onClick={() => setGraphModalOpen(false)}
+                style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GitOps / Pull Request Mode Modal */}
+      {prModalOpen && (
+        <div
+          onClick={() => setPrModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+          }}
+        >
+          <form
+            onSubmit={handleRunGitOpsPr}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--side)', border: '1px solid var(--border)', borderRadius: '10px',
+              width: '100%', maxWidth: '520px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--text)' }}>🔀 GitOps / Pull Request Mode</strong>
+              <button type="button" onClick={() => setPrModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              Creates a branch, commits validated IaC, attaches Trivy + Infracost verification summary, and opens a GitHub PR if a remote &amp; token are configured.
+            </div>
+            <label style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              Branch Name
+              <input
+                value={prBranch}
+                onChange={(e) => setPrBranch(e.target.value)}
+                required
+                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12.5px' }}
+              />
+            </label>
+            <label style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              Commit &amp; PR Title
+              <input
+                value={prCommitMsg}
+                onChange={(e) => setPrCommitMsg(e.target.value)}
+                required
+                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12.5px' }}
+              />
+            </label>
+            {prResult && (
+              <div style={{
+                padding: '10px', borderRadius: '6px', fontSize: '12px',
+                background: prResult.success ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                border: `1px solid ${prResult.success ? '#10b981' : '#ef4444'}`,
+                color: 'var(--text)'
+              }}>
+                <div style={{ fontWeight: 600 }}>{prResult.message}</div>
+                {prResult.prUrl && (
+                  <a href={prResult.prUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', display: 'inline-block', marginTop: '4px' }}>
+                    Open Pull Request ↗
+                  </a>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" onClick={() => setPrModalOpen(false)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', fontSize: '12px' }}>
+                Close
+              </button>
+              <button type="submit" disabled={prRunning} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#10b981', color: '#fff', cursor: prRunning ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600 }}>
+                {prRunning ? 'Creating PR...' : 'Commit & Open PR'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </>

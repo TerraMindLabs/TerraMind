@@ -150,6 +150,90 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newMcpArgs, setNewMcpArgs] = useState('');
   const [newMcpUrl, setNewMcpUrl] = useState('');
 
+  // Engine, Sandbox, Self-Correction & CLI Toolchain state
+  const [tfBinary, setTfBinary] = useState<'terraform' | 'tofu'>('terraform');
+  const [sandboxMode, setSandboxMode] = useState(false);
+  const [maxRetries, setMaxRetries] = useState(3);
+  const [githubToken, setGithubToken] = useState('');
+  const [engineSaving, setEngineSaving] = useState(false);
+  const [engineSaved, setEngineSaved] = useState(false);
+  const [cliTools, setCliTools] = useState<Array<{
+    id: string;
+    name: string;
+    category: string;
+    targetAgents: string[];
+    installed: boolean;
+    version?: string;
+    description: string;
+  }>>([]);
+  const [cliToolsLoading, setCliToolsLoading] = useState(false);
+  const [evalRunning, setEvalRunning] = useState(false);
+  const [evalProvider, setEvalProvider] = useState<'ollama' | 'cloud'>('ollama');
+  const [evalModel, setEvalModel] = useState('');
+  const [evalReport, setEvalReport] = useState<{
+    provider: string;
+    model: string;
+    totalCases: number;
+    firstPassRate: number;
+    postCorrectionPassRate: number;
+    results: Array<{ id: string; title: string; category: string; firstPassPassed: boolean; postCorrectionPassed: boolean; durationMs: number; details: string }>;
+  } | null>(null);
+
+  const handleRunEvalSuite = async () => {
+    setEvalRunning(true);
+    setEvalReport(null);
+    try {
+      const res = await fetch('/api/workspace/evals/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: evalProvider, model: evalModel || undefined })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEvalReport(data);
+      }
+    } catch {} finally {
+      setEvalRunning(false);
+    }
+  };
+
+  const fetchCliToolchain = async () => {
+    setCliToolsLoading(true);
+    try {
+      const res = await fetch('/api/workspace/tools');
+      if (res.ok) {
+        const data = await res.json();
+        setCliTools(data.tools || []);
+      }
+    } catch {} finally {
+      setCliToolsLoading(false);
+    }
+  };
+
+  const handleSaveEngineSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEngineSaving(true);
+    setEngineSaved(false);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tfBinary,
+          sandboxMode,
+          maxSelfCorrectionRetries: maxRetries,
+          githubToken
+        })
+      });
+      if (res.ok) {
+        setEngineSaved(true);
+        setTimeout(() => setEngineSaved(false), 3000);
+      }
+    } catch {} finally {
+      setEngineSaving(false);
+    }
+  };
+
   // Load backend configuration
   useEffect(() => {
     fetch('/api/settings')
@@ -164,6 +248,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (data.geminiApiKey) setGeminiKey(data.geminiApiKey);
         if (data.anthropicApiKey) setAnthropicKey(data.anthropicApiKey);
         if (data.infracostApiKey) setInfracostKey(data.infracostApiKey);
+        if (data.tfBinary === 'tofu' || data.tfBinary === 'terraform') setTfBinary(data.tfBinary);
+        if (data.sandboxMode !== undefined) setSandboxMode(Boolean(data.sandboxMode));
+        if (data.maxSelfCorrectionRetries !== undefined) setMaxRetries(Number(data.maxSelfCorrectionRetries));
+        if (data.githubToken) setGithubToken(data.githubToken);
 
         // AWS Bedrock
         setHasBedrock(Boolean(data.hasAwsBedrock || data.has_bedrock));
@@ -2373,6 +2461,199 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>Add MCP Server</span>
               </button>
             </div>
+          </div>
+
+          {/* IaC Engine, Sandbox & GitOps Configuration */}
+          <form
+            onSubmit={handleSaveEngineSettings}
+            style={{
+              padding: '18px 20px',
+              borderRadius: '10px',
+              background: 'var(--card-bg, var(--side))',
+              border: '1px solid var(--border)',
+              marginBottom: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>⚙️ IaC Engine, Docker Sandbox &amp; GitOps</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Switch between Terraform and OpenTofu, enable rootless Docker sandboxing, and cap auto-fix retries.</div>
+              </div>
+              {engineSaved && <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 600 }}>✓ Saved</span>}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                IaC Binary (TF_BINARY)
+                <select
+                  value={tfBinary}
+                  onChange={(e) => setTfBinary(e.target.value === 'tofu' ? 'tofu' : 'terraform')}
+                  style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12.5px' }}
+                >
+                  <option value="terraform">Terraform (hashicorp/terraform)</option>
+                  <option value="tofu">OpenTofu (tofu — BSL-free)</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                Max JSON Self-Correction Retries
+                <input
+                  type="number"
+                  min={0}
+                  max={3}
+                  value={maxRetries}
+                  onChange={(e) => setMaxRetries(Math.max(0, Math.min(3, Number(e.target.value))))}
+                  style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12.5px' }}
+                />
+              </label>
+
+              <label style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                GitHub Token (GitOps PR Mode)
+                <input
+                  type="password"
+                  placeholder="ghp_... (optional)"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12.5px' }}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--text)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={sandboxMode} onChange={(e) => setSandboxMode(e.target.checked)} />
+                <span><strong>🐳 Ephemeral Rootless Docker Sandbox</strong> (isolates CLI execution from host credentials)</span>
+              </label>
+              <button
+                type="submit"
+                disabled={engineSaving}
+                style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {engineSaving ? 'Saving...' : 'Save Engine Settings'}
+              </button>
+            </div>
+          </form>
+
+          {/* Deterministic CLI Toolchain Health */}
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: '10px',
+              background: 'var(--card-bg, var(--side))',
+              border: '1px solid var(--border)',
+              marginBottom: '20px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>🛠️ Deterministic CLI Toolchain Status</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Real binaries wired into TerraMind's 4 agents for validation, security, policy, and cost checks.</div>
+              </div>
+              <button
+                type="button"
+                onClick={fetchCliToolchain}
+                disabled={cliToolsLoading}
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
+              >
+                {cliToolsLoading ? 'Checking...' : 'Check Installed CLIs'}
+              </button>
+            </div>
+            {cliTools.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                {cliTools.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg)',
+                      fontSize: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '3px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: 'var(--text)' }}>{t.name}</strong>
+                      <span style={{
+                        fontSize: '10.5px',
+                        fontWeight: 700,
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: t.installed ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)',
+                        color: t.installed ? '#10b981' : '#f59e0b'
+                      }}>
+                        {t.installed ? 'Installed' : 'Not on PATH'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{t.targetAgents.join(' · ')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Automated Eval Benchmark Suite */}
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: '10px',
+              background: 'var(--card-bg, var(--side))',
+              border: '1px solid var(--border)',
+              marginBottom: '20px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>🧪 Automated Eval Benchmark Suite</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Benchmark Gemini vs. local Ollama models on first-pass and post-correction pass rates.</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={evalProvider}
+                  onChange={(e) => setEvalProvider(e.target.value === 'cloud' ? 'cloud' : 'ollama')}
+                  style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px' }}
+                >
+                  <option value="ollama">Local Ollama</option>
+                  <option value="cloud">Cloud AI (Gemini)</option>
+                </select>
+                <input
+                  placeholder={evalProvider === 'ollama' ? 'qwen2.5-coder:3b' : 'gemini-2.5-flash'}
+                  value={evalModel}
+                  onChange={(e) => setEvalModel(e.target.value)}
+                  style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', width: '150px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleRunEvalSuite}
+                  disabled={evalRunning}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: '#10b981', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: evalRunning ? 'wait' : 'pointer' }}
+                >
+                  {evalRunning ? 'Running Evals...' : 'Run Benchmark'}
+                </button>
+              </div>
+            </div>
+            {evalReport && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', gap: '16px', fontSize: '12.5px', color: 'var(--text)' }}>
+                  <span>Model: <strong>{evalReport.model}</strong></span>
+                  <span>First-Pass: <strong style={{ color: '#3b82f6' }}>{evalReport.firstPassRate}%</strong></span>
+                  <span>Post-Correction: <strong style={{ color: '#10b981' }}>{evalReport.postCorrectionPassRate}%</strong></span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {evalReport.results.map((r) => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '12px' }}>
+                      <span>{r.postCorrectionPassed ? '✅' : '❌'} <strong>{r.title}</strong> ({r.category})</span>
+                      <span style={{ color: 'var(--muted)' }}>{r.details} · {(r.durationMs / 1000).toFixed(1)}s</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Informational Guidance Banner */}

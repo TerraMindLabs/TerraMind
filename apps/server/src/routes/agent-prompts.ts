@@ -484,8 +484,13 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Security Scan (tfsec)
-        uses: aquasecurity/tfsec-action@v1.0.0
+      - name: Security Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          format: 'sarif'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
 
       - name: Terraform Plan
         id: plan
@@ -886,7 +891,7 @@ export const AGENT_PROMPTS: Record<string, { instructions: string; skills: strin
       "- TerraMind's automated backend compiler automatically saves these pipeline files to disk in the user's workspace.\n" +
       "- DO NOT simulate tool execution or roleplay in text. Deliver the real pipeline code directly.\n\n" +
       "PIPELINE ARCHITECTURE & BEST PRACTICES:\n" +
-      "1. Multi-Stage Enterprise Pipeline Architecture: Linting (`terraform fmt -check`), Security Scanning (`tfsec`/Checkov, Trivy), Speculative Execution (`terraform plan` on PR), Gated Release, and State-Safe Apply.\n" +
+      "1. Multi-Stage Enterprise Pipeline Architecture: Linting (`terraform fmt -check`, `actionlint`), Security Scanning (Trivy `trivy config`, Checkov), Speculative Execution (`terraform plan` on PR), Gated Release, and State-Safe Apply.\n" +
       "2. State Locking & Concurrency Control: Strictly implement concurrency grouping to prevent parallel race conditions.\n" +
       "3. Keyless Cloud Authentication (OIDC): Never store static cloud credentials in secrets; use OpenID Connect (OIDC) identity federation.\n\n" +
       "SKILL USAGE RULES:\n" +

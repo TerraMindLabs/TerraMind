@@ -1,146 +1,63 @@
 # AutoDevOps AI (TerraMind)
 
-Welcome to **AutoDevOps AI**, your dedicated, self-correcting AI Cloud Architect. This package installs a private, containerized AI agent that writes, formats, secures, and automatically validates Terraform code against your cloud infrastructure.
+Welcome to **TerraMind**, your dedicated, self-correcting AI Cloud & Platform Architect. TerraMind combines a React + Vite web interface, a Fastify + TypeScript backend, SQLite/MongoDB persistence, and real deterministic DevOps CLI tooling via Model Context Protocol (MCP) integrations.
 
-## 🚀 The Value Proposition
-Setting up secure cloud infrastructure usually takes days of reading docs and writing configuration files. **AutoDevOps AI does it in seconds.**
+## Architecture
 
-*   **Self-Documenting & Self-Correcting:** The AI doesn't just write code; it validates it, scans it for security vulnerabilities (like open security groups), fixes its own mistakes, and writes a deployment README for your team.
-*   **Dual-Engine Privacy:** Run advanced tasks using Google Gemini's reasoning engine, or flip a switch to use 100% offline local models via Ollama for sensitive, proprietary environments.
-*   **Zero-Setup Onboarding:** A one-shot deployment script configures everything on your local machine or server in under 2 minutes.
+```mermaid
+flowchart LR
+  User["Web UI (React + Vite)<br/>apps/web"] -->|SSE Chat & REST| API["Fastify Server<br/>apps/server"]
+  API --> DB["SQLite (Primary) + MongoDB (Optional)"]
+  API --> LLM["AI Engine<br/>Local Ollama / Gemini / OpenAI / Claude / Bedrock / Azure / OCI"]
+  API --> Runner["Workspace Runner & Sandbox<br/>terraform / tofu + Docker"]
+  Runner --> Tools["Deterministic Verification Stack<br/>Trivy · TFLint · Checkov · Conftest · Infracost<br/>kubeconform · helm · actionlint · terraform-docs"]
+  API --> GitOps["GitOps & PR Mode<br/>Branch + Commit + Summary PR"]
+```
 
-## 📦 What's Inside
-This repository contains a fully automated deployment stack for TerraMind, powered by custom Model Context Protocol (MCP) tools specifically engineered for DevOps automation:
-*   `install-tf-ai.sh` & `install-tf-ai.ps1`: The interactive one-shot installers for Linux/macOS and Windows.
-*   `chat/terramind.yaml`: The pre-configured engine mapping connecting the AI to the file system and Terraform binary.
-*   `chat/mcp-tf-runner.js`: The custom automation engine that allows the AI to securely run `terraform init`, `fmt`, `validate`, and `tfsec`.
-*   `chat/seed-agent.js`: The database injection script that pre-builds the 4 AI agents and pre-seeds the top 10 DevOps skills into MongoDB.
+## Repository Layout
 
-### 🤖 4 Integrated DevOps Agents & Selective Skill Scoping
-Each agent operates with **selective domain scoping** (`skills_scope: "selected"`), ensuring each expert accesses only the specific blueprints and runbooks relevant to its domain:
+* `apps/server/` — Fastify TypeScript backend (`src/server.ts`, `src/routes/`, `src/services/`, `src/db/`, `src/tests/`).
+* `apps/web/` — React + Vite frontend (`src/App.tsx`, `src/components/`, `src/hooks/`).
+* `.agents/skills/agentic/` — Canonical Agentic design system skill.
+* `Terraform/` — Default local IaC workspace directory where generated `.tf`, Kubernetes YAML, Helm charts, and CI/CD pipelines are written and verified.
+* `install-tf-ai.sh` & `install-tf-ai.ps1` — One-shot installers for Linux/macOS and Windows.
+* `start-terramind.sh` — Startup script for Linux/macOS.
 
-1. **🏗️ Terraform DevOps Expert**: Principal Cloud Architect that creates, formats, validates, and provisions modular Terraform code with strict human approval gates.
-   * *Scoped Skills:* `tf-remote-state-backend`, `aws-production-vpc-3tier`, `tf-module-scaffolding`, `vault-secrets-cloud-integration`, `cloud-disaster-recovery-runbook`
-2. **💰 FinOps & Cloud Cost Optimizer**: Principal Cloud Economist providing multi-cloud cost benchmarks (AWS vs GCP vs Azure), Spot/Graviton rightsizing, visual spend charts, and monthly budget impact.
-   * *Scoped Skills:* `finops-multicloud-cost-optimization`, `finops-multicloud-cost-charts`
-3. **☸️ Kubernetes & GitOps Platform Engineer**: Principal Platform Architect tailoring workload-specific K8s manifests, resource QoS, health probes, Helm charts, and ArgoCD/Flux GitOps rollouts.
-   * *Scoped Skills:* `k8s-workload-hardening`, `k8s-zero-trust-network-policy`, `helm-production-chart-scaffolding`, `vault-secrets-cloud-integration`, `cloud-disaster-recovery-runbook`
-4. **🔄 CI/CD Pipeline Engineer**: Principal DevSecOps Engineer creating 5-stage GitHub Actions & GitLab CI pipelines with OIDC keyless authentication, PR plan comments, and state locking.
-   * *Scoped Skills:* `cicd-github-actions-terraform`, `helm-production-chart-scaffolding`, `tf-remote-state-backend`
+## 4 Specialized DevOps Agents
 
-### 🧠 Top Built-In DevOps Skills (Pre-Seeded)
-TerraMind automatically injects production-grade architecture blueprints and SOP playbooks into MongoDB:
-1. `tf-remote-state-backend`: S3 + DynamoDB / GCS remote state storage, encryption, and zero-downtime migration runbook.
-2. `aws-production-vpc-3tier`: Highly available 3-tier VPC blueprint with subnet CIDR formulas, NAT routing, and EKS tagging.
-3. `tf-module-scaffolding`: Reusable Terraform child/root module scaffolding with semantic variable validation and output contracts.
-4. `k8s-workload-hardening`: Non-root securityContext, CPU/RAM QoS tuning (preventing OOMKilled), graceful termination, and PDB.
-5. `k8s-zero-trust-network-policy`: Namespace default-deny traffic rules with least-privilege ingress/egress microservice policies.
-6. `helm-production-chart-scaffolding`: Production Helm v3 chart layout, label helpers (`_helpers.tpl`), and JSON Schema validation.
-7. `cicd-github-actions-terraform`: Keyless Cloud OIDC authentication, concurrency state locking, and automated PR plan diff comments.
-8. `finops-multicloud-cost-optimization`: Cross-cloud instance equivalence matrix (AWS Graviton vs GCP Tau vs Azure Ampere) and gp2-to-gp3 savings.
-9. `finops-multicloud-cost-charts`: Multi-cloud side-by-side cost comparison tables, ASCII/Markdown spend distribution charts, 3-year TCO projections, and commitment discount models.
-10. `vault-secrets-cloud-integration`: Zero-secret Terraform patterns with AWS Secrets Manager and External Secrets Operator (ESO).
-11. `cloud-disaster-recovery-runbook`: Multi-region failover tiers, cross-region state replication, and Velero cluster backup automation.
+1. **Terraform DevOps Expert (`agent_tf-devops-expert`)**: Designs modular, secure, and validated Terraform / OpenTofu code across 4 architectural strategies (Flat, Module-Based, Environment + Modules, Layer-Based), backed by `fmt`, `validate`, `tflint`, `trivy`, `checkov`, `conftest`, `terraform-docs`, and live provider schemas.
+2. **FinOps & Cloud Cost Optimizer (`agent_finops-cost-optimizer`)**: Multi-cloud cost comparisons (AWS vs GCP vs Azure), Spot/Graviton rightsizing, and deterministic monthly cost breakdowns via `infracost`.
+3. **Kubernetes & GitOps Platform Engineer (`agent_k8s-gitops-architect`)**: Workload-tailored manifests, resource QoS, probes, network policies, Helm charts, and ArgoCD/Flux GitOps rollouts validated with `kubeconform`, `helm lint`, and `trivy config`.
+4. **CI/CD Pipeline Engineer (`agent_cicd-pipeline-engineer`)**: Multi-stage GitHub Actions & GitLab CI pipelines with OIDC keyless auth, state locking, and automated validation via `actionlint`, `checkov`, and `trivy`.
 
-## 🤖 Flexible AI Engines & Direct Key Generation Links
+## Quick Start
 
-TerraMind gives you full freedom over your AI models. Choose between 100% offline local models, premier cloud models, or enterprise cloud AI services:
+```bash
+# Install workspace dependencies
+npm install
 
-| Provider | Type | Configuration / Direct Link | Notes |
-| :--- | :--- | :--- | :--- |
-| **Local Ollama** | 100% Offline / Private | [https://ollama.com/library](https://ollama.com/library) | Zero cloud fees, 100% air-gapped private. Auto-installed by setup script. |
-| **Google Gemini** | Cloud AI | [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Ultra-fast inference, reasoning, and 1M+ context window. |
-| **OpenAI** | Cloud AI | [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys) | GPT-4o, GPT-4o-mini, and reasoning models. |
-| **Anthropic Claude** | Cloud AI | [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | Claude 3.5 Sonnet, Claude 3.7 Sonnet reasoning. |
-| **AWS Bedrock** | Enterprise Cloud AI | [AWS Management Console](https://aws.amazon.com/bedrock/) | Enterprise IAM auth, Claude 3.5 Sonnet & Amazon Titan in your VPC. |
-| **Azure OpenAI** | Enterprise Cloud AI | [Azure AI Foundry](https://ai.azure.com/) | Custom endpoint & deployment (`gpt-4o`) with Azure compliance. |
-| **OCI GenAI** | Enterprise Cloud AI | [Oracle Cloud Infrastructure](https://www.oracle.com/artificial-intelligence/) | Dedicated OCI Compartment OCID & Cohere Command R+ models. |
+# Run development server (backend + frontend)
+npm run dev
 
-> [!TIP]
-> **No Forced Keys & Offline Flexibility:** If you select Local Ollama during installation, TerraMind will **never** force you to enter cloud API keys. You can run completely offline, or configure public cloud keys and enterprise cloud credentials anytime via the interactive installer or under **Settings > Provider Keys** in the web interface.
+# Build all workspaces
+npm run build
 
-### 🧠 Local Ollama Models & Hardware RAM Matrix
+# Run server test suite
+npm test
+```
 
-TerraMind's installer allows you to select models tailored to your machine's hardware capabilities. Use the matrix below to choose the optimal model for your system's RAM:
+Or use the one-liner installers:
 
-| Model | Download Size | Minimum System RAM | Recommended Hardware | Key Strengths & Best Use Case | CLI Run / Pull Command |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Qwen 2.5 Coder (3B)** | ~2.0 GB | **4 GB RAM** | 4-Core CPU / Laptop | **⭐ Best Overall for CPU.** Highly optimized for code generation, syntax tracking, and structured configuration files like YAML/HCL. Outperforms many larger models on coding benchmarks. | `ollama run qwen2.5-coder:3b` |
-| **Qwen 2.5 Coder (1.5B)** | ~1.0 GB | **2 GB RAM** | Low-spec VM / Codespaces | **Ultra-fast & Lightweight.** Perfect for resource-constrained cloud containers, devcontainers, and rapid syntax verification. | `ollama run qwen2.5-coder:1.5b` |
-| **Llama 3.2 (3B)** | ~2.0 GB | **4 GB RAM** | Pure CPU environments | **Lightweight Generalist.** While not explicitly code-first, it handles scripting syntax well and responds noticeably faster on pure CPU environments. | `ollama run llama3.2` |
-| **DeepSeek R1 (7B / 8B Distill)** | ~4.7 GB | **8 GB RAM** | 8 GB+ RAM / Entry GPU | **⭐ Best for Architecture & Logic.** Features native "Chain of Thought" reasoning. Use this when you need to plan complex infrastructure designs or debug obscure pipeline syntax errors. | `ollama run deepseek-r1:7b` |
-| **Qwen 2.5 Coder (7B)** | ~4.5 GB | **8 GB RAM** | 8 GB+ RAM / Modern CPU or GPU | **⭐ Flagship for Terraform & IaC.** Deep understanding of Terraform providers, state manipulation, and multi-cloud architectural patterns. | `ollama run qwen2.5-coder:7b` |
-| **Llama 3.1 (8B)** | ~4.7 GB | **8 GB - 12 GB RAM** | 8-Core CPU / 6GB+ VRAM | **Flagship 8B Generalist.** Excellent for end-to-end documentation, CI/CD pipeline authoring, and DevOps troubleshooting. | `ollama run llama3.1` |
-| **Qwen 2.5 Coder (14B)** | ~9.0 GB | **16 GB RAM** | 16 GB+ RAM / Dedicated GPU | **Enterprise Full-Stack.** Handles complex multi-file deployments and cross-module Terraform dependencies across extensive codebases. | `ollama run qwen2.5-coder:14b` |
-
----
-
-### 🏛️ Architectural Generation Strategies
-
-TerraMind treats infrastructure architecture as four explicit generation strategies powered by a unified resource-planning, security-scanning, and verification engine. All four strategies reuse the same automated quality gates (`terraform fmt`, `terraform validate`, `tfsec`, and `Infracost`):
-
-| User Scenario | Recommended Strategy | Layout & Orchestration Model |
-| :--- | :--- | :--- |
-| **Quick test or small infrastructure** | **Flat / Simple** | Direct resources authored in `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, `terraform.tfvars.example` without indirection. Ready for immediate `terraform apply`. |
-| **Reusable infrastructure components** | **Module-Based** | Reusable child modules under `modules/<component>/` with root caller `main.tf` (`module "<name>" { source = "./modules/<component>" ... }`). Clean composability and parameter contracts. |
-| **Dev, staging, and production lifecycles** | **Environment + Modules** | Isolated environment roots `environments/{dev,staging,prod}/` invoking shared `modules/<component>/` with per-environment tfvars overrides and dedicated remote state keys. |
-| **Complex infrastructure by responsibility** | **Layer-Based** | Segregated architectural tiers (`01-networking/`, `02-security/`, `03-database/`, `04-compute/`). Explicitly orchestrated via root caller modules or sequential root configs using `terraform_remote_state`. |
-
-> [!NOTE]
-> **Nested Directory Technical Detail:** The Terraform CLI does not automatically scan or load `.tf` files placed inside nested child subdirectories. When generating Layer-Based architectures, TerraMind explicitly authors root module callers or isolated root state configurations so that `terraform init` and `terraform plan` run reliably without silently missing nested definitions.
-
----
-
-## ⚡ Quick Start (One-Liner Installation)
-You do not need to clone this repository manually. Run the single command below in your terminal, and TerraMind will install directly into your chosen directory with zero dead weight:
-
-**On Windows (PowerShell as Administrator or Standard):**
+**Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.ps1 | iex
 ```
 
-**On Linux / macOS (Terminal):**
+**Linux / macOS:**
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TerraMindLabs/TerraMind/main/install-tf-ai.sh)"
 ```
 
-*(Alternatively, if you have already cloned this repository locally, you can directly run `.\install-tf-ai.ps1` or `./install-tf-ai.sh`)*.
+## License
 
----
-
-## 🎮 Launching & Managing TerraMind
-Once installed, you will find two companion shortcuts in your TerraMind folder:
-
-* **Start the AI Server**:
-  - **Windows**: Double-click `TerraMind.exe` (or the Desktop shortcut / `TerraMind.bat`)
-  - **Linux / macOS**: Run `./start-terramind.sh`
-  - Open your browser to `http://localhost:3080`
-
-* **Clean Uninstallation**:
-  - **Windows**: Double-click `Uninstall_TerraMind.exe` (or `Uninstall_TerraMind.bat`)
-  - **Linux / macOS**: Run `./uninstall-terramind.sh`
-  - Cleanly terminates running processes, removes application files, desktop shortcuts, and optionally cleans global MCP packages and local Ollama models.
-
----
-
-## 👥 Managing Administrators & Users
-
-TerraMind includes built-in role-based access control with **`ADMIN`** and **`USER`** tiers:
-
-* **Automatic Admin Elevation**: The very first user account registered on the web app (`http://localhost:3080`) is automatically granted **`ADMIN`** status.
-* **Subsequent Users**: All subsequent accounts are assigned the standard **`USER`** role. Both Admins and Users have access to the Agent Marketplace and AI models.
-* **CLI Management Utilities** (run from your installation's `Mind/` directory):
-  * **List all users and roles**: `npm run list-users`
-  * **Promote to Admin**: `npm run make-admin <email>` *(or `npm run set-role <email> <ADMIN|USER>`)*
-  * **Create accounts directly**: `npm run create-user`
-  * **Reset passwords**: `npm run reset-password`
-  * **Suspend or delete accounts**: `npm run ban-user <email> <mins>` / `npm run delete-user`
-* **Locking Down Registration**:
-  * Edit `Mind/.env` and set `ALLOW_REGISTRATION=false` to disable public sign-ups, restricting access strictly to accounts created by an administrator.
-
----
-
-## 📚 Post-Installation Setup
-Because of the Zero-Click Agent Deployment, you do not need to manually create or configure the AI. The installer automatically creates and injects a fully configured 'Terraform DevOps Expert' AI directly into your platform! 
-
-Once the installer finishes and TerraMind is running on `http://localhost:3080`, check out the [SETUP_GUIDE.md](./SETUP_GUIDE.md) to see how to instantly access your AI and test it out.
+Licensed under the [ISC License](./LICENSE).

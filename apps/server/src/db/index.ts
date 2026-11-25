@@ -739,8 +739,29 @@ export function seedDefaultMcpServers(): void {
           enabled: 1,
           status: 'active',
           tools: JSON.stringify([
-            { name: 'lint_k8s_manifest', description: 'Validate Kubernetes YAML against OpenAPI specs' },
-            { name: 'inspect_helm_values', description: 'Check Helm chart values and default templating' }
+            { name: 'lint_k8s_manifest', description: 'Validate Kubernetes YAML against OpenAPI specs via kubeconform' },
+            { name: 'inspect_helm_values', description: 'Lint Helm charts and values templating via helm lint' }
+          ]),
+          last_checked: new Date().toISOString()
+        },
+        {
+          id: 'trivy-devsecops',
+          name: 'Trivy, Checkov & OPA Policy MCP',
+          description: 'Unified IaC, K8s, Dockerfile & secret scanner (Trivy), graph policy checks (Checkov), and Rego gates (Conftest).',
+          transport: 'stdio',
+          command: 'trivy',
+          args: JSON.stringify(['config', '--format', 'json', '.']),
+          url: '',
+          env: JSON.stringify({}),
+          enabled: 1,
+          status: 'active',
+          tools: JSON.stringify([
+            { name: 'trivy_config_scan', description: 'Scan Terraform, plan JSON, K8s, Helm, Dockerfiles & secrets' },
+            { name: 'tflint_check', description: 'Provider-specific Terraform linting' },
+            { name: 'checkov_scan', description: 'Graph-based cross-resource & GitHub Actions security scan' },
+            { name: 'conftest_opa_gate', description: 'Enforce custom Rego policies before apply' },
+            { name: 'actionlint_check', description: 'Validate GitHub Actions workflow YAML syntax & expressions' },
+            { name: 'terraform_docs_generate', description: 'Generate Markdown input/output tables for modules' }
           ]),
           last_checked: new Date().toISOString()
         }

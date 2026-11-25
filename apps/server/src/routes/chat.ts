@@ -22,6 +22,7 @@ import {
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
 import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
+import { runStructuredVerificationForFiles } from '../services/devops-tools';
 import { invokeBedrockConverse, streamAzureFoundry, invokeOciGenAi } from '../services/enterprise-ai';
 import { getOllamaBaseUrl, isOllamaRunning, startOllamaDaemon } from '../services/ollama';
 
@@ -1383,89 +1384,203 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
       // Automated Local Workspace Execution & Validation:
       // Scan fullAssistantResponse for code blocks containing files to automatically write to disk and validate
-      const codeBlockRegex = /```(?:hcl|terraform|yaml|yml|json|bash|sh|markdown)?\s*\n([\s\S]*?)```/g;
-      let match;
-      const extractedFiles: Array<{ filename: string; content: string }> = [];
 
-      while ((match = codeBlockRegex.exec(fullAssistantResponse)) !== null) {
-        const blockCode = match[1];
-        if (!blockCode || !blockCode.trim()) continue;
+      function extractCodeBlocksFromMarkdown(markdown: string): Array<{ filename: string; content: string }> {
+        const files: Array<{ filename: string; content: string }> = [];
+        const codeBlockRegex = /```(?:hcl|terraform|tf|yaml|yml|json|dockerfile|bash|sh)?\s*\n([\s\S]*?)```/gi;
+        let match;
+        while ((match = codeBlockRegex.exec(markdown)) !== null) {
+          const blockCode = match[1];
+          if (!blockCode || !blockCode.trim()) continue;
 
-        // Check if a smaller model lumped multiple files into a single code block
-        const fileHeaderRegex = /^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.(?:tf|yaml|yml|json|hcl|sh))(?:\s*\(.*?\))?\s*$/i;
-        const blockLines = blockCode.split('\n');
-        const splitIndices: Array<{ lineIndex: number; filename: string }> = [];
+          const fileHeaderRegex = /^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.(?:tf|yaml|yml|json|hcl|sh))(?:\s*\(.*?\))?\s*$/i;
+          const blockLines = blockCode.split('\n');
+          const splitIndices: Array<{ lineIndex: number; filename: string }> = [];
 
-        for (let j = 0; j < blockLines.length; j++) {
-          const trimmed = blockLines[j].trim();
-          const matchHeader = trimmed.match(fileHeaderRegex);
-          if (matchHeader) {
-            splitIndices.push({ lineIndex: j, filename: matchHeader[1].trim() });
-          }
-        }
-
-        if (splitIndices.length > 1) {
-          // Multiple files detected inside one single code block! Split each into its own file
-          for (let s = 0; s < splitIndices.length; s++) {
-            const startLine = splitIndices[s].lineIndex;
-            const endLine = s + 1 < splitIndices.length ? splitIndices[s + 1].lineIndex : blockLines.length;
-            const chunk = blockLines.slice(startLine, endLine).join('\n').trim();
-            const fName = splitIndices[s].filename;
-            if (chunk && !extractedFiles.some((f) => f.filename === fName)) {
-              extractedFiles.push({ filename: fName, content: chunk });
+          for (let j = 0; j < blockLines.length; j++) {
+            const trimmed = blockLines[j].trim();
+            const matchHeader = trimmed.match(fileHeaderRegex);
+            if (matchHeader) {
+              splitIndices.push({ lineIndex: j, filename: matchHeader[1].trim() });
             }
           }
-          continue;
-        }
 
-        const firstLine = blockCode.trim().split('\n')[0].trim();
-        // Look for filename in comments: # path/file.tf, // path/file.tf, <!-- file -->
-        const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
-        let detectedFilename = fileMatch ? fileMatch[1].trim() : '';
+          if (splitIndices.length > 1) {
+            for (let s = 0; s < splitIndices.length; s++) {
+              const startLine = splitIndices[s].lineIndex;
+              const endLine = s + 1 < splitIndices.length ? splitIndices[s + 1].lineIndex : blockLines.length;
+              const chunk = blockLines.slice(startLine, endLine).join('\n').trim();
+              const fName = splitIndices[s].filename;
+              if (chunk && !files.some((f) => f.filename === fName)) {
+                files.push({ filename: fName, content: chunk });
+              }
+            }
+            continue;
+          }
 
-        if (!detectedFilename) {
-          // Heuristic detection based on content
-          if (blockCode.includes('required_providers') || (blockCode.includes('terraform {') && blockCode.includes('required_version'))) {
-            detectedFilename = 'providers.tf';
-          } else if (blockCode.includes('variable "') && !blockCode.includes('resource "')) {
-            detectedFilename = 'variables.tf';
-          } else if (blockCode.includes('output "') && !blockCode.includes('resource "')) {
-            detectedFilename = 'outputs.tf';
-          } else if (blockCode.includes('resource "') || blockCode.includes('module "')) {
-            detectedFilename = 'main.tf';
-          } else if (blockCode.includes('apiVersion:') && blockCode.includes('kind:')) {
-            detectedFilename = 'k8s/deployment.yaml';
-          } else if (blockCode.includes('name:') && (blockCode.includes('on: [push') || blockCode.includes('on:\n  push:'))) {
-            detectedFilename = '.github/workflows/deploy.yml';
+          const firstLine = blockCode.trim().split('\n')[0].trim();
+          const fileMatch = firstLine.match(/^(?:#|\/\/|\/\*|<!--)\s*([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)/);
+          let detectedFilename = fileMatch ? fileMatch[1].trim() : '';
+
+          if (!detectedFilename) {
+            if (blockCode.includes('required_providers') || (blockCode.includes('terraform {') && blockCode.includes('required_version'))) {
+              detectedFilename = 'providers.tf';
+            } else if (blockCode.includes('variable "') && !blockCode.includes('resource "')) {
+              detectedFilename = 'variables.tf';
+            } else if (blockCode.includes('output "') && !blockCode.includes('resource "')) {
+              detectedFilename = 'outputs.tf';
+            } else if (blockCode.includes('resource "') || blockCode.includes('module "')) {
+              detectedFilename = 'main.tf';
+            } else if (blockCode.includes('apiVersion:') && blockCode.includes('kind:')) {
+              detectedFilename = 'k8s/deployment.yaml';
+            } else if (blockCode.includes('name:') && (blockCode.includes('on: [push') || blockCode.includes('on:\n  push:'))) {
+              detectedFilename = '.github/workflows/deploy.yml';
+            }
+          }
+
+          if (detectedFilename && !files.some((f) => f.filename === detectedFilename)) {
+            files.push({ filename: detectedFilename, content: blockCode });
           }
         }
-
-        if (detectedFilename) {
-          // Avoid duplicate writes of the same filename in one turn
-          if (!extractedFiles.some((f) => f.filename === detectedFilename)) {
-            extractedFiles.push({ filename: detectedFilename, content: blockCode });
-          }
-        }
+        return files;
       }
+
+      async function requestSelfCorrectionFix(correctionPrompt: string): Promise<string> {
+        const settings = getAllSettings();
+        const corrMessages = [
+          { role: 'system', content: systemPrompt },
+          ...messages,
+          { role: 'assistant', content: fullAssistantResponse },
+          { role: 'user', content: correctionPrompt }
+        ];
+
+        if (activeProvider === 'ollama') {
+          const baseUrl = getOllamaBaseUrl();
+          const corrModel = model || 'qwen2.5-coder:3b';
+          const resp = await fetch(`${baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: corrModel, messages: corrMessages, options: { temperature: 0.1, num_ctx: 16384 }, stream: false })
+          });
+          if (resp.ok) {
+            const d = (await resp.json()) as any;
+            return d?.message?.content || '';
+          }
+        } else if (activeProvider === 'cloud') {
+          const geminiKey = settings['gemini_api_key'] || process.env.GEMINI_API_KEY;
+          const openaiKey = settings['openai_api_key'] || process.env.OPENAI_API_KEY;
+          const anthropicKey = settings['anthropic_api_key'] || process.env.ANTHROPIC_API_KEY;
+          const targetM = model || (geminiKey ? 'gemini-2.5-flash' : openaiKey ? 'gpt-4o-mini' : 'claude-3-5-sonnet-20241022');
+
+          if (targetM.startsWith('gemini-') && geminiKey) {
+            const resp = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${targetM}:generateContent?key=${geminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents: corrMessages.slice(1).map((m) => ({
+                    role: m.role === 'assistant' ? 'model' : 'user',
+                    parts: [{ text: m.content }]
+                  }))
+                })
+              }
+            );
+            if (resp.ok) {
+              const d = (await resp.json()) as any;
+              return d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            }
+          } else if (targetM.startsWith('claude-') && anthropicKey) {
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': anthropicKey,
+                'anthropic-version': '2023-06-01'
+              },
+              body: JSON.stringify({
+                model: targetM,
+                max_tokens: 4096,
+                system: systemPrompt,
+                messages: corrMessages.slice(1)
+              })
+            });
+            if (resp.ok) {
+              const d = (await resp.json()) as any;
+              return d?.content?.[0]?.text || '';
+            }
+          } else if (openaiKey) {
+            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+              body: JSON.stringify({ model: targetM, messages: corrMessages, temperature: 0.1 })
+            });
+            if (resp.ok) {
+              const d = (await resp.json()) as any;
+              return d?.choices?.[0]?.message?.content || '';
+            }
+          }
+        }
+        return '';
+      }
+
+      const extractedFiles = extractCodeBlocksFromMarkdown(fullAssistantResponse);
 
       if (extractedFiles.length > 0) {
         sendStatus(`Writing ${extractedFiles.length} file(s) to local workspace & validating...`, 'compiling');
         const validationReports: string[] = [];
+        const writtenRelPaths: string[] = [];
 
         for (const file of extractedFiles) {
           try {
             const writeRes = await writeWorkspaceFile(file.filename, file.content);
+            writtenRelPaths.push(writeRes.relPath);
             let report = `- 📄 **\`${writeRes.relPath}\`**: Auto-saved to workspace.`;
             if (writeRes.fmtOutput) {
-              report += `\n  - \`terraform fmt\`: ${writeRes.fmtOutput}`;
+              report += `\n  - \`fmt\`: ${writeRes.fmtOutput}`;
             }
             if (writeRes.validateOutput) {
-              report += `\n  - \`terraform validate\`: ${writeRes.validateOutput}`;
+              report += `\n  - \`validate\`: ${writeRes.validateOutput}`;
             }
             validationReports.push(report);
           } catch (writeErr: any) {
             validationReports.push(`- ⚠️ **\`${file.filename}\`**: Save/validation error: ${writeErr.message}`);
           }
+        }
+
+        // Structured JSON Self-Correction Loop (capped at max 3 retries)
+        const maxRetries = Math.max(0, Math.min(3, parseInt(getSetting('max_self_correction_retries') || '3', 10) || 3));
+        let attempt = 0;
+        let lastStructured = await runStructuredVerificationForFiles(writtenRelPaths);
+
+        while (lastStructured.hasErrors && attempt < maxRetries) {
+          attempt++;
+          sendStatus(`Auto-fixing ${lastStructured.structuredErrors.length} JSON diagnostic(s) (attempt ${attempt}/${maxRetries})...`, 'compiling');
+          const fixPrompt =
+            `Automated verification detected structured JSON errors in the files you just generated. ` +
+            `Fix ALL issues below and output ONLY the corrected complete file blocks (with filename comment on line 1):\n\n` +
+            `\`\`\`json\n${lastStructured.summaryText}\n\`\`\``;
+
+          const fixResponse = await requestSelfCorrectionFix(fixPrompt);
+          const fixedFiles = extractCodeBlocksFromMarkdown(fixResponse);
+          if (fixedFiles.length === 0) break;
+
+          const fixedRelPaths: string[] = [];
+          for (const ff of fixedFiles) {
+            try {
+              const writeRes = await writeWorkspaceFile(ff.filename, ff.content);
+              fixedRelPaths.push(writeRes.relPath);
+            } catch {}
+          }
+          if (fixedRelPaths.length === 0) break;
+
+          lastStructured = await runStructuredVerificationForFiles(fixedRelPaths);
+          validationReports.push(
+            `- 🔄 **Auto-Correction Attempt ${attempt}/${maxRetries}**: Updated ${fixedRelPaths.map((p) => `\`${p}\``).join(', ')} -> ${
+              lastStructured.hasErrors ? 'Remaining issues detected' : 'All structured checks passed'
+            }`
+          );
         }
 
         const autoSummary = `\n\n---\n### 🛠️ Automated Local Validation & Workspace Sync\n${validationReports.join('\n\n')}\n`;
