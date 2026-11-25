@@ -381,7 +381,16 @@ function App() {
     }
     refreshWorkspaceFiles();
     fetchModels();
+    const wsInterval = setInterval(refreshWorkspaceFiles, 8000);
+    return () => clearInterval(wsInterval);
   }, [currentUser]);
+
+  // Refresh workspace files when AI finishes generating or when switching sidebar tabs
+  useEffect(() => {
+    if (!isGenerating) {
+      refreshWorkspaceFiles();
+    }
+  }, [isGenerating, railTab]);
 
   // Auto-scroll on new messages
   useEffect(() => {

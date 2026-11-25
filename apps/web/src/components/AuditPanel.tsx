@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WorkspaceFile } from './Sidebar';
 
 export interface SecurityFinding {
@@ -70,6 +70,22 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [hoveredToolDesc, setHoveredToolDesc] = useState<string | null>(null);
+  const [syncedFiles, setSyncedFiles] = useState<WorkspaceFile[]>(workspaceFiles);
+
+  useEffect(() => {
+    setSyncedFiles(workspaceFiles);
+  }, [workspaceFiles]);
+
+  useEffect(() => {
+    fetch('/api/workspace')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.files) setSyncedFiles(d.files);
+      })
+      .catch(() => {});
+  }, []);
+
+  const displayFiles = syncedFiles.length > 0 ? syncedFiles : workspaceFiles;
 
   const [verification, setVerification] = useState<FileVerificationResult | null>(null);
   const [securityFindings, setSecurityFindings] = useState<SecurityFinding[]>([]);
@@ -212,8 +228,8 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               cursor: 'pointer'
             }}
           >
-            <option value="">📁 Entire Workspace ({workspaceFiles.length} files)</option>
-            {workspaceFiles.map((f) => (
+            <option value="">📁 Entire Workspace ({displayFiles.length} files)</option>
+            {displayFiles.map((f) => (
               <option key={f.name} value={f.name}>
                 📄 {f.name}
               </option>
