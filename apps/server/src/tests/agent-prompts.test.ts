@@ -143,6 +143,10 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.equal(mentionOverride.agentId, 'agent_k8s-gitops-architect');
     assert.equal(mentionOverride.reason, 'mention');
     assert.equal(mentionOverride.mentionToken, '@k8s');
+
+    const typoHandoff = routePromptToAgent('can you create a heml cahrt for a simple example app', 'agent_tf-devops-expert');
+    assert.equal(typoHandoff.agentId, 'agent_k8s-gitops-architect');
+    assert.equal(typoHandoff.reason, 'auto');
   });
 });
 

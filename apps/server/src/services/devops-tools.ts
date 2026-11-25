@@ -349,35 +349,96 @@ export async function runKubeconform(targetFile?: string): Promise<DevOpsToolRes
   return { success: findings.length === 0, tool: 'kubeconform', installed: true, output, findings, rawJson: parsed };
 }
 
+async function findChartDirs(rootDir: string, depth = 0): Promise<string[]> {
+  if (depth > 4) return [];
+  const chartDirs: string[] = [];
+  try {
+    const entries = await fs.readdir(rootDir, { withFileTypes: true });
+    if (entries.some((e) => e.isFile() && e.name === 'Chart.yaml')) {
+      chartDirs.push(rootDir);
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        const sub = await findChartDirs(path.join(rootDir, entry.name), depth + 1);
+        chartDirs.push(...sub);
+      }
+    }
+  } catch {}
+  return chartDirs;
+}
+
 export async function runHelmLint(targetFile?: string): Promise<DevOpsToolResult> {
   await ensureWorkspace();
-  const effectiveDir = await resolveEffectiveDirectory(targetFile);
-  let raw = '';
-  let ok = true;
-  try {
-    const res = await execInWorkspace('helm lint .', effectiveDir, process.env);
-    raw = res.stdout;
-  } catch (e: any) {
-    if (isBinaryMissingError(e)) {
-      return { success: false, tool: 'helm', installed: false, output: 'helm binary is not installed on PATH.', findings: [] };
+  let chartDirs: string[] = [];
+
+  if (targetFile) {
+    const clean = targetFile.replace(/^[\\\/]+/, '');
+    const fullTarget = path.resolve(WORKSPACE_PATH, clean);
+    const candidateDir = fsSync.existsSync(fullTarget) && fsSync.statSync(fullTarget).isDirectory()
+      ? fullTarget
+      : path.dirname(fullTarget);
+    if (fsSync.existsSync(path.join(candidateDir, 'Chart.yaml'))) {
+      chartDirs = [candidateDir];
+    } else {
+      chartDirs = await findChartDirs(candidateDir);
     }
-    raw = (e.stdout || '') + '\n' + (e.stderr || e.message || '');
-    ok = false;
   }
 
+  if (chartDirs.length === 0) {
+    chartDirs = await findChartDirs(WORKSPACE_PATH);
+  }
+
+  if (chartDirs.length === 0) {
+    return {
+      success: false,
+      tool: 'helm',
+      installed: true,
+      output: 'No Chart.yaml found in workspace. Generate a Helm chart first (e.g. Chart.yaml, values.yaml, templates/).',
+      findings: []
+    };
+  }
+
+  const outputs: string[] = [];
   const findings: ToolFinding[] = [];
-  for (const line of raw.split('\n')) {
-    if (line.includes('[ERROR]') || line.includes('[WARNING]')) {
-      findings.push({
-        tool: 'helm',
-        severity: line.includes('[ERROR]') ? 'ERROR' : 'WARNING',
-        ruleId: 'helm-lint',
-        message: line.trim()
-      });
+  let allOk = true;
+
+  for (const dir of chartDirs) {
+    const relChart = path.relative(WORKSPACE_PATH, dir) || '.';
+    let raw = '';
+    let ok = true;
+    try {
+      const res = await execInWorkspace('helm lint .', dir, process.env);
+      raw = res.stdout;
+    } catch (e: any) {
+      if (isBinaryMissingError(e)) {
+        return { success: false, tool: 'helm', installed: false, output: 'helm binary is not installed on PATH.', findings: [] };
+      }
+      raw = (e.stdout || '') + '\n' + (e.stderr || e.message || '');
+      ok = false;
+    }
+
+    if (!ok) allOk = false;
+    outputs.push(`[${relChart}]\n${raw.trim()}`);
+    for (const line of raw.split('\n')) {
+      if (line.includes('[ERROR]') || line.includes('[WARNING]')) {
+        findings.push({
+          tool: 'helm',
+          severity: line.includes('[ERROR]') ? 'ERROR' : 'WARNING',
+          ruleId: 'helm-lint',
+          filename: relChart,
+          message: line.trim()
+        });
+      }
     }
   }
 
-  return { success: ok && findings.filter(f => f.severity === 'ERROR').length === 0, tool: 'helm', installed: true, output: raw.trim() || 'Helm lint completed.', findings };
+  return {
+    success: allOk && findings.filter((f) => f.severity === 'ERROR').length === 0,
+    tool: 'helm',
+    installed: true,
+    output: outputs.join('\n\n') || 'Helm lint completed.',
+    findings
+  };
 }
 
 export async function runActionlint(targetFile?: string): Promise<DevOpsToolResult> {

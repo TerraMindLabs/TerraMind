@@ -31,8 +31,8 @@ export function parseAgentMention(text: string): { agentId: string | null; menti
 
 /**
  * Routes a user prompt to the best-suited TerraMind specialist agent.
- * Explicit @mentions always take priority; when requestedAgentId is 'auto' (or omitted),
- * keyword scoring selects the matching specialist so all code-generation rules apply.
+ * Explicit @mentions always take priority; strong domain signals automatically
+ * hand off to the matching specialist even if another agent was previously active.
  */
 export function routePromptToAgent(prompt: string, requestedAgentId?: string): AgentRouteResult {
   const mention = parseAgentMention(prompt);
@@ -42,15 +42,6 @@ export function routePromptToAgent(prompt: string, requestedAgentId?: string): A
       agentName: AGENT_NAMES[mention.agentId] || 'Terraform DevOps',
       reason: 'mention',
       mentionToken: mention.mentionToken
-    };
-  }
-
-  if (requestedAgentId && requestedAgentId !== 'auto' && AGENT_NAMES[requestedAgentId]) {
-    return {
-      agentId: requestedAgentId,
-      agentName: AGENT_NAMES[requestedAgentId],
-      reason: 'selected',
-      mentionToken: null
     };
   }
 
@@ -73,17 +64,17 @@ export function routePromptToAgent(prompt: string, requestedAgentId?: string): A
   }
 
   const k8sPatterns = [
-    /\bkubernetes\b/, /\bk8s\b/, /\bhelm\b/, /\bpod\b/, /\bdeployment\b/, /\bstatefulset\b/,
+    /\bkubernet\w*\b/, /\bk8s\b/, /\bhe[lm]{2}\b/, /\bpod\b/, /\bdeployment\b/, /\bstatefulset\b/,
     /\bhpa\b/, /\bpdb\b/, /\bnetworkpolicy\b/, /\bingress\b/, /\bargocd\b/, /\bflux\b/,
-    /\bkubeconform\b/, /\bkubectl\b/, /\bmanifest/, /\bchart\b/, /\bnamespace\b/
+    /\bkubeconform\b/, /\bkubectl\b/, /\bmanifest\w*\b/, /\bc[ah]{2}rt\b/, /\bnamespace\b/
   ];
   for (const p of k8sPatterns) {
     if (p.test(lower)) scores['agent_k8s-gitops-architect'] += 2;
   }
 
   const cicdPatterns = [
-    /\bci\/cd\b/, /\bcicd\b/, /\bgithub actions?\b/, /\bgitlab ci\b/, /\bworkflow\b/,
-    /\bpipeline\b/, /\boidc\b/, /\bactionlint\b/, /\bblue\/green\b/, /\bcanary\b/,
+    /\bci\/cd\b/, /\bcicd\b/, /\bgithub actions?\b/, /\bgitlab ci\b/, /\bworkflow\w*\b/,
+    /\bpipelin\w*\b/, /\boidc\b/, /\bactionlint\b/, /\bblue\/green\b/, /\bcanary\b/,
     /\bsemantic release\b/, /\.github\/workflows/, /\.gitlab-ci/
   ];
   for (const p of cicdPatterns) {
@@ -91,7 +82,7 @@ export function routePromptToAgent(prompt: string, requestedAgentId?: string): A
   }
 
   const tfPatterns = [
-    /\bterraform\b/, /\bopentofu\b/, /\btofu\b/, /\bhcl\b/, /\bvpc\b/, /\bs3\b/, /\brds\b/,
+    /\bterrafor\w*\b/, /\bterrafrom\b/, /\bopentofu\b/, /\btofu\b/, /\bhcl\b/, /\bvpc\b/, /\bs3\b/, /\brds\b/,
     /\beks\b/, /\biam\b/, /\bsubnet\b/, /\bprovider\b/, /\bmodule\b/, /\bstate\b/,
     /\btrivy\b/, /\btflint\b/, /\bcheckov\b/, /\b\.tf\b/, /\bec2\b/, /\bsecurity group\b/
   ];
@@ -100,11 +91,23 @@ export function routePromptToAgent(prompt: string, requestedAgentId?: string): A
   }
 
   let bestAgent = 'agent_tf-devops-expert';
-  let bestScore = scores['agent_tf-devops-expert'];
+  let bestScore = 0;
   for (const [id, score] of Object.entries(scores)) {
     if (score > bestScore) {
       bestScore = score;
       bestAgent = id;
+    }
+  }
+
+  // If a specific agent was selected and the prompt doesn't strongly match a different specialist, keep the selected agent
+  if (requestedAgentId && requestedAgentId !== 'auto' && AGENT_NAMES[requestedAgentId]) {
+    if (bestScore === 0 || bestAgent === requestedAgentId || scores[requestedAgentId] >= bestScore) {
+      return {
+        agentId: requestedAgentId,
+        agentName: AGENT_NAMES[requestedAgentId],
+        reason: 'selected',
+        mentionToken: null
+      };
     }
   }
 

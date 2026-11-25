@@ -79187,14 +79187,6 @@ function routePromptToAgent(prompt, requestedAgentId) {
       mentionToken: mention.mentionToken
     };
   }
-  if (requestedAgentId && requestedAgentId !== "auto" && AGENT_NAMES[requestedAgentId]) {
-    return {
-      agentId: requestedAgentId,
-      agentName: AGENT_NAMES[requestedAgentId],
-      reason: "selected",
-      mentionToken: null
-    };
-  }
   const lower = prompt.toLowerCase();
   const scores = {
     "agent_tf-devops-expert": 0,
@@ -79223,9 +79215,9 @@ function routePromptToAgent(prompt, requestedAgentId) {
     if (p.test(lower)) scores["agent_finops-cost-optimizer"] += 2;
   }
   const k8sPatterns = [
-    /\bkubernetes\b/,
+    /\bkubernet\w*\b/,
     /\bk8s\b/,
-    /\bhelm\b/,
+    /\bhe[lm]{2}\b/,
     /\bpod\b/,
     /\bdeployment\b/,
     /\bstatefulset\b/,
@@ -79237,8 +79229,8 @@ function routePromptToAgent(prompt, requestedAgentId) {
     /\bflux\b/,
     /\bkubeconform\b/,
     /\bkubectl\b/,
-    /\bmanifest/,
-    /\bchart\b/,
+    /\bmanifest\w*\b/,
+    /\bc[ah]{2}rt\b/,
     /\bnamespace\b/
   ];
   for (const p of k8sPatterns) {
@@ -79249,8 +79241,8 @@ function routePromptToAgent(prompt, requestedAgentId) {
     /\bcicd\b/,
     /\bgithub actions?\b/,
     /\bgitlab ci\b/,
-    /\bworkflow\b/,
-    /\bpipeline\b/,
+    /\bworkflow\w*\b/,
+    /\bpipelin\w*\b/,
     /\boidc\b/,
     /\bactionlint\b/,
     /\bblue\/green\b/,
@@ -79263,7 +79255,8 @@ function routePromptToAgent(prompt, requestedAgentId) {
     if (p.test(lower)) scores["agent_cicd-pipeline-engineer"] += 2;
   }
   const tfPatterns = [
-    /\bterraform\b/,
+    /\bterrafor\w*\b/,
+    /\bterrafrom\b/,
     /\bopentofu\b/,
     /\btofu\b/,
     /\bhcl\b/,
@@ -79287,11 +79280,21 @@ function routePromptToAgent(prompt, requestedAgentId) {
     if (p.test(lower)) scores["agent_tf-devops-expert"] += 2;
   }
   let bestAgent = "agent_tf-devops-expert";
-  let bestScore = scores["agent_tf-devops-expert"];
+  let bestScore = 0;
   for (const [id, score] of Object.entries(scores)) {
     if (score > bestScore) {
       bestScore = score;
       bestAgent = id;
+    }
+  }
+  if (requestedAgentId && requestedAgentId !== "auto" && AGENT_NAMES[requestedAgentId]) {
+    if (bestScore === 0 || bestAgent === requestedAgentId || scores[requestedAgentId] >= bestScore) {
+      return {
+        agentId: requestedAgentId,
+        agentName: AGENT_NAMES[requestedAgentId],
+        reason: "selected",
+        mentionToken: null
+      };
     }
   }
   return {
@@ -80431,33 +80434,88 @@ async function runKubeconform(targetFile) {
 ` + findings.map((f) => `[ERROR] ${f.filename || "k8s"}: ${f.message}`).join("\n") : "kubeconform passed: Kubernetes manifests match OpenAPI schemas.";
   return { success: findings.length === 0, tool: "kubeconform", installed: true, output, findings, rawJson: parsed };
 }
+async function findChartDirs(rootDir, depth = 0) {
+  if (depth > 4) return [];
+  const chartDirs = [];
+  try {
+    const entries = await import_promises2.default.readdir(rootDir, { withFileTypes: true });
+    if (entries.some((e) => e.isFile() && e.name === "Chart.yaml")) {
+      chartDirs.push(rootDir);
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+        const sub = await findChartDirs(import_path4.default.join(rootDir, entry.name), depth + 1);
+        chartDirs.push(...sub);
+      }
+    }
+  } catch {
+  }
+  return chartDirs;
+}
 async function runHelmLint(targetFile) {
   await ensureWorkspace();
-  const effectiveDir = await resolveEffectiveDirectory(targetFile);
-  let raw = "";
-  let ok = true;
-  try {
-    const res = await execInWorkspace("helm lint .", effectiveDir, process.env);
-    raw = res.stdout;
-  } catch (e) {
-    if (isBinaryMissingError(e)) {
-      return { success: false, tool: "helm", installed: false, output: "helm binary is not installed on PATH.", findings: [] };
+  let chartDirs = [];
+  if (targetFile) {
+    const clean = targetFile.replace(/^[\\\/]+/, "");
+    const fullTarget = import_path4.default.resolve(WORKSPACE_PATH, clean);
+    const candidateDir = import_fs4.default.existsSync(fullTarget) && import_fs4.default.statSync(fullTarget).isDirectory() ? fullTarget : import_path4.default.dirname(fullTarget);
+    if (import_fs4.default.existsSync(import_path4.default.join(candidateDir, "Chart.yaml"))) {
+      chartDirs = [candidateDir];
+    } else {
+      chartDirs = await findChartDirs(candidateDir);
     }
-    raw = (e.stdout || "") + "\n" + (e.stderr || e.message || "");
-    ok = false;
   }
+  if (chartDirs.length === 0) {
+    chartDirs = await findChartDirs(WORKSPACE_PATH);
+  }
+  if (chartDirs.length === 0) {
+    return {
+      success: false,
+      tool: "helm",
+      installed: true,
+      output: "No Chart.yaml found in workspace. Generate a Helm chart first (e.g. Chart.yaml, values.yaml, templates/).",
+      findings: []
+    };
+  }
+  const outputs = [];
   const findings = [];
-  for (const line of raw.split("\n")) {
-    if (line.includes("[ERROR]") || line.includes("[WARNING]")) {
-      findings.push({
-        tool: "helm",
-        severity: line.includes("[ERROR]") ? "ERROR" : "WARNING",
-        ruleId: "helm-lint",
-        message: line.trim()
-      });
+  let allOk = true;
+  for (const dir of chartDirs) {
+    const relChart = import_path4.default.relative(WORKSPACE_PATH, dir) || ".";
+    let raw = "";
+    let ok = true;
+    try {
+      const res = await execInWorkspace("helm lint .", dir, process.env);
+      raw = res.stdout;
+    } catch (e) {
+      if (isBinaryMissingError(e)) {
+        return { success: false, tool: "helm", installed: false, output: "helm binary is not installed on PATH.", findings: [] };
+      }
+      raw = (e.stdout || "") + "\n" + (e.stderr || e.message || "");
+      ok = false;
+    }
+    if (!ok) allOk = false;
+    outputs.push(`[${relChart}]
+${raw.trim()}`);
+    for (const line of raw.split("\n")) {
+      if (line.includes("[ERROR]") || line.includes("[WARNING]")) {
+        findings.push({
+          tool: "helm",
+          severity: line.includes("[ERROR]") ? "ERROR" : "WARNING",
+          ruleId: "helm-lint",
+          filename: relChart,
+          message: line.trim()
+        });
+      }
     }
   }
-  return { success: ok && findings.filter((f) => f.severity === "ERROR").length === 0, tool: "helm", installed: true, output: raw.trim() || "Helm lint completed.", findings };
+  return {
+    success: allOk && findings.filter((f) => f.severity === "ERROR").length === 0,
+    tool: "helm",
+    installed: true,
+    output: outputs.join("\n\n") || "Helm lint completed.",
+    findings
+  };
 }
 async function runActionlint(targetFile) {
   await ensureWorkspace();
