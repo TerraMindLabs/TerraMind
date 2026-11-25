@@ -922,7 +922,9 @@ export function buildSystemPrompt(
   const compact = Boolean(options?.compact);
 
   let prompt = compact
-    ? `${agent.instructions.split('\n\n')[0]}\n\n`
+    ? `${agent.instructions.split('\n\n')[0]}\n` +
+      `RULES: Output ONLY complete code blocks with the exact relative file path on line 1 (e.g. # modules/s3/main.tf). ` +
+      `NEVER use deprecated aws_s3_bucket inline acl/versioning; always add aws_s3_bucket_public_access_block.\n\n`
     : agent.instructions + "\n\n";
 
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---\n`;

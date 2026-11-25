@@ -79043,6 +79043,7 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers, options) {
   const agent = AGENT_PROMPTS[agentId] || AGENT_PROMPTS["agent_tf-devops-expert"];
   const compact = Boolean(options?.compact);
   let prompt = compact ? `${agent.instructions.split("\n\n")[0]}
+RULES: Output ONLY complete code blocks with the exact relative file path on line 1 (e.g. # modules/s3/main.tf). NEVER use deprecated aws_s3_bucket inline acl/versioning; always add aws_s3_bucket_public_access_block.
 
 ` : agent.instructions + "\n\n";
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---
@@ -79310,7 +79311,17 @@ var import_fs3 = __toESM(require("fs"));
 var import_os = __toESM(require("os"));
 init_db();
 var execPromise = (0, import_util.promisify)(import_child_process.exec);
-var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || import_path3.default.resolve(process.cwd(), "..", "..", "Terraform");
+function resolveDefaultWorkspacePath() {
+  const cwd = process.cwd();
+  if (import_fs3.default.existsSync(import_path3.default.join(cwd, "apps", "server"))) {
+    return import_path3.default.join(cwd, "Terraform");
+  }
+  if (import_path3.default.basename(cwd) === "server" && import_fs3.default.existsSync(import_path3.default.resolve(cwd, "..", "..", "package.json"))) {
+    return import_path3.default.resolve(cwd, "..", "..", "Terraform");
+  }
+  return import_path3.default.join(cwd, "Terraform");
+}
+var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || resolveDefaultWorkspacePath();
 async function ensureWorkspace() {
   try {
     await import_promises.default.mkdir(WORKSPACE_PATH, { recursive: true });

@@ -8,7 +8,21 @@ import { getSetting } from '../db';
 
 const execPromise = promisify(exec);
 
-export const WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || path.resolve(process.cwd(), '..', '..', 'Terraform');
+function resolveDefaultWorkspacePath(): string {
+  const cwd = process.cwd();
+  // If started from repo root (e.g. `node apps/server/dist/server.js` or `npm start`)
+  if (fsSync.existsSync(path.join(cwd, 'apps', 'server'))) {
+    return path.join(cwd, 'Terraform');
+  }
+  // If started from `apps/server` (e.g. `npm run dev -w @terramind/server`)
+  if (path.basename(cwd) === 'server' && fsSync.existsSync(path.resolve(cwd, '..', '..', 'package.json'))) {
+    return path.resolve(cwd, '..', '..', 'Terraform');
+  }
+  // Fallback inside current directory (never escape to filesystem root '/')
+  return path.join(cwd, 'Terraform');
+}
+
+export const WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || resolveDefaultWorkspacePath();
 
 export async function ensureWorkspace(): Promise<string> {
   try {

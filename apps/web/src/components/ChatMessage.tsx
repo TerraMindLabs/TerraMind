@@ -115,7 +115,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
         {/* Message Action Footer */}
         {!isStreaming && content && (
-          <div className="msg-actions">
+          <div className="msg-actions" style={{ userSelect: 'none', gap: '8px' }}>
             <button
               className="msg-action-btn"
               onClick={handleCopyMessage}
