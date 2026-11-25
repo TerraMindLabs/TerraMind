@@ -19,7 +19,7 @@ flowchart LR
 * `apps/server/` — Fastify TypeScript backend (`src/server.ts`, `src/routes/`, `src/services/`, `src/db/`, `src/tests/`).
 * `apps/web/` — React + Vite frontend (`src/App.tsx`, `src/components/`, `src/hooks/`).
 * `.agents/skills/agentic/` — Canonical Agentic design system skill.
-* `Terraform/` — Default local IaC workspace directory where generated `.tf`, Kubernetes YAML, Helm charts, and CI/CD pipelines are written and verified.
+* `Workspace/` — Default local IaC workspace directory (falls back to `Terraform/` if already present) where generated `.tf`, Kubernetes YAML, Helm charts, and CI/CD pipelines are written and verified.
 * `install-tf-ai.sh` & `install-tf-ai.ps1` — One-shot installers for Linux/macOS and Windows.
 * `start-terramind.sh` — Startup script for Linux/macOS.
 

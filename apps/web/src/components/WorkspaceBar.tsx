@@ -67,7 +67,7 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
   onOpenSettings,
   onOpenAudit
 }) => {
-  const [workspacePath, setWorkspacePath] = useState('Terraform');
+  const [workspacePath, setWorkspacePath] = useState('Workspace');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const selectedTargetFile = '';
   const [isRunning, setIsRunning] = useState(false);

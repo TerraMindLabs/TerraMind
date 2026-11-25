@@ -67,16 +67,18 @@ async function estimateOfflineTerraformCost(effectiveDir: string): Promise<Infra
 
 function resolveDefaultWorkspacePath(): string {
   const cwd = process.cwd();
-  // If started from repo root (e.g. `node apps/server/dist/server.js` or `npm start`)
-  if (fsSync.existsSync(path.join(cwd, 'apps', 'server'))) {
-    return path.join(cwd, 'Terraform');
-  }
-  // If started from `apps/server` (e.g. `npm run dev -w @terramind/server`)
-  if (path.basename(cwd) === 'server' && fsSync.existsSync(path.resolve(cwd, '..', '..', 'package.json'))) {
-    return path.resolve(cwd, '..', '..', 'Terraform');
-  }
-  // Fallback inside current directory (never escape to filesystem root '/')
-  return path.join(cwd, 'Terraform');
+  const rootDir = fsSync.existsSync(path.join(cwd, 'apps', 'server'))
+    ? cwd
+    : path.basename(cwd) === 'server' && fsSync.existsSync(path.resolve(cwd, '..', '..', 'package.json'))
+    ? path.resolve(cwd, '..', '..')
+    : cwd;
+
+  const preferred = path.join(rootDir, 'Workspace');
+  const legacy = path.join(rootDir, 'Terraform');
+
+  if (fsSync.existsSync(preferred)) return preferred;
+  if (fsSync.existsSync(legacy)) return legacy;
+  return preferred;
 }
 
 export const WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || resolveDefaultWorkspacePath();

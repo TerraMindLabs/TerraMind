@@ -79369,13 +79369,12 @@ async function estimateOfflineTerraformCost(effectiveDir) {
 }
 function resolveDefaultWorkspacePath() {
   const cwd = process.cwd();
-  if (import_fs3.default.existsSync(import_path3.default.join(cwd, "apps", "server"))) {
-    return import_path3.default.join(cwd, "Terraform");
-  }
-  if (import_path3.default.basename(cwd) === "server" && import_fs3.default.existsSync(import_path3.default.resolve(cwd, "..", "..", "package.json"))) {
-    return import_path3.default.resolve(cwd, "..", "..", "Terraform");
-  }
-  return import_path3.default.join(cwd, "Terraform");
+  const rootDir = import_fs3.default.existsSync(import_path3.default.join(cwd, "apps", "server")) ? cwd : import_path3.default.basename(cwd) === "server" && import_fs3.default.existsSync(import_path3.default.resolve(cwd, "..", "..", "package.json")) ? import_path3.default.resolve(cwd, "..", "..") : cwd;
+  const preferred = import_path3.default.join(rootDir, "Workspace");
+  const legacy = import_path3.default.join(rootDir, "Terraform");
+  if (import_fs3.default.existsSync(preferred)) return preferred;
+  if (import_fs3.default.existsSync(legacy)) return legacy;
+  return preferred;
 }
 var WORKSPACE_PATH = process.env.TF_WORKSPACE || process.env.WORKSPACE_DIR || resolveDefaultWorkspacePath();
 async function ensureWorkspace() {
