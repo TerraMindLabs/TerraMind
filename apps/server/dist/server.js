@@ -79043,7 +79043,7 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers, options) {
   const agent = AGENT_PROMPTS[agentId] || AGENT_PROMPTS["agent_tf-devops-expert"];
   const compact = Boolean(options?.compact);
   let prompt = compact ? `${agent.instructions.split("\n\n")[0]}
-RULES: Output ONLY complete code blocks with the exact relative file path on line 1 (e.g. # modules/s3/main.tf). NEVER use deprecated aws_s3_bucket inline acl/versioning; always add aws_s3_bucket_public_access_block.
+RULES: Output ONLY complete code blocks with the exact project-scoped path on line 1 (e.g. # Project-1/modules/s3/main.tf). If no project/folder name was given yet and Scope is Default Workspace, ask ONE brief question first to confirm the project folder name (e.g. "What project folder should I save this under, e.g. Project-1/?") before generating code. NEVER use deprecated aws_s3_bucket inline acl/versioning; always add aws_s3_bucket_public_access_block.
 
 ` : agent.instructions + "\n\n";
   prompt += `--- TERRAMIND LOCAL RUNTIME & WORKSPACE ENVIRONMENT ---
@@ -79806,12 +79806,22 @@ async function verifyWorkspaceFile(targetRelPath) {
     overallStatus
   };
 }
+function slugifyProjectFolder(name) {
+  const cleaned = name.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "default-project";
+}
 async function writeWorkspaceFile(filename, content, options) {
   await ensureWorkspace();
   if (filename.includes("..") || filename.includes("/../") || filename.includes("\\..\\")) {
     throw new Error("Access denied: target path escapes workspace");
   }
-  const cleanRelPath = filename.replace(/^[\\\/]+/, "");
+  let cleanRelPath = filename.replace(/^[\\\/]+/, "");
+  if (options?.projectDir) {
+    const safeDir = slugifyProjectFolder(options.projectDir);
+    if (!cleanRelPath.startsWith(`${safeDir}/`) && !cleanRelPath.startsWith(`${safeDir}\\`)) {
+      cleanRelPath = `${safeDir}/${cleanRelPath}`;
+    }
+  }
   const targetPath = import_path3.default.resolve(WORKSPACE_PATH, cleanRelPath);
   const normalizedWs = import_path3.default.resolve(WORKSPACE_PATH);
   if (!targetPath.toLowerCase().startsWith(normalizedWs.toLowerCase())) {
@@ -81630,10 +81640,14 @@ async function chatRoutes(fastify2) {
       }
       sendStatus("Loading local workspace context & files...", "context");
       let projectContext = void 0;
+      let activeProjectDir = void 0;
       try {
         const files = await listWorkspaceFiles({ includeContent: false });
         if (projectId) {
           const proj = getProjectById(projectId);
+          if (proj?.name) {
+            activeProjectDir = slugifyProjectFolder(proj.name);
+          }
           projectContext = {
             name: proj?.name || "Project Workspace",
             description: proj?.description || "",
@@ -81848,7 +81862,9 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
             "gemini-3.7-flash",
             "gemini-3.6-flash",
             "gemini-flash-lite-latest",
-            "gemini-3.8-flash"
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite"
           ];
           if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith("gemini")) {
             geminiFallbacks.unshift(targetModel);
@@ -81904,11 +81920,7 @@ Please add your Anthropic API key in **Settings > API Keys** (gear icon in sideb
                 }
                 const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
                 if (nextModel && (status === 503 || status === 429 || status === 404 || status === 500 || !res)) {
-                  streamToken(
-                    `> \u2139\uFE0F *Model \`${modelToUse}\` is temporarily unavailable (${status}). Automatically switching to \`${nextModel}\`...*
-
-`
-                  );
+                  sendStatus(`Model ${modelToUse} unavailable (${status}). Switching to ${nextModel}...`, "retrying");
                   return await streamGemini(nextModel, triedModels);
                 }
                 streamToken(`> \u26A0\uFE0F **Gemini Error (${status}):** ${errText}`);
@@ -82263,7 +82275,10 @@ Please configure your OCI Compartment ID and Auth Key in **Settings > Enterprise
         const writtenRelPaths = [];
         for (const file of extractedFiles) {
           try {
-            const writeRes = await writeWorkspaceFile(file.filename, file.content, { skipVerify: true });
+            const writeRes = await writeWorkspaceFile(file.filename, file.content, {
+              skipVerify: true,
+              projectDir: activeProjectDir
+            });
             writtenRelPaths.push(writeRes.relPath);
             validationReports.push(`- \u{1F4C4} **\`${writeRes.relPath}\`**: Auto-saved to workspace.`);
           } catch (writeErr) {
@@ -82287,7 +82302,10 @@ ${lastStructured.summaryText}
           const fixedRelPaths = [];
           for (const ff of fixedFiles) {
             try {
-              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, { skipVerify: true });
+              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, {
+                skipVerify: true,
+                projectDir: activeProjectDir
+              });
               fixedRelPaths.push(writeRes.relPath);
             } catch {
             }

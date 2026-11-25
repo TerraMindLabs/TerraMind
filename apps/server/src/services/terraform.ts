@@ -666,10 +666,18 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
   };
 }
 
+export function slugifyProjectFolder(name: string): string {
+  const cleaned = name
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned || 'default-project';
+}
+
 export async function writeWorkspaceFile(
   filename: string,
   content: string,
-  options?: { skipVerify?: boolean }
+  options?: { skipVerify?: boolean; projectDir?: string }
 ): Promise<{
   path: string;
   relPath: string;
@@ -684,7 +692,13 @@ export async function writeWorkspaceFile(
     throw new Error('Access denied: target path escapes workspace');
   }
 
-  const cleanRelPath = filename.replace(/^[\\\/]+/, '');
+  let cleanRelPath = filename.replace(/^[\\\/]+/, '');
+  if (options?.projectDir) {
+    const safeDir = slugifyProjectFolder(options.projectDir);
+    if (!cleanRelPath.startsWith(`${safeDir}/`) && !cleanRelPath.startsWith(`${safeDir}\\`)) {
+      cleanRelPath = `${safeDir}/${cleanRelPath}`;
+    }
+  }
   const targetPath = path.resolve(WORKSPACE_PATH, cleanRelPath);
   const normalizedWs = path.resolve(WORKSPACE_PATH);
 

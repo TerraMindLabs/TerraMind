@@ -64,4 +64,18 @@ describe('Workspace File Security & Generation Tests', async () => {
     assert.ok(files.some(f => f.name.includes('main.tf')));
     assert.ok(files.some(f => f.name.includes('variables.tf')));
   });
+
+  test('4. projectDir isolates files under a project folder without mixing', async () => {
+    const res1 = await terraformModule.writeWorkspaceFile('modules/s3/main.tf', 'resource "aws_s3_bucket" "b" {}', {
+      skipVerify: true,
+      projectDir: 'Project 1'
+    });
+    assert.equal(res1.relPath, 'Project-1/modules/s3/main.tf');
+
+    const res2 = await terraformModule.writeWorkspaceFile('Project-1/variables.tf', 'variable "name" {}', {
+      skipVerify: true,
+      projectDir: 'Project 1'
+    });
+    assert.equal(res2.relPath, 'Project-1/variables.tf');
+  });
 });

@@ -28,6 +28,7 @@ export interface Conversation {
 export interface WorkspaceFile {
   name: string;
   size: number;
+  content?: string;
 }
 
 export const SETTINGS_ITEMS: Array<{ id: SettingsSection; title: string; desc: string; icon: string; logoUrl?: string }> = [
@@ -173,8 +174,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Collapsible section state
   const [projectsOpen, setProjectsOpen] = useState(true);
-  const [filesOpen, setFilesOpen] = useState(workspaceFiles.length > 0);
+  const [filesOpen, setFilesOpen] = useState(true);
   const [chatsOpen, setChatsOpen] = useState(conversations.length > 0);
+
+  // Workspace File Editor Modal state
+  const [editingFile, setEditingFile] = useState<{ name: string; content: string; isNew?: boolean } | null>(null);
+  const [savingFile, setSavingFile] = useState(false);
+  const [fileSaveMsg, setFileSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleOpenFile = async (f: WorkspaceFile) => {
+    setFileSaveMsg(null);
+    if (f.content !== undefined) {
+      setEditingFile({ name: f.name, content: f.content });
+      return;
+    }
+    try {
+      const res = await fetch('/api/workspace');
+      if (res.ok) {
+        const data = await res.json();
+        const found = (data.files || []).find((x: WorkspaceFile) => x.name === f.name);
+        setEditingFile({ name: f.name, content: found?.content || '' });
+        return;
+      }
+    } catch {}
+    setEditingFile({ name: f.name, content: '' });
+  };
+
+  const handleSaveFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFile || !editingFile.name.trim()) return;
+    setSavingFile(true);
+    setFileSaveMsg(null);
+    try {
+      const res = await fetch('/api/workspace/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: editingFile.name.trim(), content: editingFile.content })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const extra = data.validateOutput ? ` • ${data.validateOutput}` : '';
+        setFileSaveMsg({ ok: true, text: `Saved ${data.relPath || editingFile.name}${extra}` });
+        setEditingFile((prev) => (prev ? { ...prev, name: data.relPath || prev.name, isNew: false } : null));
+      } else {
+        setFileSaveMsg({ ok: false, text: data.error || 'Failed to save file' });
+      }
+    } catch (err: any) {
+      setFileSaveMsg({ ok: false, text: err.message || 'Save error' });
+    } finally {
+      setSavingFile(false);
+    }
+  };
 
   // Project deletion confirmation state
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -774,6 +824,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </svg>
             <span>Workspace Files ({workspaceFiles.length})</span>
           </div>
+          <button
+            type="button"
+            title="Create new file in workspace"
+            style={{ fontSize: '11px', color: 'var(--blue, #3b82f6)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFilesOpen(true);
+              setFileSaveMsg(null);
+              setEditingFile({ name: 'Project-1/main.tf', content: '', isNew: true });
+            }}
+          >
+            + New
+          </button>
         </div>
 
         {filesOpen && (
@@ -787,12 +850,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={f.name}
                   className="row"
-                  style={{ fontSize: '12.5px', fontFamily: 'monospace' }}
-                  onClick={() => onSelectFile && onSelectFile(f.name)}
-                  title={`Click to reference ${f.name} in chat`}
+                  style={{ fontSize: '12px', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => handleOpenFile(f)}
+                  title={`Click to open & edit ${f.name}`}
                 >
                   <span>📄</span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{f.name}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--muted)' }}>Edit</span>
                 </button>
               ))
             )}
@@ -1094,6 +1158,161 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Workspace File Editor Modal */}
+      {editingFile && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(3px)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={() => setEditingFile(null)}
+        >
+          <form
+            onSubmit={handleSaveFile}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--side)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '760px',
+              padding: '18px',
+              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.28)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+              <strong style={{ fontSize: '14px', color: 'var(--text)' }}>
+                {editingFile.isNew ? '📄 New Workspace File' : `📝 Edit ${editingFile.name}`}
+              </strong>
+              <button
+                type="button"
+                onClick={() => setEditingFile(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '16px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {editingFile.isNew && (
+              <input
+                type="text"
+                value={editingFile.name}
+                onChange={(e) => setEditingFile({ ...editingFile, name: e.target.value })}
+                placeholder="e.g. Project-1/modules/s3/main.tf"
+                required
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--text)',
+                  fontFamily: 'monospace',
+                  fontSize: '12.5px'
+                }}
+              />
+            )}
+
+            <textarea
+              value={editingFile.content}
+              onChange={(e) => setEditingFile({ ...editingFile, content: e.target.value })}
+              rows={18}
+              spellCheck={false}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                fontSize: '12.5px',
+                lineHeight: 1.5,
+                resize: 'vertical'
+              }}
+            />
+
+            {fileSaveMsg && (
+              <div
+                style={{
+                  fontSize: '12px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  background: fileSaveMsg.ok ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                  border: `1px solid ${fileSaveMsg.ok ? '#10b981' : '#ef4444'}`,
+                  color: 'var(--text)'
+                }}
+              >
+                {fileSaveMsg.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSelectFile) onSelectFile(editingFile.name);
+                  setEditingFile(null);
+                }}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--text)',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                💬 Reference in Chat
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingFile(null)}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    fontSize: '12.5px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingFile}
+                  style={{
+                    padding: '7px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#10b981',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: savingFile ? 'wait' : 'pointer'
+                  }}
+                >
+                  {savingFile ? 'Saving...' : 'Save & Validate'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
     </aside>

@@ -22,7 +22,7 @@ import {
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
 import { routePromptToAgent } from './agent-router';
-import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
+import { listWorkspaceFiles, writeWorkspaceFile, slugifyProjectFolder, WORKSPACE_PATH } from '../services/terraform';
 import { runStructuredVerificationForFiles } from '../services/devops-tools';
 import { invokeBedrockConverse, streamAzureFoundry, invokeOciGenAi } from '../services/enterprise-ai';
 import { getOllamaBaseUrl, isOllamaRunning, startOllamaDaemon } from '../services/ollama';
@@ -845,10 +845,14 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
     sendStatus('Loading local workspace context & files...', 'context');
     let projectContext: any = undefined;
+    let activeProjectDir: string | undefined = undefined;
     try {
       const files = await listWorkspaceFiles({ includeContent: false });
       if (projectId) {
         const proj = getProjectById(projectId);
+        if (proj?.name) {
+          activeProjectDir = slugifyProjectFolder(proj.name);
+        }
         projectContext = {
           name: proj?.name || 'Project Workspace',
           description: proj?.description || '',
@@ -1072,7 +1076,9 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           'gemini-3.7-flash',
           'gemini-3.6-flash',
           'gemini-flash-lite-latest',
-          'gemini-3.8-flash'
+          'gemini-3.8-flash',
+          'gemini-2.5-flash',
+          'gemini-2.5-flash-lite'
         ];
         if (!geminiFallbacks.includes(targetModel) && targetModel.startsWith('gemini')) {
           geminiFallbacks.unshift(targetModel);
@@ -1142,9 +1148,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
               const nextModel = geminiFallbacks.find((m) => !triedModels.includes(m));
               if (nextModel && (status === 503 || status === 429 || status === 404 || status === 500 || !res)) {
-                streamToken(
-                  `> ℹ️ *Model \`${modelToUse}\` is temporarily unavailable (${status}). Automatically switching to \`${nextModel}\`...*\n\n`
-                );
+                sendStatus(`Model ${modelToUse} unavailable (${status}). Switching to ${nextModel}...`, 'retrying');
                 return await streamGemini(nextModel, triedModels);
               }
               streamToken(`> ⚠️ **Gemini Error (${status}):** ${errText}`);
@@ -1562,7 +1566,10 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
         for (const file of extractedFiles) {
           try {
-            const writeRes = await writeWorkspaceFile(file.filename, file.content, { skipVerify: true });
+            const writeRes = await writeWorkspaceFile(file.filename, file.content, {
+              skipVerify: true,
+              projectDir: activeProjectDir
+            });
             writtenRelPaths.push(writeRes.relPath);
             validationReports.push(`- 📄 **\`${writeRes.relPath}\`**: Auto-saved to workspace.`);
           } catch (writeErr: any) {
@@ -1590,7 +1597,10 @@ export default async function chatRoutes(fastify: FastifyInstance) {
           const fixedRelPaths: string[] = [];
           for (const ff of fixedFiles) {
             try {
-              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, { skipVerify: true });
+              const writeRes = await writeWorkspaceFile(ff.filename, ff.content, {
+                skipVerify: true,
+                projectDir: activeProjectDir
+              });
               fixedRelPaths.push(writeRes.relPath);
             } catch {}
           }

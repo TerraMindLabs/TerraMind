@@ -69,6 +69,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   const [selectedTargetFile, setSelectedTargetFile] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [hoveredToolDesc, setHoveredToolDesc] = useState<string | null>(null);
 
   const [verification, setVerification] = useState<FileVerificationResult | null>(null);
   const [securityFindings, setSecurityFindings] = useState<SecurityFinding[]>([]);
@@ -251,98 +252,33 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
             Run Individual Tools
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-            <button
-              type="button"
-              onClick={() => handleRun('fmt')}
-              disabled={isRunning}
-              style={{
-                padding: '6px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              ⚡ fmt
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRun('validate')}
-              disabled={isRunning}
-              style={{
-                padding: '6px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              🔍 validate
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRun('trivy')}
-              disabled={isRunning}
-              style={{
-                padding: '6px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              🛡️ Trivy
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRun('infracost')}
-              disabled={isRunning}
-              style={{
-                padding: '6px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              💰 Infracost
-            </button>
-
             {[
-              { id: 'tflint' as const, label: '📐 TFLint' },
-              { id: 'checkov' as const, label: '🔒 Checkov' },
-              { id: 'conftest' as const, label: '⚖️ OPA / Conftest' },
-              { id: 'kubeconform' as const, label: '☸️ kubeconform' },
-              { id: 'helm' as const, label: '⛵ Helm Lint' },
-              { id: 'actionlint' as const, label: '🔄 actionlint' },
-              { id: 'terraform-docs' as const, label: '📝 tf-docs' },
-              { id: 'schema' as const, label: '🧬 Schema' }
+              { id: 'fmt' as const, label: '⚡ fmt', desc: 'Formats .tf files to canonical HCL style.' },
+              { id: 'validate' as const, label: '🔍 validate', desc: 'Checks Terraform syntax, types, and required arguments.' },
+              { id: 'trivy' as const, label: '🛡️ Trivy', desc: 'Scans Terraform, K8s YAML, Helm, Dockerfiles & secrets.' },
+              { id: 'infracost' as const, label: '💰 Infracost', desc: 'Calculates deterministic monthly cloud cost estimates.' },
+              { id: 'tflint' as const, label: '📐 TFLint', desc: 'Catches provider-specific errors (instance types, regions, deprecated syntax).' },
+              { id: 'checkov' as const, label: '🔒 Checkov', desc: 'Runs graph-based IaC and GitHub Actions security checks.' },
+              { id: 'conftest' as const, label: '⚖️ OPA / Conftest', desc: 'Enforces custom Rego org policies (tagging, allowed regions).' },
+              { id: 'kubeconform' as const, label: '☸️ kubeconform', desc: 'Validates Kubernetes YAML manifests against OpenAPI schemas.' },
+              { id: 'helm' as const, label: '⛵ Helm Lint', desc: 'Lints Helm charts, templates, and values.yaml files.' },
+              { id: 'actionlint' as const, label: '🔄 actionlint', desc: 'Validates GitHub Actions workflow syntax, expressions & runners.' },
+              { id: 'terraform-docs' as const, label: '📝 tf-docs', desc: 'Generates Markdown input/output/provider tables for modules.' },
+              { id: 'schema' as const, label: '🧬 Schema', desc: 'Inspects live Terraform provider resource schemas.' },
+              { id: 'plan' as const, label: '📋 Speculative Plan', desc: 'Previews resources to add, change, or destroy without applying.', fullWidth: true }
             ].map((tool) => (
               <button
                 key={tool.id}
                 type="button"
+                title={tool.desc}
                 onClick={() => handleRun(tool.id)}
+                onMouseEnter={() => setHoveredToolDesc(tool.desc)}
+                onMouseLeave={() => setHoveredToolDesc(null)}
+                onFocus={() => setHoveredToolDesc(tool.desc)}
+                onBlur={() => setHoveredToolDesc(null)}
                 disabled={isRunning}
                 style={{
+                  gridColumn: tool.fullWidth ? 'span 2' : undefined,
                   padding: '6px 8px',
                   borderRadius: '5px',
                   border: '1px solid var(--border)',
@@ -357,26 +293,20 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 {tool.label}
               </button>
             ))}
-
-            <button
-              type="button"
-              onClick={() => handleRun('plan')}
-              disabled={isRunning}
-              style={{
-                gridColumn: 'span 2',
-                padding: '6px 8px',
-                borderRadius: '5px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              📋 Speculative Plan
-            </button>
+          </div>
+          <div style={{
+            fontSize: '11px',
+            lineHeight: '1.35',
+            color: hoveredToolDesc ? 'var(--text)' : 'var(--muted)',
+            background: 'var(--hover)',
+            border: '1px solid var(--border)',
+            borderRadius: '5px',
+            padding: '6px 8px',
+            minHeight: '30px',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            {hoveredToolDesc || 'Hover any tool above to see what it checks.'}
           </div>
         </div>
 

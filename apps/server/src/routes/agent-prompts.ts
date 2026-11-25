@@ -923,7 +923,8 @@ export function buildSystemPrompt(
 
   let prompt = compact
     ? `${agent.instructions.split('\n\n')[0]}\n` +
-      `RULES: Output ONLY complete code blocks with the exact relative file path on line 1 (e.g. # modules/s3/main.tf). ` +
+      `RULES: Output ONLY complete code blocks with the exact project-scoped path on line 1 (e.g. # Project-1/modules/s3/main.tf). ` +
+      `If no project/folder name was given yet and Scope is Default Workspace, ask ONE brief question first to confirm the project folder name (e.g. "What project folder should I save this under, e.g. Project-1/?") before generating code. ` +
       `NEVER use deprecated aws_s3_bucket inline acl/versioning; always add aws_s3_bucket_public_access_block.\n\n`
     : agent.instructions + "\n\n";
 
