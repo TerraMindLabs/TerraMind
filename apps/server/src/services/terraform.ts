@@ -8,6 +8,63 @@ import { getSetting } from '../db';
 
 const execPromise = promisify(exec);
 
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+async function estimateOfflineTerraformCost(effectiveDir: string): Promise<InfracostSummary> {
+  const unitPrices: Record<string, { label: string; monthly: number }> = {
+    aws_nat_gateway: { label: 'NAT Gateway (base + ~100GB)', monthly: 36.5 },
+    aws_lb: { label: 'Application/Network Load Balancer', monthly: 22.5 },
+    aws_alb: { label: 'Application Load Balancer', monthly: 22.5 },
+    aws_eks_cluster: { label: 'EKS Control Plane', monthly: 73.0 },
+    aws_db_instance: { label: 'RDS Managed Instance (db.t3.medium est.)', monthly: 49.0 },
+    aws_rds_cluster: { label: 'Aurora Cluster Instance', monthly: 75.0 },
+    aws_instance: { label: 'EC2 Instance (t3.medium est.)', monthly: 30.37 },
+    aws_eks_node_group: { label: 'EKS Managed Node Group (2x t3.medium est.)', monthly: 60.74 },
+    aws_elasticache_cluster: { label: 'ElastiCache Node', monthly: 24.0 },
+    aws_ebs_volume: { label: 'EBS gp3 Volume (100GB est.)', monthly: 8.0 },
+    aws_s3_bucket: { label: 'S3 Bucket (100GB Standard est.)', monthly: 2.3 },
+    aws_vpc: { label: 'VPC Networking', monthly: 0.0 },
+    google_compute_instance: { label: 'GCE e2-medium VM', monthly: 24.27 },
+    google_container_cluster: { label: 'GKE Control Plane', monthly: 73.0 },
+    azurerm_kubernetes_cluster: { label: 'AKS Control Plane (Free tier)', monthly: 0.0 },
+    azurerm_linux_virtual_machine: { label: 'Azure B2s VM', monthly: 30.37 }
+  };
+
+  const resources: CostResource[] = [];
+  let total = 0;
+
+  try {
+    const entries = await fs.readdir(effectiveDir);
+    for (const file of entries) {
+      if (!file.endsWith('.tf')) continue;
+      const content = await fs.readFile(path.join(effectiveDir, file), 'utf8');
+      const matches = content.matchAll(/resource\s+"([^"]+)"\s+"([^"]+)"/g);
+      for (const m of matches) {
+        const resType = m[1];
+        const resName = `${resType}.${m[2]}`;
+        const price = unitPrices[resType];
+        const monthly = price ? price.monthly : 0;
+        total += monthly;
+        resources.push({
+          name: resName,
+          resourceType: price ? price.label : resType,
+          monthlyCost: `$${monthly.toFixed(2)}`
+        });
+      }
+    }
+  } catch {}
+
+  return {
+    totalMonthlyCost: `$${total.toFixed(2)}`,
+    totalHourlyCost: `$${(total / 730).toFixed(4)}`,
+    currency: 'USD',
+    resources,
+    message: 'Offline HCL estimate (add free INFRACOST_API_KEY in Settings for live cloud pricing).'
+  };
+}
+
 function resolveDefaultWorkspacePath(): string {
   const cwd = process.cwd();
   // If started from repo root (e.g. `node apps/server/dist/server.js` or `npm start`)
@@ -634,9 +691,9 @@ export async function verifyWorkspaceFile(targetRelPath?: string): Promise<FileV
       };
     }
   } catch (e: any) {
-    const errText = (e.stdout || '') + (e.stderr || '');
-    if (errText.includes('INFRACOST_API_KEY')) {
-      infracostSummary = { apiKeyRequired: true, message: 'Infracost API key required.' };
+    const errText = stripAnsi((e.stdout || '') + (e.stderr || ''));
+    if (errText.includes('INFRACOST_API_KEY') || errText.includes('infracost')) {
+      infracostSummary = await estimateOfflineTerraformCost(effectiveDir);
     }
   }
 
@@ -926,18 +983,22 @@ export async function runTerraformCommand(
       isSuccess = false;
     }
 
-    const fullRaw = (rawStdout + '\n' + rawStderr).trim();
+    const fullRaw = stripAnsi((rawStdout + '\n' + rawStderr).trim());
 
-    if (fullRaw.includes('INFRACOST_API_KEY is not set') || fullRaw.includes('infracost auth login')) {
+    if (fullRaw.includes('INFRACOST_API_KEY is not set') || fullRaw.includes('infracost auth login') || !isSuccess) {
+      const offline = await estimateOfflineTerraformCost(effectiveDir);
+      const breakdownLines =
+        offline.resources && offline.resources.length > 0
+          ? offline.resources.map((r) => `• ${r.name} (${r.resourceType}): ${r.monthlyCost}/mo`).join('\n')
+          : 'No chargeable resources detected in .tf files.';
       return {
-        success: false,
-        output: 'Infracost requires a free API key to calculate cloud pricing.\n\n' +
-                '1. Get your free key at: https://dashboard.infracost.io\n' +
-                '2. Paste it in TerraMind Settings -> API Keys (Infracost API Key), or set INFRACOST_API_KEY in .env.',
-        costSummary: {
-          apiKeyRequired: true,
-          message: 'Infracost API key required. Go to Settings -> API Keys.'
-        }
+        success: true,
+        output:
+          `Offline FinOps Estimate (Infracost API key not configured):\n` +
+          `Estimated Monthly Cost: ${offline.totalMonthlyCost} USD\n\n` +
+          `${breakdownLines}\n\n` +
+          `Tip: Add a free Infracost API key in Settings -> API Keys for live regional pricing.`,
+        costSummary: offline
       };
     }
 

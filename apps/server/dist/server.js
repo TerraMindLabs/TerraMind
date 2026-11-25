@@ -79311,6 +79311,59 @@ var import_fs3 = __toESM(require("fs"));
 var import_os = __toESM(require("os"));
 init_db();
 var execPromise = (0, import_util.promisify)(import_child_process.exec);
+function stripAnsi(str) {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+async function estimateOfflineTerraformCost(effectiveDir) {
+  const unitPrices = {
+    aws_nat_gateway: { label: "NAT Gateway (base + ~100GB)", monthly: 36.5 },
+    aws_lb: { label: "Application/Network Load Balancer", monthly: 22.5 },
+    aws_alb: { label: "Application Load Balancer", monthly: 22.5 },
+    aws_eks_cluster: { label: "EKS Control Plane", monthly: 73 },
+    aws_db_instance: { label: "RDS Managed Instance (db.t3.medium est.)", monthly: 49 },
+    aws_rds_cluster: { label: "Aurora Cluster Instance", monthly: 75 },
+    aws_instance: { label: "EC2 Instance (t3.medium est.)", monthly: 30.37 },
+    aws_eks_node_group: { label: "EKS Managed Node Group (2x t3.medium est.)", monthly: 60.74 },
+    aws_elasticache_cluster: { label: "ElastiCache Node", monthly: 24 },
+    aws_ebs_volume: { label: "EBS gp3 Volume (100GB est.)", monthly: 8 },
+    aws_s3_bucket: { label: "S3 Bucket (100GB Standard est.)", monthly: 2.3 },
+    aws_vpc: { label: "VPC Networking", monthly: 0 },
+    google_compute_instance: { label: "GCE e2-medium VM", monthly: 24.27 },
+    google_container_cluster: { label: "GKE Control Plane", monthly: 73 },
+    azurerm_kubernetes_cluster: { label: "AKS Control Plane (Free tier)", monthly: 0 },
+    azurerm_linux_virtual_machine: { label: "Azure B2s VM", monthly: 30.37 }
+  };
+  const resources = [];
+  let total = 0;
+  try {
+    const entries = await import_promises.default.readdir(effectiveDir);
+    for (const file of entries) {
+      if (!file.endsWith(".tf")) continue;
+      const content = await import_promises.default.readFile(import_path3.default.join(effectiveDir, file), "utf8");
+      const matches = content.matchAll(/resource\s+"([^"]+)"\s+"([^"]+)"/g);
+      for (const m of matches) {
+        const resType = m[1];
+        const resName = `${resType}.${m[2]}`;
+        const price = unitPrices[resType];
+        const monthly = price ? price.monthly : 0;
+        total += monthly;
+        resources.push({
+          name: resName,
+          resourceType: price ? price.label : resType,
+          monthlyCost: `$${monthly.toFixed(2)}`
+        });
+      }
+    }
+  } catch {
+  }
+  return {
+    totalMonthlyCost: `$${total.toFixed(2)}`,
+    totalHourlyCost: `$${(total / 730).toFixed(4)}`,
+    currency: "USD",
+    resources,
+    message: "Offline HCL estimate (add free INFRACOST_API_KEY in Settings for live cloud pricing)."
+  };
+}
 function resolveDefaultWorkspacePath() {
   const cwd = process.cwd();
   if (import_fs3.default.existsSync(import_path3.default.join(cwd, "apps", "server"))) {
@@ -79778,9 +79831,9 @@ async function verifyWorkspaceFile(targetRelPath) {
       };
     }
   } catch (e) {
-    const errText = (e.stdout || "") + (e.stderr || "");
-    if (errText.includes("INFRACOST_API_KEY")) {
-      infracostSummary = { apiKeyRequired: true, message: "Infracost API key required." };
+    const errText = stripAnsi((e.stdout || "") + (e.stderr || ""));
+    if (errText.includes("INFRACOST_API_KEY") || errText.includes("infracost")) {
+      infracostSummary = await estimateOfflineTerraformCost(effectiveDir);
     }
   }
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
@@ -80018,15 +80071,19 @@ async function runTerraformCommand(action, targetFile) {
       rawStderr = e.stderr || e.message;
       isSuccess = false;
     }
-    const fullRaw = (rawStdout + "\n" + rawStderr).trim();
-    if (fullRaw.includes("INFRACOST_API_KEY is not set") || fullRaw.includes("infracost auth login")) {
+    const fullRaw = stripAnsi((rawStdout + "\n" + rawStderr).trim());
+    if (fullRaw.includes("INFRACOST_API_KEY is not set") || fullRaw.includes("infracost auth login") || !isSuccess) {
+      const offline = await estimateOfflineTerraformCost(effectiveDir);
+      const breakdownLines = offline.resources && offline.resources.length > 0 ? offline.resources.map((r) => `\u2022 ${r.name} (${r.resourceType}): ${r.monthlyCost}/mo`).join("\n") : "No chargeable resources detected in .tf files.";
       return {
-        success: false,
-        output: "Infracost requires a free API key to calculate cloud pricing.\n\n1. Get your free key at: https://dashboard.infracost.io\n2. Paste it in TerraMind Settings -> API Keys (Infracost API Key), or set INFRACOST_API_KEY in .env.",
-        costSummary: {
-          apiKeyRequired: true,
-          message: "Infracost API key required. Go to Settings -> API Keys."
-        }
+        success: true,
+        output: `Offline FinOps Estimate (Infracost API key not configured):
+Estimated Monthly Cost: ${offline.totalMonthlyCost} USD
+
+${breakdownLines}
+
+Tip: Add a free Infracost API key in Settings -> API Keys for live regional pricing.`,
+        costSummary: offline
       };
     }
     let costSummary;
@@ -80162,6 +80219,45 @@ async function checkCliToolchain() {
     })
   );
   return results;
+}
+async function installMissingCliTools() {
+  if (process.platform === "win32") {
+    return {
+      success: false,
+      installed: [],
+      failed: [],
+      message: "On Windows, run: winget install AquaSecurity.Trivy TerraformLinters.tflint Infracost.Infracost terraform-docs.terraform-docs Helm.Helm"
+    };
+  }
+  const current = await checkCliToolchain();
+  const missing = new Set(current.filter((t) => !t.installed).map((t) => t.id));
+  const installed = [];
+  const failed = [];
+  const installScriptMap = {
+    trivy: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$HOME/.local/bin"',
+    tflint: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | TFLINT_INSTALL_PATH="$HOME/.local/bin" bash',
+    kubeconform: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz -C "$HOME/.local/bin" kubeconform',
+    "terraform-docs": 'mkdir -p "$HOME/.local/bin" && curl -sfL https://terraform-docs.io/dl/v0.19.0/terraform-docs-v0.19.0-linux-amd64.tar.gz | tar -xz -C "$HOME/.local/bin" terraform-docs',
+    conftest: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz -C "$HOME/.local/bin" conftest',
+    actionlint: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest "$HOME/.local/bin"',
+    helm: 'curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | HELM_INSTALL_DIR="$HOME/.local/bin" USE_SUDO=false bash',
+    checkov: "pip3 install --user --quiet checkov || pip install --user --quiet checkov"
+  };
+  for (const [tool, cmd] of Object.entries(installScriptMap)) {
+    if (!missing.has(tool)) continue;
+    try {
+      await execPromise2(cmd, { timeout: 9e4 });
+      installed.push(tool);
+    } catch (e) {
+      failed.push({ tool, error: (e.stderr || e.message || "Install failed").slice(0, 120) });
+    }
+  }
+  return {
+    success: failed.length === 0,
+    installed,
+    failed,
+    message: installed.length > 0 ? `Installed ${installed.join(", ")} into ~/.local/bin.` : failed.length > 0 ? `Some tools could not be auto-installed: ${failed.map((f) => f.tool).join(", ")}` : "All supported DevOps CLIs are already installed!"
+  };
 }
 function isBinaryMissingError(err) {
   const msg = ((err?.stderr || "") + " " + (err?.message || "")).toLowerCase();
@@ -82683,6 +82779,16 @@ async function workspaceRoutes(fastify2) {
     } catch (err) {
       fastify2.log.error(err);
       return reply.status(500).send({ error: "Failed to check CLI toolchain" });
+    }
+  });
+  fastify2.post("/api/workspace/tools/install", async (request, reply) => {
+    try {
+      const result = await installMissingCliTools();
+      const tools = await checkCliToolchain();
+      return { ...result, tools };
+    } catch (err) {
+      fastify2.log.error(err);
+      return reply.status(500).send({ error: err.message || "Failed to install CLI tools" });
     }
   });
   fastify2.get("/api/workspace/graph", async (request, reply) => {

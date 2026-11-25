@@ -9,6 +9,7 @@ import {
 } from '../services/terraform';
 import {
   checkCliToolchain,
+  installMissingCliTools,
   runTflint,
   runCheckov,
   runConftest,
@@ -110,6 +111,18 @@ export default async function workspaceRoutes(fastify: FastifyInstance) {
     } catch (err: any) {
       fastify.log.error(err);
       return reply.status(500).send({ error: 'Failed to check CLI toolchain' });
+    }
+  });
+
+  // 2c-ii. Auto-install missing DevOps CLIs into ~/.local/bin
+  fastify.post('/api/workspace/tools/install', async (request, reply) => {
+    try {
+      const result = await installMissingCliTools();
+      const tools = await checkCliToolchain();
+      return { ...result, tools };
+    } catch (err: any) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: err.message || 'Failed to install CLI tools' });
     }
   });
 

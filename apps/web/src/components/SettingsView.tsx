@@ -167,6 +167,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     description: string;
   }>>([]);
   const [cliToolsLoading, setCliToolsLoading] = useState(false);
+  const [cliInstalling, setCliInstalling] = useState(false);
+  const [cliInstallMsg, setCliInstallMsg] = useState<string | null>(null);
   const [evalRunning, setEvalRunning] = useState(false);
   const [evalProvider, setEvalProvider] = useState<'ollama' | 'cloud'>('ollama');
   const [evalModel, setEvalModel] = useState('');
@@ -207,6 +209,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     } catch {} finally {
       setCliToolsLoading(false);
+    }
+  };
+
+  const handleInstallMissingClis = async () => {
+    setCliInstalling(true);
+    setCliInstallMsg(null);
+    try {
+      const res = await fetch('/api/workspace/tools/install', { method: 'POST' });
+      const data = await res.json();
+      if (data.tools) setCliTools(data.tools);
+      setCliInstallMsg(data.message || 'CLI installation completed.');
+    } catch (e: any) {
+      setCliInstallMsg(e.message || 'Failed to install CLIs.');
+    } finally {
+      setCliInstalling(false);
     }
   };
 
@@ -2552,15 +2569,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>🛠️ Deterministic CLI Toolchain Status</div>
                 <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Real binaries wired into TerraMind's 4 agents for validation, security, policy, and cost checks.</div>
               </div>
-              <button
-                type="button"
-                onClick={fetchCliToolchain}
-                disabled={cliToolsLoading}
-                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
-              >
-                {cliToolsLoading ? 'Checking...' : 'Check Installed CLIs'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={fetchCliToolchain}
+                  disabled={cliToolsLoading || cliInstalling}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  {cliToolsLoading ? 'Checking...' : 'Check Installed CLIs'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleInstallMissingClis}
+                  disabled={cliInstalling || cliToolsLoading}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: '#10b981', color: '#fff', fontSize: '12px', fontWeight: 600, cursor: cliInstalling ? 'wait' : 'pointer' }}
+                >
+                  {cliInstalling ? 'Installing CLIs...' : 'Install Missing CLIs'}
+                </button>
+              </div>
             </div>
+            {cliInstallMsg && (
+              <div style={{ fontSize: '12px', padding: '8px 10px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', marginBottom: '10px' }}>
+                {cliInstallMsg}
+              </div>
+            )}
             {cliTools.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
                 {cliTools.map((t) => (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ArchitectureGraphModal } from './ArchitectureGraphModal';
 
 export interface SecurityFinding {
   id: string;
@@ -1032,51 +1033,13 @@ export const WorkspaceBar: React.FC<WorkspaceBarProps> = ({
       )}
 
       {/* Interactive Architecture Preview Modal */}
-      {graphModalOpen && (
-        <div
-          onClick={() => setGraphModalOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--side)', border: '1px solid var(--border)', borderRadius: '10px',
-              width: '100%', maxWidth: '680px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ fontSize: '14px', color: 'var(--text)' }}>🗺️ Interactive Architecture Preview (Mermaid)</strong>
-              <button onClick={() => setGraphModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-              Generated from <code>{executionEnv.tfBinary} graph</code> and workspace <code>.tf</code> resources.
-            </div>
-            <pre style={{
-              margin: 0, padding: '12px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)',
-              color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', maxHeight: '340px', overflow: 'auto', whiteSpace: 'pre-wrap'
-            }}>
-              {graphLoading ? 'Generating architecture graph...' : graphMermaid}
-            </pre>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button
-                onClick={() => navigator.clipboard?.writeText(graphMermaid)}
-                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', fontSize: '12px' }}
-              >
-                Copy Mermaid
-              </button>
-              <button
-                onClick={() => setGraphModalOpen(false)}
-                style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ArchitectureGraphModal
+        open={graphModalOpen}
+        loading={graphLoading}
+        mermaid={graphMermaid}
+        tfBinary={executionEnv.tfBinary}
+        onClose={() => setGraphModalOpen(false)}
+      />
 
       {/* GitOps / Pull Request Mode Modal */}
       {prModalOpen && (

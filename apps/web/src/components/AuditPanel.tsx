@@ -269,19 +269,19 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
             {[
-              { id: 'fmt' as const, label: '⚡ fmt', desc: 'Formats .tf files to canonical HCL style.' },
-              { id: 'validate' as const, label: '🔍 validate', desc: 'Checks Terraform syntax, types, and required arguments.' },
-              { id: 'trivy' as const, label: '🛡️ Trivy', desc: 'Scans Terraform, K8s YAML, Helm, Dockerfiles & secrets.' },
-              { id: 'infracost' as const, label: '💰 Infracost', desc: 'Calculates deterministic monthly cloud cost estimates.' },
-              { id: 'tflint' as const, label: '📐 TFLint', desc: 'Catches provider-specific errors (instance types, regions, deprecated syntax).' },
-              { id: 'checkov' as const, label: '🔒 Checkov', desc: 'Runs graph-based IaC and GitHub Actions security checks.' },
-              { id: 'conftest' as const, label: '⚖️ OPA / Conftest', desc: 'Enforces custom Rego org policies (tagging, allowed regions).' },
-              { id: 'kubeconform' as const, label: '☸️ kubeconform', desc: 'Validates Kubernetes YAML manifests against OpenAPI schemas.' },
-              { id: 'helm' as const, label: '⛵ Helm Lint', desc: 'Lints Helm charts, templates, and values.yaml files.' },
-              { id: 'actionlint' as const, label: '🔄 actionlint', desc: 'Validates GitHub Actions workflow syntax, expressions & runners.' },
-              { id: 'terraform-docs' as const, label: '📝 tf-docs', desc: 'Generates Markdown input/output/provider tables for modules.' },
-              { id: 'schema' as const, label: '🧬 Schema', desc: 'Inspects live Terraform provider resource schemas.' },
-              { id: 'plan' as const, label: '📋 Speculative Plan', desc: 'Previews resources to add, change, or destroy without applying.', fullWidth: true }
+              { id: 'fmt' as const, label: '⚡ fmt', sub: 'Format HCL', desc: 'Formats .tf files to canonical Terraform/OpenTofu HCL style.' },
+              { id: 'validate' as const, label: '🔍 validate', sub: 'Syntax & types', desc: 'Checks Terraform syntax, variable types, and required arguments.' },
+              { id: 'trivy' as const, label: '🛡️ Trivy', sub: 'IaC & secrets', desc: 'Scans Terraform, K8s YAML, Helm, Dockerfiles, and hardcoded secrets.' },
+              { id: 'infracost' as const, label: '💰 Infracost', sub: 'Monthly cost', desc: 'Calculates monthly cloud cost estimates (live API or offline fallback).' },
+              { id: 'tflint' as const, label: '📐 TFLint', sub: 'Provider rules', desc: 'Catches cloud-specific errors (invalid instance types, regions, deprecated syntax).' },
+              { id: 'checkov' as const, label: '🔒 Checkov', sub: 'Policy graph', desc: 'Runs graph-based cross-resource IaC and GitHub Actions security checks.' },
+              { id: 'conftest' as const, label: '⚖️ OPA / Conftest', sub: 'Rego policies', desc: 'Enforces custom Rego org policies (mandatory tags, allowed regions).' },
+              { id: 'kubeconform' as const, label: '☸️ kubeconform', sub: 'K8s manifests', desc: 'Validates Kubernetes YAML manifests against official OpenAPI schemas.' },
+              { id: 'helm' as const, label: '⛵ Helm Lint', sub: 'Helm charts', desc: 'Lints Helm charts (requires Chart.yaml, values.yaml, templates/).' },
+              { id: 'actionlint' as const, label: '🔄 actionlint', sub: 'GitHub Actions', desc: 'Validates .github/workflows/*.yml syntax, expressions, and runners.' },
+              { id: 'terraform-docs' as const, label: '📝 tf-docs', sub: 'Module README', desc: 'Generates Markdown input/output/provider tables for Terraform modules.' },
+              { id: 'schema' as const, label: '🧬 Schema', sub: 'Provider attrs', desc: 'Inspects live Terraform provider resource schemas and attributes.' },
+              { id: 'plan' as const, label: '📋 Speculative Plan', sub: 'Preview resource changes before apply', desc: 'Runs a dry-run plan to preview resources to add, change, or destroy without applying.', fullWidth: true }
             ].map((tool) => (
               <button
                 key={tool.id}
@@ -295,18 +295,22 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 disabled={isRunning}
                 style={{
                   gridColumn: tool.fullWidth ? 'span 2' : undefined,
-                  padding: '6px 8px',
-                  borderRadius: '5px',
+                  padding: '7px 9px',
+                  borderRadius: '6px',
                   border: '1px solid var(--border)',
                   background: 'var(--bg)',
                   color: 'var(--text)',
                   fontSize: '11.5px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: isRunning ? 'not-allowed' : 'pointer',
-                  textAlign: 'left'
+                  textAlign: 'left',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px'
                 }}
               >
-                {tool.label}
+                <span>{tool.label}</span>
+                <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--muted)' }}>{tool.sub}</span>
               </button>
             ))}
           </div>

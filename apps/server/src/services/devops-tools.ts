@@ -107,6 +107,60 @@ export async function checkCliToolchain(): Promise<CliToolStatus[]> {
   return results;
 }
 
+export async function installMissingCliTools(): Promise<{
+  success: boolean;
+  installed: string[];
+  failed: Array<{ tool: string; error: string }>;
+  message: string;
+}> {
+  if (process.platform === 'win32') {
+    return {
+      success: false,
+      installed: [],
+      failed: [],
+      message: 'On Windows, run: winget install AquaSecurity.Trivy TerraformLinters.tflint Infracost.Infracost terraform-docs.terraform-docs Helm.Helm'
+    };
+  }
+
+  const current = await checkCliToolchain();
+  const missing = new Set(current.filter((t) => !t.installed).map((t) => t.id));
+  const installed: string[] = [];
+  const failed: Array<{ tool: string; error: string }> = [];
+
+  const installScriptMap: Record<string, string> = {
+    trivy: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$HOME/.local/bin"',
+    tflint: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | TFLINT_INSTALL_PATH="$HOME/.local/bin" bash',
+    kubeconform: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz -C "$HOME/.local/bin" kubeconform',
+    'terraform-docs': 'mkdir -p "$HOME/.local/bin" && curl -sfL https://terraform-docs.io/dl/v0.19.0/terraform-docs-v0.19.0-linux-amd64.tar.gz | tar -xz -C "$HOME/.local/bin" terraform-docs',
+    conftest: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz -C "$HOME/.local/bin" conftest',
+    actionlint: 'mkdir -p "$HOME/.local/bin" && curl -sfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest "$HOME/.local/bin"',
+    helm: 'curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | HELM_INSTALL_DIR="$HOME/.local/bin" USE_SUDO=false bash',
+    checkov: 'pip3 install --user --quiet checkov || pip install --user --quiet checkov'
+  };
+
+  for (const [tool, cmd] of Object.entries(installScriptMap)) {
+    if (!missing.has(tool)) continue;
+    try {
+      await execPromise(cmd, { timeout: 90000 });
+      installed.push(tool);
+    } catch (e: any) {
+      failed.push({ tool, error: (e.stderr || e.message || 'Install failed').slice(0, 120) });
+    }
+  }
+
+  return {
+    success: failed.length === 0,
+    installed,
+    failed,
+    message:
+      installed.length > 0
+        ? `Installed ${installed.join(', ')} into ~/.local/bin.`
+        : failed.length > 0
+        ? `Some tools could not be auto-installed: ${failed.map((f) => f.tool).join(', ')}`
+        : 'All supported DevOps CLIs are already installed!'
+  };
+}
+
 function isBinaryMissingError(err: any): boolean {
   const msg = ((err?.stderr || '') + ' ' + (err?.message || '')).toLowerCase();
   return msg.includes('not recognized') || msg.includes('not found') || msg.includes('enoent');
