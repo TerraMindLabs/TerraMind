@@ -3,6 +3,7 @@ import React from 'react';
 export interface Agent {
   id: string;
   name: string;
+  mentionHandle: string;
   icon: string;
   darkIcon: string;
   emoji: string;
@@ -11,10 +12,23 @@ export interface Agent {
   tools: string[];
 }
 
+export const AUTO_AGENT: Agent = {
+  id: 'auto',
+  name: 'Smart Auto',
+  mentionHandle: '@auto',
+  icon: '/agents/Terraform.png',
+  darkIcon: '/agents/terraform_dark.png',
+  emoji: '✨',
+  role: 'Smart Router',
+  description: 'Automatically assigns your request to the best specialist agent, or type @terraform, @finops, @k8s, or @cicd.',
+  tools: ['auto-router']
+};
+
 export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_tf-devops-expert',
     name: 'Terraform DevOps',
+    mentionHandle: '@terraform',
     icon: '/agents/Terraform.png',
     darkIcon: '/agents/terraform_dark.png',
     emoji: '🏗️',
@@ -25,6 +39,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_finops-cost-optimizer',
     name: 'FinOps Cost Optimizer',
+    mentionHandle: '@finops',
     icon: '/agents/FinOps.png',
     darkIcon: '/agents/FinOps_dark.png',
     emoji: '💰',
@@ -35,6 +50,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_k8s-gitops-architect',
     name: 'Kubernetes Platform',
+    mentionHandle: '@k8s',
     icon: '/agents/K8s.png',
     darkIcon: '/agents/k8s_dark.png',
     emoji: '☸️',
@@ -45,6 +61,7 @@ export const TERRAMIND_AGENTS: Agent[] = [
   {
     id: 'agent_cicd-pipeline-engineer',
     name: 'CI/CD Engineer',
+    mentionHandle: '@cicd',
     icon: '/agents/CICD.png',
     darkIcon: '/agents/CICD_dark.png',
     emoji: '🔄',
@@ -69,17 +86,28 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
   onSelectAgent,
   theme = 'light'
 }) => {
-  const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
+  const currentAgent =
+    selectedAgentId === 'auto'
+      ? AUTO_AGENT
+      : TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || AUTO_AGENT;
 
   return (
     <div>
       <div className="agents-tabs">
+        <button
+          className={`agent-tab ${selectedAgentId === 'auto' ? 'active' : ''}`}
+          onClick={() => onSelectAgent('auto')}
+          title={AUTO_AGENT.description}
+        >
+          <span>✨</span>
+          <span>Smart Auto</span>
+        </button>
         {TERRAMIND_AGENTS.map((agent) => (
           <button
             key={agent.id}
             className={`agent-tab ${selectedAgentId === agent.id ? 'active' : ''}`}
             onClick={() => onSelectAgent(agent.id)}
-            title={agent.description}
+            title={`${agent.mentionHandle} — ${agent.description}`}
           >
             <img
               src={getAgentIcon(agent, theme)}

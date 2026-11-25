@@ -54,7 +54,8 @@ export function useChatStream() {
     model: string,
     agentId: string,
     projectId?: string,
-    onConvoCreated?: (newId: string) => void
+    onConvoCreated?: (newId: string) => void,
+    onAgentRouted?: (routedAgentId: string, routedAgentName?: string) => void
   ) => {
     if (!content.trim() || isGenerating) return;
 
@@ -144,6 +145,10 @@ export function useChatStream() {
               resolvedConvoId = parsed.conversationId;
               setConversationId(resolvedConvoId);
               if (onConvoCreated && resolvedConvoId) onConvoCreated(resolvedConvoId);
+            }
+
+            if (parsed.routedAgentId && onAgentRouted) {
+              onAgentRouted(parsed.routedAgentId, parsed.routedAgentName);
             }
 
             // Update real-time backend status if received

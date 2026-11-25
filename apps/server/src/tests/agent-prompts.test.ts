@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSystemPrompt, AGENT_PROMPTS } from '../routes/agent-prompts';
+import { routePromptToAgent } from '../routes/agent-router';
 
 describe('Agent Prompts & Execution Rules Tests', () => {
   test('1. All 4 specialized DevOps agents are configured with distinct identities', () => {
@@ -29,10 +30,10 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(AGENT_PROMPTS['agent_cicd-pipeline-engineer'].instructions, /CI\/CD|pipelines/i);
   });
 
-  test('2. Global Workspace prompt enforces anti-tutorial guardrail and architectural structure confirmation', () => {
+  test('2. Default Workspace prompt enforces anti-tutorial guardrail and architectural structure confirmation', () => {
     const prompt = buildSystemPrompt('agent_k8s-gitops-architect');
 
-    assert.match(prompt, /Global Workspace/i);
+    assert.match(prompt, /Default Workspace/i);
     assert.match(prompt, /STRICT ANTI-TUTORIAL GUARDRAIL/i);
     assert.match(prompt, /ARCHITECTURAL WORKDIR & STRUCTURE CONFIRMATION/i);
   });
@@ -119,6 +120,29 @@ describe('Agent Prompts & Execution Rules Tests', () => {
     assert.match(tfPrompt, /ENVIRONMENT \+ MODULES/i);
     assert.match(tfPrompt, /LAYER-BASED/i);
     assert.match(tfPrompt, /Terraform does NOT automatically traverse or load \.tf files in nested/i);
+  });
+
+  test('10. Smart agent router routes prompts by domain and respects @mentions', () => {
+    const finops = routePromptToAgent('Compare monthly costs for EKS on AWS vs GCP', 'auto');
+    assert.equal(finops.agentId, 'agent_finops-cost-optimizer');
+    assert.equal(finops.reason, 'auto');
+
+    const k8s = routePromptToAgent('Create a Kubernetes Deployment with HPA and NetworkPolicy', 'auto');
+    assert.equal(k8s.agentId, 'agent_k8s-gitops-architect');
+    assert.equal(k8s.reason, 'auto');
+
+    const cicd = routePromptToAgent('Build a GitHub Actions workflow with OIDC', 'auto');
+    assert.equal(cicd.agentId, 'agent_cicd-pipeline-engineer');
+    assert.equal(cicd.reason, 'auto');
+
+    const tf = routePromptToAgent('Create an AWS 3-tier VPC with Terraform', 'auto');
+    assert.equal(tf.agentId, 'agent_tf-devops-expert');
+    assert.equal(tf.reason, 'auto');
+
+    const mentionOverride = routePromptToAgent('@k8s deploy this nginx service', 'agent_tf-devops-expert');
+    assert.equal(mentionOverride.agentId, 'agent_k8s-gitops-architect');
+    assert.equal(mentionOverride.reason, 'mention');
+    assert.equal(mentionOverride.mentionToken, '@k8s');
   });
 });
 

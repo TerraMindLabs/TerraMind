@@ -79048,7 +79048,7 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
     prompt += `Scope: Project "${projectContext.name}" (${projectContext.description || "Cloud Infrastructure"})
 `;
   } else {
-    prompt += `Scope: Global Workspace (Unified root workspace)
+    prompt += `Scope: Default Workspace (Unified root workspace)
 `;
   }
   if (projectContext?.workspacePath) {
@@ -79144,6 +79144,153 @@ function buildSystemPrompt(agentId, projectContext, customMcpServers) {
     prompt += "\n";
   }
   return prompt;
+}
+
+// src/routes/agent-router.ts
+var AGENT_NAMES = {
+  "agent_tf-devops-expert": "Terraform DevOps",
+  "agent_finops-cost-optimizer": "FinOps Cost Optimizer",
+  "agent_k8s-gitops-architect": "Kubernetes Platform",
+  "agent_cicd-pipeline-engineer": "CI/CD Engineer"
+};
+var MENTION_ALIASES = [
+  { regex: /(?:^|\s)(@(?:terraform|tf|iac))\b/i, agentId: "agent_tf-devops-expert" },
+  { regex: /(?:^|\s)(@(?:finops|cost|pricing))\b/i, agentId: "agent_finops-cost-optimizer" },
+  { regex: /(?:^|\s)(@(?:k8s|kubernetes|helm|gitops))\b/i, agentId: "agent_k8s-gitops-architect" },
+  { regex: /(?:^|\s)(@(?:cicd|pipeline|github|gitlab|actions))\b/i, agentId: "agent_cicd-pipeline-engineer" }
+];
+function parseAgentMention(text) {
+  for (const entry of MENTION_ALIASES) {
+    const match = text.match(entry.regex);
+    if (match) {
+      return { agentId: entry.agentId, mentionToken: match[1] };
+    }
+  }
+  return { agentId: null, mentionToken: null };
+}
+function routePromptToAgent(prompt, requestedAgentId) {
+  const mention = parseAgentMention(prompt);
+  if (mention.agentId) {
+    return {
+      agentId: mention.agentId,
+      agentName: AGENT_NAMES[mention.agentId] || "Terraform DevOps",
+      reason: "mention",
+      mentionToken: mention.mentionToken
+    };
+  }
+  if (requestedAgentId && requestedAgentId !== "auto" && AGENT_NAMES[requestedAgentId]) {
+    return {
+      agentId: requestedAgentId,
+      agentName: AGENT_NAMES[requestedAgentId],
+      reason: "selected",
+      mentionToken: null
+    };
+  }
+  const lower = prompt.toLowerCase();
+  const scores = {
+    "agent_tf-devops-expert": 0,
+    "agent_finops-cost-optimizer": 0,
+    "agent_k8s-gitops-architect": 0,
+    "agent_cicd-pipeline-engineer": 0
+  };
+  const finopsPatterns = [
+    /\bcost\b/,
+    /\bpric(e|ing)\b/,
+    /\bbudget\b/,
+    /\bbill\b/,
+    /\bsave\b/,
+    /\bsavings\b/,
+    /\brightsiz/,
+    /\bgraviton\b/,
+    /\bspot\b/,
+    /\binfracost\b/,
+    /\btco\b/,
+    /\bfinops\b/,
+    /\bcompare\b.*\b(aws|gcp|azure)\b/,
+    /\baws vs gcp\b/,
+    /\breserved instance\b/
+  ];
+  for (const p of finopsPatterns) {
+    if (p.test(lower)) scores["agent_finops-cost-optimizer"] += 2;
+  }
+  const k8sPatterns = [
+    /\bkubernetes\b/,
+    /\bk8s\b/,
+    /\bhelm\b/,
+    /\bpod\b/,
+    /\bdeployment\b/,
+    /\bstatefulset\b/,
+    /\bhpa\b/,
+    /\bpdb\b/,
+    /\bnetworkpolicy\b/,
+    /\bingress\b/,
+    /\bargocd\b/,
+    /\bflux\b/,
+    /\bkubeconform\b/,
+    /\bkubectl\b/,
+    /\bmanifest/,
+    /\bchart\b/,
+    /\bnamespace\b/
+  ];
+  for (const p of k8sPatterns) {
+    if (p.test(lower)) scores["agent_k8s-gitops-architect"] += 2;
+  }
+  const cicdPatterns = [
+    /\bci\/cd\b/,
+    /\bcicd\b/,
+    /\bgithub actions?\b/,
+    /\bgitlab ci\b/,
+    /\bworkflow\b/,
+    /\bpipeline\b/,
+    /\boidc\b/,
+    /\bactionlint\b/,
+    /\bblue\/green\b/,
+    /\bcanary\b/,
+    /\bsemantic release\b/,
+    /\.github\/workflows/,
+    /\.gitlab-ci/
+  ];
+  for (const p of cicdPatterns) {
+    if (p.test(lower)) scores["agent_cicd-pipeline-engineer"] += 2;
+  }
+  const tfPatterns = [
+    /\bterraform\b/,
+    /\bopentofu\b/,
+    /\btofu\b/,
+    /\bhcl\b/,
+    /\bvpc\b/,
+    /\bs3\b/,
+    /\brds\b/,
+    /\beks\b/,
+    /\biam\b/,
+    /\bsubnet\b/,
+    /\bprovider\b/,
+    /\bmodule\b/,
+    /\bstate\b/,
+    /\btrivy\b/,
+    /\btflint\b/,
+    /\bcheckov\b/,
+    /\b\.tf\b/,
+    /\bec2\b/,
+    /\bsecurity group\b/
+  ];
+  for (const p of tfPatterns) {
+    if (p.test(lower)) scores["agent_tf-devops-expert"] += 2;
+  }
+  let bestAgent = "agent_tf-devops-expert";
+  let bestScore = scores["agent_tf-devops-expert"];
+  for (const [id, score] of Object.entries(scores)) {
+    if (score > bestScore) {
+      bestScore = score;
+      bestAgent = id;
+    }
+  }
+  return {
+    agentId: bestAgent,
+    agentName: AGENT_NAMES[bestAgent],
+    reason: "auto",
+    mentionToken: null
+  };
 }
 
 // src/services/terraform.ts
@@ -81390,7 +81537,7 @@ async function chatRoutes(fastify2) {
         message: singleMessage,
         provider = "ollama",
         model = "",
-        agentId = "agent_tf-devops-expert"
+        agentId: requestedAgentId = "auto"
       } = reqBody;
       reply.raw.setHeader("Content-Type", "text/event-stream");
       reply.raw.setHeader("Cache-Control", "no-cache");
@@ -81399,6 +81546,8 @@ async function chatRoutes(fastify2) {
       let conversationId = incomingConvoId;
       const latestUserMsg = messages[messages.length - 1];
       const rawContent = latestUserMsg?.content?.trim() || "Terraform Project";
+      const route = routePromptToAgent(rawContent, requestedAgentId);
+      const agentId = route.agentId;
       const cleanTitle = rawContent.split("\n")[0].replace(/[`#*]/g, "").trim().slice(0, 40) || "Terraform Chat";
       if (!conversationId) {
         conversationId = (0, import_crypto3.randomUUID)();
@@ -81438,12 +81587,27 @@ async function chatRoutes(fastify2) {
           flushAssistantMessage2();
         }
       };
-      const sendStatus = (status, phase = "processing") => {
-        reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}
+      const sendStatus = (status, phase = "processing", extra) => {
+        reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId, ...extra || {} })}
 
 `);
       };
-      sendStatus("Initializing conversation & agent context...", "init");
+      if (route.reason === "mention") {
+        sendStatus(`Targeted ${route.agentName} via ${route.mentionToken}...`, "routing", {
+          routedAgentId: agentId,
+          routedAgentName: route.agentName
+        });
+      } else if (route.reason === "auto") {
+        sendStatus(`Smart-routed to ${route.agentName}...`, "routing", {
+          routedAgentId: agentId,
+          routedAgentName: route.agentName
+        });
+      } else {
+        sendStatus("Initializing conversation & agent context...", "init", {
+          routedAgentId: agentId,
+          routedAgentName: route.agentName
+        });
+      }
       sendStatus("Loading local workspace context & files...", "context");
       let projectContext = void 0;
       try {
@@ -81458,7 +81622,7 @@ async function chatRoutes(fastify2) {
           };
         } else {
           projectContext = {
-            name: "Global Workspace",
+            name: "Default Workspace",
             description: "Unified root workspace (direct access without segregation)",
             workspacePath: WORKSPACE_PATH,
             files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))

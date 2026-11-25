@@ -309,7 +309,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </form>
             )}
 
-            {/* Global Workspace */}
+            {/* Default Workspace */}
             <button
               type="button"
               className={`nested-nav-item ${selectedProjectId === '' ? 'active' : ''}`}
@@ -318,10 +318,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectRailTab?.('chats');
               }}
             >
-              <span className="nested-nav-icon">🌐</span>
+              <span className="nested-nav-icon">📁</span>
               <div className="nested-nav-content">
-                <span className="nested-nav-title">Global Workspace</span>
-                <span className="nested-nav-desc">Quick chats • No project segregation</span>
+                <span className="nested-nav-title">Default Workspace</span>
+                <span className="nested-nav-desc">Quick chats • Root workspace</span>
               </div>
             </button>
 
@@ -507,17 +507,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </form>
             )}
 
-            {/* Global Workspace Option (Quick Chat • No Project Segregation) */}
+            {/* Default Workspace Option (Quick Chat • Root Workspace) */}
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', marginBottom: '2px' }}>
               <button
                 className={`row project-row ${selectedProjectId === '' ? 'active' : ''}`}
                 onClick={() => onSelectProject('')}
-                title="Global workspace for quick chats without project segregation"
+                title="Default workspace for quick chats without project segregation"
                 style={{ fontSize: '13px' }}
               >
-                <span style={{ fontSize: '14px' }}>🌐</span>
+                <span style={{ fontSize: '14px' }}>📁</span>
                 <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Global Workspace
+                  Default Workspace
                 </span>
                 <span
                   style={{

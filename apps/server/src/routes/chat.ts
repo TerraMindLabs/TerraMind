@@ -21,6 +21,7 @@ import {
   removeProjectMember
 } from '../db';
 import { buildSystemPrompt } from './agent-prompts';
+import { routePromptToAgent } from './agent-router';
 import { listWorkspaceFiles, writeWorkspaceFile, WORKSPACE_PATH } from '../services/terraform';
 import { runStructuredVerificationForFiles } from '../services/devops-tools';
 import { invokeBedrockConverse, streamAzureFoundry, invokeOciGenAi } from '../services/enterprise-ai';
@@ -752,7 +753,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         message: singleMessage,
         provider = 'ollama',
         model = '',
-        agentId = 'agent_tf-devops-expert'
+        agentId: requestedAgentId = 'auto'
       } = reqBody;
 
       // Establish SSE stream
@@ -771,6 +772,8 @@ export default async function chatRoutes(fastify: FastifyInstance) {
     let conversationId = incomingConvoId;
     const latestUserMsg = messages[messages.length - 1];
     const rawContent = latestUserMsg?.content?.trim() || 'Terraform Project';
+    const route = routePromptToAgent(rawContent, requestedAgentId);
+    const agentId = route.agentId;
     const cleanTitle = rawContent.split('\n')[0].replace(/[`#*]/g, '').trim().slice(0, 40) || 'Terraform Chat';
 
     if (!conversationId) {
@@ -819,11 +822,26 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       }
     };
 
-    const sendStatus = (status: string, phase = 'processing') => {
-      reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId })}\n\n`);
+    const sendStatus = (status: string, phase = 'processing', extra?: Record<string, any>) => {
+      reply.raw.write(`data: ${JSON.stringify({ status, phase, conversationId, ...(extra || {}) })}\n\n`);
     };
 
-    sendStatus('Initializing conversation & agent context...', 'init');
+    if (route.reason === 'mention') {
+      sendStatus(`Targeted ${route.agentName} via ${route.mentionToken}...`, 'routing', {
+        routedAgentId: agentId,
+        routedAgentName: route.agentName
+      });
+    } else if (route.reason === 'auto') {
+      sendStatus(`Smart-routed to ${route.agentName}...`, 'routing', {
+        routedAgentId: agentId,
+        routedAgentName: route.agentName
+      });
+    } else {
+      sendStatus('Initializing conversation & agent context...', 'init', {
+        routedAgentId: agentId,
+        routedAgentName: route.agentName
+      });
+    }
 
     sendStatus('Loading local workspace context & files...', 'context');
     let projectContext: any = undefined;
@@ -839,7 +857,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
         };
       } else {
         projectContext = {
-          name: 'Global Workspace',
+          name: 'Default Workspace',
           description: 'Unified root workspace (direct access without segregation)',
           workspacePath: WORKSPACE_PATH,
           files: files.map((f) => ({ name: f.name, size: f.size, content: f.content }))

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStream } from './hooks/useChatStream';
 import { Sidebar, Conversation, Project, WorkspaceFile } from './components/Sidebar';
-import { TERRAMIND_AGENTS, getAgentIcon } from './components/AgentSelector';
+import { TERRAMIND_AGENTS, AUTO_AGENT, getAgentIcon } from './components/AgentSelector';
 import { ChatMessage } from './components/ChatMessage';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
@@ -214,7 +214,10 @@ function App() {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState('agent_tf-devops-expert');
+  const [selectedAgentId, setSelectedAgentId] = useState('auto');
+  const [routedAgentId, setRoutedAgentId] = useState<string | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionActiveIdx, setMentionActiveIdx] = useState(0);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
@@ -424,6 +427,7 @@ function App() {
       }
     }
 
+    setRoutedAgentId(null);
     sendMessage(
       text,
       effectiveProvider,
@@ -433,10 +437,14 @@ function App() {
       () => {
         refreshConversations();
         refreshWorkspaceFiles();
+      },
+      (agentId) => {
+        setRoutedAgentId(agentId);
       }
     );
 
     setInput('');
+    setMentionQuery(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -457,7 +465,57 @@ function App() {
     handleSend(issuePrompt);
   };
 
+  const filteredMentions = mentionQuery !== null
+    ? TERRAMIND_AGENTS.filter(
+        (a) =>
+          a.mentionHandle.toLowerCase().includes(`@${mentionQuery.toLowerCase()}`) ||
+          a.name.toLowerCase().includes(mentionQuery.toLowerCase())
+      )
+    : [];
+
+  const insertMention = (handle: string) => {
+    const replaced = input.replace(/(^|\s)@([a-zA-Z0-9_-]*)$/, `$1${handle} `);
+    setInput(replaced);
+    setMentionQuery(null);
+    setMentionActiveIdx(0);
+    textareaRef.current?.focus();
+  };
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    const match = val.match(/(?:^|\s)@([a-zA-Z0-9_-]*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionActiveIdx(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionActiveIdx((prev) => (prev + 1) % filteredMentions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionActiveIdx((prev) => (prev - 1 + filteredMentions.length) % filteredMentions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(filteredMentions[mentionActiveIdx]?.mentionHandle || filteredMentions[0].mentionHandle);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -585,9 +643,21 @@ function App() {
 
 
 
-  const currentAgent = TERRAMIND_AGENTS.find((a) => a.id === selectedAgentId) || TERRAMIND_AGENTS[0];
+  const activeDisplayAgentId = selectedAgentId === 'auto' && routedAgentId ? routedAgentId : selectedAgentId;
+  const currentAgent =
+    activeDisplayAgentId === 'auto'
+      ? AUTO_AGENT
+      : TERRAMIND_AGENTS.find((a) => a.id === activeDisplayAgentId) || AUTO_AGENT;
   const currentProject = projects.find((p) => p.id === selectedProjectId);
-  const currentCards = AGENT_CARDS[selectedAgentId] || AGENT_CARDS['agent_tf-devops-expert'];
+  const currentCards =
+    selectedAgentId === 'auto'
+      ? [
+          AGENT_CARDS['agent_tf-devops-expert'][0],
+          AGENT_CARDS['agent_finops-cost-optimizer'][0],
+          AGENT_CARDS['agent_k8s-gitops-architect'][0],
+          AGENT_CARDS['agent_cicd-pipeline-engineer'][0]
+        ]
+      : AGENT_CARDS[selectedAgentId] || AGENT_CARDS['agent_tf-devops-expert'];
 
   const activeConversation = conversations.find((c) => c.id === conversationId);
   const activeChatTitle =
@@ -1411,7 +1481,68 @@ function App() {
               </button>
             </div>
           )}
-          <div className="box">
+          <div className="box" style={{ position: 'relative' }}>
+            {mentionQuery !== null && filteredMentions.length > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 8px)',
+                  left: '12px',
+                  width: '320px',
+                  maxWidth: 'calc(100% - 24px)',
+                  background: 'var(--side)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+                  padding: '6px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px'
+                }}
+              >
+                <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase' }}>
+                  Target Specialist Agent
+                </div>
+                {filteredMentions.map((agent, idx) => (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertMention(agent.mentionHandle);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '7px 10px',
+                      borderRadius: '7px',
+                      border: 'none',
+                      background: idx === mentionActiveIdx ? 'var(--hover)' : 'transparent',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%'
+                    }}
+                  >
+                    <img
+                      src={getAgentIcon(agent, theme)}
+                      alt={agent.name}
+                      style={{ width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 600 }}>
+                        {agent.mentionHandle} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>· {agent.name}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {agent.role}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               id="in"
@@ -1421,12 +1552,14 @@ function App() {
                   ? 'Please log in or sign up to chat...'
                   : !hasAnyModels
                   ? 'Configure an API key in Settings to begin chatting with TerraMind...'
-                  : `Ask ${currentAgent.name} to write Terraform, review manifests, or design infrastructure...`
+                  : selectedAgentId === 'auto'
+                  ? 'Ask anything (auto-routes to Terraform, FinOps, K8s, or CI/CD — or type @ to target an agent)...'
+                  : `Ask ${currentAgent.name} to write Terraform, review manifests, or design infrastructure (type @ to switch)...`
               }
               aria-label="Message"
               value={input}
               onChange={(e) => {
-                setInput(e.target.value);
+                handleInputChange(e.target.value);
               }}
               onKeyDown={handleKeyDown}
             />

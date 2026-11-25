@@ -921,7 +921,7 @@ export function buildSystemPrompt(agentId: string, projectContext?: ProjectConte
   if (projectContext) {
     prompt += `Scope: Project "${projectContext.name}" (${projectContext.description || 'Cloud Infrastructure'})\n`;
   } else {
-    prompt += `Scope: Global Workspace (Unified root workspace)\n`;
+    prompt += `Scope: Default Workspace (Unified root workspace)\n`;
   }
 
   if (projectContext?.workspacePath) {
